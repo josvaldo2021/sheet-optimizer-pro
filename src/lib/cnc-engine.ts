@@ -18,6 +18,8 @@ export interface Piece {
   // number of original pieces combined into this Piece (1 by default)
   count?: number;
   label?: string;
+  /** Individual labels when grouping multiple pieces */
+  labels?: string[];
 }
 
 export interface PieceItem {
@@ -444,6 +446,8 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
 export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): TreeNode {
   if (pieces.length === 0) return createRoot(usableW, usableH);
 
+  const hasLabels = pieces.some(p => p.label);
+
   const strategies: ((a: Piece, b: Piece) => number)[] = [
     (a, b) => b.area - a.area || Math.max(b.w, b.h) - Math.max(a.w, a.h),
     (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.area - a.area,
@@ -463,13 +467,19 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
     (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
   ];
 
-  const pieceVariants: Piece[][] = [
-    pieces,
-    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
-    groupPiecesByHeight(pieces),
-    groupPiecesByWidth(pieces),
-    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
-  ];
+  // Skip grouping variants when pieces have labels to preserve correct dimensions
+  const pieceVariants: Piece[][] = hasLabels
+    ? [
+        pieces,
+        pieces.map(p => ({ ...p, w: p.h, h: p.w })),
+      ]
+    : [
+        pieces,
+        pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
+        groupPiecesByHeight(pieces),
+        groupPiecesByWidth(pieces),
+        groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+      ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
@@ -561,7 +571,11 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       placedArea += bestFit.w * bestFit.h;
     } else {
       const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
-      insertNode(tree, zId, 'W', bestFit.h, 1);
+      const zNode = findNode(tree, zId)!;
+      if (piece.label) zNode.label = piece.label;
+      const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
+      const wNode = findNode(tree, wId)!;
+      if (piece.label) wNode.label = piece.label;
       placedArea += bestFit.w * bestFit.h;
     }
 
@@ -584,19 +598,24 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       if (bestOri) {
         if (bestOri.h < bestFit.h) {
           const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
-          insertNode(tree, zId, 'W', bestOri.h, 1);
+          const zNode2 = findNode(tree, zId)!;
+          if (pc.label) zNode2.label = pc.label;
+          const wId2 = insertNode(tree, zId, 'W', bestOri.h, 1);
+          const wNode2 = findNode(tree, wId2)!;
+          if (pc.label) wNode2.label = pc.label;
           placedArea += bestOri.w * bestOri.h;
 
           // Flexible W filling: accept w <= Z width
-          const zNode = findNode(tree, zId)!;
           let freeWH = bestFit.h - bestOri.h;
           for (let j = 0; j < remaining.length && freeWH > 0; j++) {
             if (j === i) continue;
             const pw = remaining[j];
             for (const wo of oris(pw)) {
-              if (wo.w <= zNode.valor && wo.h <= freeWH) {
-                insertNode(tree, zId, 'W', wo.h, 1);
-                placedArea += zNode.valor * wo.h;
+              if (wo.w <= zNode2.valor && wo.h <= freeWH) {
+                const wId3 = insertNode(tree, zId, 'W', wo.h, 1);
+                const wNode3 = findNode(tree, wId3)!;
+                if (pw.label) wNode3.label = pw.label;
+                placedArea += zNode2.valor * wo.h;
                 freeWH -= wo.h;
                 remaining.splice(j, 1);
                 if (j < i) i--;
@@ -606,7 +625,9 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
             }
           }
         } else {
-          insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
+          const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
+          const zNode2 = findNode(tree, zId)!;
+          if (pc.label) zNode2.label = pc.label;
           placedArea += bestOri.w * bestFit.h;
         }
         freeZW -= bestOri.w;
