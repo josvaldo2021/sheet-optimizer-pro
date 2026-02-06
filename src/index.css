@@ -244,41 +244,43 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid hsla(150 35% 55% / 0.3);
+  border: 1px solid hsl(0 0% 75%);
   box-sizing: border-box;
-  background: hsla(150 35% 40% / 0.15);
+  background: hsl(0 0% 100%);
 }
 .sv-piece-w {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-top: 1px solid hsla(0 0% 100% / 0.12);
+  border-top: 1px solid hsl(0 0% 75%);
   box-sizing: border-box;
   cursor: pointer;
   transition: filter 0.1s;
+  background: hsl(0 0% 100%);
 }
-.sv-piece-w:hover { filter: brightness(1.2); }
+.sv-piece-w:hover { filter: brightness(0.95); }
 .sv-piece-w-container {
   width: 100%;
   box-sizing: border-box;
-  border-top: 1px solid hsla(0 0% 100% / 0.12);
+  border-top: 1px solid hsl(0 0% 75%);
+  background: hsl(0 0% 100%);
 }
 .sv-piece-q {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid hsla(0 0% 100% / 0.15);
+  border-right: 1px solid hsl(0 0% 75%);
   box-sizing: border-box;
   cursor: pointer;
   transition: filter 0.1s;
+  background: hsl(0 0% 100%);
 }
-.sv-piece-q:hover { filter: brightness(1.2); }
+.sv-piece-q:hover { filter: brightness(0.95); }
 .sv-piece-label {
-  color: white;
+  color: hsl(0 0% 10%);
   font-weight: 700;
   font-size: 11px;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   text-align: center;
   pointer-events: none;
   white-space: nowrap;
@@ -290,21 +292,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: repeating-linear-gradient(
-    45deg,
-    hsla(0 0% 100% / 0.02),
-    hsla(0 0% 100% / 0.02) 4px,
-    transparent 4px,
-    transparent 8px
-  );
-  border: 1px dashed hsl(0 0% 25%);
+  background: hsl(200 60% 85%);
+  border: 1px solid hsl(200 50% 70%);
   box-sizing: border-box;
 }
 .sv-waste-large {
   position: absolute;
 }
 .sv-waste-label {
-  color: hsl(0 0% 45%);
+  color: hsl(200 40% 30%);
   font-size: 9px;
   font-weight: 600;
   text-align: center;

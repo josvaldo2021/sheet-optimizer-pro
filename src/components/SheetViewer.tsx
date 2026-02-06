@@ -1,9 +1,9 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { TreeNode, findNode } from '@/lib/cnc-engine';
 
-// Clean uniform piece style
-const PIECE_BG = 'hsla(150 35% 40% / 0.15)';
-const PIECE_BORDER = 'hsla(150 35% 55% / 0.3)';
+// Clean piece style
+const PIECE_BG = 'hsl(0 0% 100%)';
+const PIECE_BORDER = 'hsl(0 0% 70%)';
 
 interface SheetViewerProps {
   chapas: Array<{ tree: TreeNode; usedArea: number }>;
