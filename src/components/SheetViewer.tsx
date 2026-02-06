@@ -300,9 +300,9 @@ export default function SheetViewer({
         )}
       </div>
 
-      {/* Sheet tabs */}
+      {/* Sheet tabs - scrollable */}
       {chapas.length > 1 && (
-        <div className="sv-tabs">
+        <div className="sv-tabs cnc-scroll" style={{ maxHeight: '120px', overflowY: 'auto', flexShrink: 0, flexWrap: 'wrap' }}>
           {chapas.map((_, idx) => {
             const u = usableW > 0 && usableH > 0 ? (chapas[idx].usedArea / (usableW * usableH)) * 100 : 0;
             return (
