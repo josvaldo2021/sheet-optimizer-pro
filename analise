@@ -1,6 +1,5 @@
 ## Análise Técnica do Algoritmo de Otimização `optimizeV6`
 
-O algoritmo `optimizeV6` no arquivo `cnc-engine.ts` é o núcleo da lógica de otimização do Sheet Optimizer Pro. A análise a seguir detalha seu funcionamento, identifica pontos fortes e aponta limitações que podem levar a um desperdício de material.
 
 ### 1. Estrutura e Fluxo Principal
 
