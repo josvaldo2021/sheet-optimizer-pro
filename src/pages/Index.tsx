@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import {
   TreeNode, PieceItem,
   createRoot, cloneTree, findNode, findParentOfType,
-  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6, annotateTreeLabels
+  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6
 } from '@/lib/cnc-engine';
 import SheetViewer from '@/components/SheetViewer';
 
@@ -88,76 +88,50 @@ const Index = () => {
   }, [tree, selectedId, usableW, usableH]);
 
   const optimize = useCallback(() => {
-    const inv: { w: number; h: number; area: number }[] = [];
+    const inv: { w: number; h: number; area: number; label?: string }[] = [];
     pieces.forEach(p => {
       for (let i = 0; i < p.qty; i++) {
-        if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h });
+        if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
       }
     });
     if (inv.length === 0) { setStatus({ msg: 'Inventário vazio!', type: 'error' }); return; }
     setStatus({ msg: 'Otimizando...', type: 'warn' });
     setTimeout(() => {
       const result = optimizeV6(inv, usableW, usableH);
-      annotateTreeLabels(result, pieces);
       setTree(result);
       setSelectedId('root');
       setStatus({ msg: 'Plano de Corte Otimizado V6!', type: 'success' });
     }, 50);
   }, [pieces, usableW, usableH]);
 
-  // Extrai todas as peças finais (folhas) da árvore de corte
-  const extractUsedPieces = useCallback((node: TreeNode): Array<{ w: number; h: number }> => {
-    const used: Array<{ w: number; h: number }> = [];
-
-    const traverse = (n: TreeNode) => {
-      // Se é folha (Z ou W sem filhos, ou Q), extrai a peça
-      if ((n.tipo === 'Z' || n.tipo === 'W' || n.tipo === 'Q') && n.filhos.length === 0) {
-        // Para Z/W sem filhos: dimensões são (valor da Z) x (valor do Y acima)
-        // Para Q: dimensões são (valor de Q) x (valor de W acima)
-        // Precisamos rastrear os valores dos ancestrais
-        used.push({ w: n.valor, h: n.valor }); // placeholder, será calculado corretamente
-      }
-
-      if (n.filhos.length > 0) {
-        n.filhos.forEach(f => traverse(f));
-      }
-    };
-
-    traverse(node);
-    return used;
-  }, []);
-
   // Versão melhorada que rastreia contexto com stack
-  const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number }> => {
-    const used: Array<{ w: number; h: number }> = [];
+  const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
+    const used: Array<{ w: number; h: number; label?: string }> = [];
 
     const traverse = (n: TreeNode, parents: TreeNode[]) => {
-      // Encontra Y, Z, W ancestrais para recuperar dimensões
       const yAncestor = parents.find(p => p.tipo === 'Y');
       const zAncestor = parents.find(p => p.tipo === 'Z');
       const wAncestor = parents.find(p => p.tipo === 'W');
 
-      // Z sem filhos: dimensão é (Z.valor x Y.valor)
+      let pieceW = 0, pieceH = 0;
+      let isLeaf = false;
+
       if (n.tipo === 'Z' && n.filhos.length === 0) {
-        const h = yAncestor?.valor || 0;
-        used.push({ w: n.valor, h });
-      }
-      // W sem filhos (final piece): dimensão é (Z.valor x W.valor)
-      else if (n.tipo === 'W' && n.filhos.length === 0) {
-        const w = zAncestor?.valor || 0;
-        used.push({ w, h: n.valor });
-      }
-      // Q (final piece): dimensão é (Q.valor x W.valor)
-      else if (n.tipo === 'Q') {
-        const h = wAncestor?.valor || 0;
-        used.push({ w: n.valor, h });
+        pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
+      } else if (n.tipo === 'W' && n.filhos.length === 0) {
+        pieceW = zAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
+      } else if (n.tipo === 'Q') {
+        pieceW = n.valor; pieceH = wAncestor?.valor || 0; isLeaf = true;
       }
 
-      if (n.filhos.length > 0) {
-        n.filhos.forEach(f => {
-          traverse(f, [...parents, n]);
-        });
+      if (isLeaf && pieceW > 0 && pieceH > 0) {
+        // Account for multi > 1
+        for (let m = 0; m < n.multi; m++) {
+          used.push({ w: pieceW, h: pieceH, label: n.label });
+        }
       }
+
+      n.filhos.forEach(f => traverse(f, [...parents, n]));
     };
 
     traverse(node, []);
@@ -181,10 +155,10 @@ const Index = () => {
       sheetCount++;
 
       // Cria inventário para esta chapa
-      const inv: { w: number; h: number; area: number }[] = [];
+      const inv: { w: number; h: number; area: number; label?: string }[] = [];
       remaining.forEach(p => {
         for (let i = 0; i < p.qty; i++) {
-          if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h });
+          if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
         }
       });
 
@@ -193,7 +167,6 @@ const Index = () => {
       // Otimiza para esta chapa
       const result = optimizeV6(inv, usableW, usableH);
       const usedArea = calcPlacedArea(result);
-      annotateTreeLabels(result, remaining);
 
       chapaList.push({ tree: result, usedArea });
 
