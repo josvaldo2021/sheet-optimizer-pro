@@ -5,6 +5,7 @@ import {
   createRoot, cloneTree, findNode, findParentOfType,
   insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6
 } from '@/lib/cnc-engine';
+import SheetViewer from '@/components/SheetViewer';
 
 const Index = () => {
   const [chapaW, setChapaW] = useState(6000);
@@ -22,6 +23,7 @@ const Index = () => {
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: 'Pronto', type: 'info' });
   const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number }>>([]);
+  const [activeChapa, setActiveChapa] = useState(0);
   const [remainingPieces, setRemainingPieces] = useState<PieceItem[]>([]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -603,52 +605,26 @@ const Index = () => {
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col" style={{ background: 'hsl(0 0% 0%)' }}>
-        <div className="flex justify-around p-2.5 px-5 text-xs font-bold" style={{ background: 'hsl(0 0% 10%)', borderBottom: '1px solid hsl(0 0% 20%)' }}>
-          <div>APROVEITAMENTO: <span style={{ color: 'hsl(120 100% 63%)' }}>{utilization.toFixed(2)}%</span></div>
-          <div style={{ color: 'hsl(60 100% 50%)' }}>Contexto: {currentNode?.tipo || 'ROOT'}</div>
-          <div>ÚTIL: {Math.round(usableW)} x {Math.round(usableH)}</div>
-        </div>
-
-        {chapas.length > 0 && (
-          <div className="flex gap-1 p-2 bg-gray-900 border-b border-gray-800 overflow-x-auto">
-            {chapas.map((chapa, idx) => (
-              <button
-                key={idx}
-                onClick={() => { setTree(chapa.tree); setSelectedId('root'); }}
-                className="px-3 py-1 text-xs rounded whitespace-nowrap"
-                style={{
-                  background: tree === chapa.tree ? 'hsl(240 100% 50%)' : 'hsl(0 0% 30%)',
-                  color: tree === chapa.tree ? 'white' : 'hsl(0 0% 60%)',
-                  border: '1px solid hsl(0 0% 50%)'
-                }}
-              >
-                Chapa {idx + 1}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div ref={viewportRef} className="flex-1 flex justify-center items-center p-5 overflow-hidden" style={{ background: 'hsl(0 0% 3%)' }}>
-          <div
-            className="relative"
-            style={{
-              width: chapaW * scale, height: chapaH * scale,
-              background: 'hsl(0 0% 10%)', border: '1px solid hsl(0 0% 33%)',
-              boxShadow: '0 0 30px rgba(0,0,0,0.5)'
-            }}
-          >
-            <div
-              className="absolute"
-              style={{
-                width: usableW * scale, height: usableH * scale,
-                left: ml * scale, bottom: mb * scale,
-                background: 'hsl(0 0% 0%)'
-              }}
-            >
-              {renderCutPlan()}
-            </div>
-          </div>
-        </div>
+        <SheetViewer
+          chapas={chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
+          activeIndex={chapas.length > 0 ? activeChapa : 0}
+          onSelectSheet={(idx) => {
+            setActiveChapa(idx);
+            if (chapas[idx]) {
+              setTree(chapas[idx].tree);
+              setSelectedId('root');
+            }
+          }}
+          selectedId={selectedId}
+          onSelectNode={setSelectedId}
+          usableW={usableW}
+          usableH={usableH}
+          chapaW={chapaW}
+          chapaH={chapaH}
+          ml={ml}
+          mb={mb}
+          utilization={utilization}
+        />
 
         <div className="flex flex-col p-2 px-4" style={{ height: 80, background: 'hsl(0 0% 13%)', borderTop: '4px solid hsl(0 0% 20%)' }}>
           <div
