@@ -78,7 +78,10 @@ export default function SheetViewer({
                   colorIdx++;
                   wEls.push(
                     <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
-                      <span className="sv-piece-label">{Math.round(zNode.valor)}×{Math.round(yNode.valor)}</span>
+                      <span className="sv-piece-label">
+                        {zNode.label && <span className="sv-piece-id">{zNode.label}</span>}
+                        {Math.round(zNode.valor)}×{Math.round(yNode.valor)}
+                      </span>
                     </div>
                   );
                 } else {
@@ -90,11 +93,14 @@ export default function SheetViewer({
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
-                            className={`sv-piece-w ${selectedId === wNode.id ? 'sv-selected' : ''}`}
+                          className={`sv-piece-w ${selectedId === wNode.id ? 'sv-selected' : ''}`}
                             style={{ height: wNode.valor * scale, background: PIECE_BG, borderColor: PIECE_BORDER }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
-                            <span className="sv-piece-label">{Math.round(zNode.valor)}×{Math.round(wNode.valor)}</span>
+                            <span className="sv-piece-label">
+                              {wNode.label && <span className="sv-piece-id">{wNode.label}</span>}
+                              {Math.round(zNode.valor)}×{Math.round(wNode.valor)}
+                            </span>
                           </div>
                         );
                       } else {
@@ -118,7 +124,10 @@ export default function SheetViewer({
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
-                                <span className="sv-piece-label">{Math.round(qNode.valor)}×{Math.round(wNode.valor)}</span>
+                                <span className="sv-piece-label">
+                                  {qNode.label && <span className="sv-piece-id">{qNode.label}</span>}
+                                  {Math.round(qNode.valor)}×{Math.round(wNode.valor)}
+                                </span>
                               </div>
                             );
                             qOff += qNode.valor;
