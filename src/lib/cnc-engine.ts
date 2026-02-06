@@ -369,8 +369,6 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
     const pc = remaining[i];
     for (const o of oris(pc)) {
       if (o.w <= zWidth && o.h <= maxH) {
-        insertNode({ id: 'root', tipo: 'ROOT', valor: 0, multi: 1, filhos: [] }, zNode.id, 'W', o.h, 1);
-        // Direct insert into zNode
         const wNode: TreeNode = { id: gid(), tipo: 'W', valor: o.h, multi: 1, filhos: [] };
         zNode.filhos.push(wNode);
         filled += o.w * o.h;
@@ -389,51 +387,41 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
 export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): TreeNode {
   if (pieces.length === 0) return createRoot(usableW, usableH);
 
-  // 12 sorting strategies
   const strategies: ((a: Piece, b: Piece) => number)[] = [
     (a, b) => b.area - a.area || Math.max(b.w, b.h) - Math.max(a.w, a.h),
     (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.area - a.area,
     (a, b) => b.h - a.h || b.w - a.w,
     (a, b) => b.w - a.w || b.h - a.h,
     (a, b) => (b.w + b.h) - (a.w + a.h),
-    // New strategies
-    (a, b) => (b.w / b.h) - (a.w / a.h), // w/h ratio
-    (a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h), // smallest dimension first
+    (a, b) => (b.w / b.h) - (a.w / a.h),
+    (a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h),
     (a, b) => {
-      // "problematic" pieces first (very elongated)
       const ra = Math.max(a.w, a.h) / Math.min(a.w, a.h);
       const rb = Math.max(b.w, b.h) / Math.min(b.w, b.h);
       return rb - ra;
     },
-    (a, b) => b.area - a.area || b.w - a.w, // area then width
-    (a, b) => b.area - a.area || b.h - a.h, // area then height
-    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h), // longest dimension
-    (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h), // area/perimeter ratio
+    (a, b) => b.area - a.area || b.w - a.w,
+    (a, b) => b.area - a.area || b.h - a.h,
+    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
+    (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
   ];
 
-  // Piece variants: original, all rotated, grouped by height, grouped by width
   const pieceVariants: Piece[][] = [
     pieces,
-    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })), // global rotation
+    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
     groupPiecesByHeight(pieces),
     groupPiecesByWidth(pieces),
     groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
   ];
 
   let bestTree: TreeNode | null = null;
-  let bestSheets = Infinity;
   let bestArea = 0;
 
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
       const sorted = [...variant].sort(sortFn);
       const result = runPlacement(sorted, usableW, usableH);
-
-      // Count sheets used (number of X columns that fill width = number of sheets)
-      const sheetCount = Math.max(1, tree_filhos_count(result.tree, usableW));
-
-      if (sheetCount < bestSheets || (sheetCount === bestSheets && result.area > bestArea)) {
-        bestSheets = sheetCount;
+      if (result.area > bestArea) {
         bestArea = result.area;
         bestTree = JSON.parse(JSON.stringify(result.tree));
       }
@@ -441,13 +429,6 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
   }
 
   return bestTree || createRoot(usableW, usableH);
-}
-
-// Estimate number of sheets from tree
-function tree_filhos_count(tree: TreeNode, _usableW: number): number {
-  // Each X node is a column; sheets = total width / usableW (ceiled)
-  const totalW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-  return totalW > 0 ? Math.ceil(totalW / _usableW) : 0;
 }
 
 function runPlacement(inventory: Piece[], usableW: number, usableH: number): { tree: TreeNode; area: number } {
@@ -459,13 +440,26 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     const piece = remaining[0];
     let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; score: number } | null = null;
 
-    // 1. Try existing columns with lookahead scoring
+    // 1. Try existing columns (original scoring + light lookahead)
     for (const colX of tree.filhos) {
       const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
       const freeH = usableH - usedH;
       for (const o of oris(piece)) {
         if (o.w <= colX.valor && o.h <= freeH) {
-          const score = scoreFit(colX.valor, freeH, o.w, o.h, remaining.slice(1));
+          const widthRatio = o.w / colX.valor;
+          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
+          // Light lookahead: bonus if remaining space fits another piece
+          let lookBonus = 0;
+          const remH = freeH - o.h;
+          const remW = colX.valor - o.w;
+          for (const r of remaining.slice(1)) {
+            for (const ro of oris(r)) {
+              if (ro.w <= colX.valor && ro.h <= remH) { lookBonus -= 0.5; break; }
+              if (ro.w <= remW && ro.h <= o.h) { lookBonus -= 0.3; break; }
+            }
+            if (lookBonus < -1) break;
+          }
+          const score = baseScore + lookBonus;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: 'EXISTING', col: colX, w: o.w, h: o.h, score };
           }
@@ -473,24 +467,15 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       }
     }
 
-    // 2. Try new column - use width of best fitting piece, not just current
+    // 2. Try new column with piece's own width
     const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
     if (freeW > 0) {
       for (const o of oris(piece)) {
         if (o.w <= freeW && o.h <= usableH) {
-          // Find optimal column width: largest piece width that fits
-          let colWidth = o.w;
-          for (const r of remaining.slice(1)) {
-            for (const ro of oris(r)) {
-              if (ro.w <= freeW && ro.w > colWidth) colWidth = ro.w;
-            }
-          }
-          colWidth = Math.min(colWidth, freeW);
-
-          const score = scoreFit(colWidth, usableH, o.w, o.h, remaining.slice(1));
+          const score = ((freeW - o.w) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'NEW', w: colWidth, h: o.h, score };
+            bestFit = { type: 'NEW', w: o.w, h: o.h, score };
           }
         }
       }
@@ -506,31 +491,27 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       col = bestFit.col!;
     }
 
-    // Insert Y strip + Z piece(s)
-    const pieceW = bestFit.type === 'NEW' ? (oris(piece).find(o => o.w <= bestFit!.w && o.h <= usableH) || oris(piece)[0]).w : bestFit.w;
-    const actualW = bestFit.type === 'EXISTING' ? bestFit.w : pieceW;
-
     const yId = insertNode(tree, col.id, 'Y', bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
     const grouped = piece.count && piece.count > 1;
 
     if (grouped) {
-      const partW = Math.round(actualW / (piece.count || 2));
-      const zId = insertNode(tree, yNode.id, 'Z', actualW, 1);
+      const partW = Math.round(bestFit.w / (piece.count || 2));
+      const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
       const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
       insertNode(tree, wId, 'Q', partW, piece.count || 2);
-      placedArea += actualW * bestFit.h;
+      placedArea += bestFit.w * bestFit.h;
     } else {
-      const zId = insertNode(tree, yNode.id, 'Z', actualW, 1);
+      const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
       insertNode(tree, zId, 'W', bestFit.h, 1);
-      placedArea += actualW * bestFit.h;
+      placedArea += bestFit.w * bestFit.h;
     }
 
     remaining.shift();
 
-    // Flexible lateral Z filling
-    let freeZW = col.valor - actualW;
+    // Lateral Z filling (flexible height)
+    let freeZW = col.valor - bestFit.w;
     for (let i = 0; i < remaining.length && freeZW > 0; i++) {
       const pc = remaining[i];
       let bestOri: { w: number; h: number } | null = null;
@@ -538,7 +519,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
 
       for (const o of oris(pc)) {
         if (o.w <= freeZW && o.h <= bestFit.h) {
-          const score = scoreFit(freeZW, bestFit.h, o.w, o.h, remaining.slice(i + 1));
+          const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
           if (score < bestScore) { bestScore = score; bestOri = o; }
         }
       }
@@ -549,7 +530,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
           insertNode(tree, zId, 'W', bestOri.h, 1);
           placedArea += bestOri.w * bestOri.h;
 
-          // FLEXIBLE W filling: accept pieces with w <= zNode width (not exact match)
+          // Flexible W filling: accept w <= Z width
           const zNode = findNode(tree, zId)!;
           let freeWH = bestFit.h - bestOri.h;
           for (let j = 0; j < remaining.length && freeWH > 0; j++) {
@@ -578,56 +559,10 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     }
   }
 
-  // Recursive void filling pass
-  const voidRemaining = [...inventory].filter(p => {
-    // Find pieces not yet placed (simple area check)
-    return true; // We'll use a copy approach instead
-  });
-
-  // Second pass: try to fill remaining voids with unplaced pieces
-  // We track unplaced by rebuilding from inventory minus placed
-  const placedPieces = calcPlacedPiecesFromTree(tree);
-  const unplaced = getUnplacedPieces(inventory, placedPieces);
-  if (unplaced.length > 0) {
-    placedArea += fillVoids(tree, unplaced, usableW, usableH);
+  // Void filling: try to fill remaining spaces in existing columns
+  if (remaining.length > 0) {
+    placedArea += fillVoids(tree, remaining, usableW, usableH);
   }
 
   return { tree, area: placedArea };
-}
-
-function calcPlacedPiecesFromTree(tree: TreeNode): { w: number; h: number }[] {
-  const placed: { w: number; h: number }[] = [];
-  function walk(n: TreeNode, parentW?: number, parentH?: number) {
-    if (n.tipo === 'W' && n.filhos.length === 0 && parentW !== undefined) {
-      for (let i = 0; i < n.multi; i++) placed.push({ w: parentW, h: n.valor });
-    }
-    if (n.tipo === 'Q') {
-      for (let i = 0; i < n.multi; i++) placed.push({ w: n.valor, h: parentH || 0 });
-    }
-    const zW = n.tipo === 'Z' ? n.valor : parentW;
-    const wH = n.tipo === 'W' ? n.valor : parentH;
-    n.filhos.forEach(c => walk(c, zW, wH));
-  }
-  tree.filhos.forEach(x => x.filhos.forEach(y => y.filhos.forEach(z => walk(z, z.valor))));
-  return placed;
-}
-
-function getUnplacedPieces(inventory: Piece[], placed: { w: number; h: number }[]): Piece[] {
-  const remaining = [...inventory];
-  const usedPlaced = [...placed];
-
-  for (let i = remaining.length - 1; i >= 0; i--) {
-    const p = remaining[i];
-    const count = p.count || 1;
-    let matched = 0;
-    for (let c = 0; c < count; c++) {
-      const idx = usedPlaced.findIndex(pp =>
-        (pp.w === p.w && pp.h === p.h) || (pp.w === p.h && pp.h === p.w) ||
-        (p.count && p.count > 1) // grouped pieces are always considered placed
-      );
-      if (idx !== -1) { usedPlaced.splice(idx, 1); matched++; }
-    }
-    if (matched > 0) remaining.splice(i, 1);
-  }
-  return remaining;
 }
