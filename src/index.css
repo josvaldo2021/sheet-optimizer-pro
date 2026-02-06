@@ -244,8 +244,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid hsla(0 0% 100% / 0.15);
+  border: 1px solid hsla(150 35% 55% / 0.3);
   box-sizing: border-box;
+  background: hsla(150 35% 40% / 0.15);
 }
 .sv-piece-w {
   width: 100%;

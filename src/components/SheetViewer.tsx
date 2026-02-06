@@ -1,28 +1,9 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { TreeNode, findNode } from '@/lib/cnc-engine';
 
-// Generate distinct colors for pieces
-const PIECE_COLORS = [
-  'hsl(200 70% 45%)',
-  'hsl(150 60% 40%)',
-  'hsl(30 80% 50%)',
-  'hsl(280 50% 50%)',
-  'hsl(350 65% 50%)',
-  'hsl(170 55% 42%)',
-  'hsl(45 85% 48%)',
-  'hsl(220 65% 55%)',
-  'hsl(320 55% 48%)',
-  'hsl(100 50% 42%)',
-  'hsl(10 70% 48%)',
-  'hsl(250 55% 52%)',
-  'hsl(60 65% 42%)',
-  'hsl(190 60% 45%)',
-  'hsl(340 60% 45%)',
-];
-
-function getPieceColor(index: number): string {
-  return PIECE_COLORS[index % PIECE_COLORS.length];
-}
+// Clean uniform piece style
+const PIECE_BG = 'hsla(150 35% 40% / 0.15)';
+const PIECE_BORDER = 'hsla(150 35% 55% / 0.3)';
 
 interface SheetViewerProps {
   chapas: Array<{ tree: TreeNode; usedArea: number }>;
@@ -94,9 +75,9 @@ export default function SheetViewer({
                 const wEls: JSX.Element[] = [];
 
                 if (zNode.filhos.length === 0) {
-                  const color = getPieceColor(colorIdx++);
+                  colorIdx++;
                   wEls.push(
-                    <div key="final" className="sv-piece" style={{ background: color }}>
+                    <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
                       <span className="sv-piece-label">{Math.round(zNode.valor)}×{Math.round(yNode.valor)}</span>
                     </div>
                   );
@@ -105,12 +86,12 @@ export default function SheetViewer({
                   zNode.filhos.forEach(wNode => {
                     for (let iw = 0; iw < wNode.multi; iw++) {
                       if (wNode.filhos.length === 0) {
-                        const color = getPieceColor(colorIdx++);
+                        colorIdx++;
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
                             className={`sv-piece-w ${selectedId === wNode.id ? 'sv-selected' : ''}`}
-                            style={{ height: wNode.valor * scale, background: color }}
+                            style={{ height: wNode.valor * scale, background: PIECE_BG, borderColor: PIECE_BORDER }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
                             <span className="sv-piece-label">{Math.round(zNode.valor)}×{Math.round(wNode.valor)}</span>
@@ -122,7 +103,7 @@ export default function SheetViewer({
                         const qEls: JSX.Element[] = [];
                         wNode.filhos.forEach(qNode => {
                           for (let iq = 0; iq < qNode.multi; iq++) {
-                            const color = getPieceColor(colorIdx++);
+                            colorIdx++;
                             qEls.push(
                               <div
                                 key={`q-${qNode.id}-${iq}`}
@@ -133,7 +114,7 @@ export default function SheetViewer({
                                   bottom: 0,
                                   width: qNode.valor * scale,
                                   height: wNode.valor * scale,
-                                  background: color,
+                                  background: PIECE_BG,
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
