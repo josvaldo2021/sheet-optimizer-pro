@@ -86,6 +86,10 @@
   justify-content: center;
   box-sizing: border-box;
 }
+.cnc-piece-q {
+  border-right: 1px solid hsl(var(--cnc-z-line));
+  box-sizing: border-box;
+}
 .cnc-selected {
   outline: 3px solid hsl(var(--cnc-selection)) !important;
   z-index: 100;

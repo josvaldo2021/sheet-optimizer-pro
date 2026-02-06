@@ -1,6 +1,6 @@
 // CNC Cut Plan Engine with Improved V6 Optimizer
 
-export type NodeType = 'ROOT' | 'X' | 'Y' | 'Z' | 'W';
+export type NodeType = 'ROOT' | 'X' | 'Y' | 'Z' | 'W' | 'Q';
 
 export interface TreeNode {
   id: string;
@@ -14,6 +14,8 @@ export interface Piece {
   w: number;
   h: number;
   area: number;
+  // number of original pieces combined into this Piece (1 by default)
+  count?: number;
 }
 
 export interface PieceItem {
@@ -60,6 +62,7 @@ export function insertNode(tree: TreeNode, selectedId: string, tipo: NodeType, v
   else if (tipo === 'Y') { const p = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X'); if (p) p.filhos.push(node); }
   else if (tipo === 'Z') { const p = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y'); if (p) p.filhos.push(node); }
   else if (tipo === 'W') { const p = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z'); if (p) p.filhos.push(node); }
+  else if (tipo === 'Q') { const p = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W'); if (p) p.filhos.push(node); }
   return node.id;
 }
 
@@ -92,7 +95,16 @@ export function calcAllocation(
     if (!zP) return { allocated: 0, error: 'Selecione Z' };
     const yP = findParentOfType(tree, zP.id, 'Y');
     if (!yP) return { allocated: 0, error: 'Selecione Z' };
-    free = yP.valor - zP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
+    // W deve caber na altura de Y, considerando os W's já adicionados
+    free = yP.valor - zP.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+  } else if (tipo === 'Q') {
+    const wP = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
+    if (!wP) return { allocated: 0, error: 'Selecione W' };
+    // Q ocupa largura dentro do Z pai de W
+    const zP = findParentOfType(tree, wP.id, 'Z');
+    if (!zP) return { allocated: 0, error: 'Selecione Z' };
+    const occupiedQ = wP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
+    free = zP.valor - occupiedQ;
   }
 
   const alloc = Math.min(multi, Math.floor(free / valor));
@@ -107,8 +119,23 @@ export function calcPlacedArea(tree: TreeNode): number {
         for (let iy = 0; iy < y.multi; iy++) {
           for (const z of y.filhos) {
             for (let iz = 0; iz < z.multi; iz++) {
-              if (z.filhos.length === 0) { area += z.valor * y.valor; }
-              else { for (const w of z.filhos) { for (let iw = 0; iw < w.multi; iw++) { area += z.valor * w.valor; } } }
+              if (z.filhos.length === 0) { 
+                area += z.valor * y.valor; 
+              } else { 
+                for (const w of z.filhos) { 
+                  for (let iw = 0; iw < w.multi; iw++) { 
+                    if (w.filhos.length === 0) {
+                      area += z.valor * w.valor; 
+                    } else {
+                      for (const q of w.filhos) { 
+                        for (let iq = 0; iq < q.multi; iq++) { 
+                          area += z.valor * q.valor; 
+                        } 
+                      }
+                    }
+                  } 
+                } 
+              }
             }
           }
         }
@@ -120,6 +147,71 @@ export function calcPlacedArea(tree: TreeNode): number {
 }
 
 // ========== OPTIMIZER V6 ==========
+
+// Agrupa peças com mesma altura em pares (soma larguras)
+function groupPiecesByHeight(pieces: Piece[]): Piece[] {
+  // Map: altura -> lista de peças com essa altura
+  const heightGroups = new Map<number, Piece[]>();
+  
+  pieces.forEach(p => {
+    const h = Math.min(p.w, p.h); // altura será a menor dimensão
+    if (!heightGroups.has(h)) heightGroups.set(h, []);
+    heightGroups.get(h)!.push(p);
+  });
+  
+  // Processa cada grupo: agrupa em pares quando possível
+  const optimized: Piece[] = [];
+
+  heightGroups.forEach(group => {
+
+    let i = 0;
+    while (i < group.length) {
+      const p1 = group[i];
+      const h = Math.min(p1.w, p1.h);
+      const w1 = Math.max(p1.w, p1.h);
+
+      // Procura próxima peça com mesma altura
+      let nextIdx = -1;
+      for (let j = i + 1; j < group.length; j++) {
+        const h2 = Math.min(group[j].w, group[j].h);
+        if (h2 === h) {
+          nextIdx = j;
+          break;
+        }
+      }
+
+      if (nextIdx !== -1) {
+        // Encontrou par: soma as larguras
+        const p2 = group[nextIdx];
+        const w2 = Math.max(p2.w, p2.h);
+        const summedWidth = w1 + w2;
+        const summedArea = summedWidth * h; // soma das áreas
+
+        const grouped: Piece = {
+          w: summedWidth,
+          h: h,
+          area: summedArea,
+          count: 2,
+        };
+        optimized.push(grouped);
+
+        group.splice(nextIdx, 1);
+      } else {
+        // Nenhum par: adiciona individualmente (normalizando orientação)
+        const single: Piece = {
+          w: w1,
+          h: h,
+          area: w1 * h,
+          count: 1,
+        };
+        optimized.push(single);
+      }
+      i++;
+    }
+  });
+
+  return optimized;
+}
 
 function oris(p: Piece): { w: number; h: number }[] {
   if (p.w === p.h) return [{ w: p.w, h: p.h }];
@@ -200,11 +292,27 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       col = bestFit.col!;
     }
 
-    // Insert Y strip + Z piece
+    // Insert Y strip + Z piece(s)
     const yId = insertNode(tree, col.id, 'Y', bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
-    insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
-    placedArea += bestFit.w * bestFit.h;
+    
+    // Verifica se esta peça foi agrupada (marcada em groupPiecesByHeight)
+    const grouped = piece.count && piece.count > 1;
+
+    if (grouped) {
+      // Estrutura: Z (largura total) → W (altura) → Q (cada pedaço)
+      const partW = Math.round(bestFit.w / (piece.count || 2));
+      const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
+      const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
+      insertNode(tree, wId, 'Q', partW, piece.count || 2);
+      placedArea += bestFit.w * bestFit.h;
+    } else {
+      // Estrutura normal: Z + W
+      const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
+      insertNode(tree, zId, 'W', bestFit.h, 1);
+      placedArea += bestFit.w * bestFit.h;
+    }
+    
     remaining.shift();
 
     // IMPROVEMENT: Flexible lateral Z filling (accept h <= stripH)
