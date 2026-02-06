@@ -287,6 +287,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+.sv-piece-id {
+  font-size: 9px;
+  font-weight: 800;
+  color: hsl(211 80% 45%);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .sv-waste {
   display: flex;
@@ -420,7 +431,7 @@
 
 .cnc-inv-item {
   display: grid;
-  grid-template-columns: 45px 1fr 15px 1fr;
+  grid-template-columns: 45px 1fr 15px 1fr 60px;
   gap: 5px;
   margin-bottom: 6px;
   align-items: center;

@@ -8,6 +8,7 @@ export interface TreeNode {
   valor: number;
   multi: number;
   filhos: TreeNode[];
+  label?: string;
 }
 
 export interface Piece {
@@ -16,6 +17,7 @@ export interface Piece {
   area: number;
   // number of original pieces combined into this Piece (1 by default)
   count?: number;
+  label?: string;
 }
 
 export interface PieceItem {
@@ -23,6 +25,61 @@ export interface PieceItem {
   qty: number;
   w: number;
   h: number;
+  label?: string;
+}
+
+// Annotate tree leaf nodes with labels from the original pieces inventory
+export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
+  // Build a pool of available labels: for each piece, qty copies
+  const pool: Array<{ w: number; h: number; label: string }> = [];
+  pieces.forEach(p => {
+    if (p.label) {
+      for (let i = 0; i < p.qty; i++) {
+        pool.push({ w: p.w, h: p.h, label: p.label });
+      }
+    }
+  });
+  if (pool.length === 0) return;
+
+  // Walk tree and assign labels to leaf nodes by matching dimensions
+  function walk(n: TreeNode, parents: TreeNode[]) {
+    const yAncestor = [...parents].reverse().find(p => p.tipo === 'Y');
+    const zAncestor = [...parents].reverse().find(p => p.tipo === 'Z');
+    const wAncestor = [...parents].reverse().find(p => p.tipo === 'W');
+
+    let pieceW = 0, pieceH = 0;
+    let isLeaf = false;
+
+    if (n.tipo === 'Z' && n.filhos.length === 0) {
+      pieceW = n.valor;
+      pieceH = yAncestor?.valor || 0;
+      isLeaf = true;
+    } else if (n.tipo === 'W' && n.filhos.length === 0) {
+      pieceW = zAncestor?.valor || 0;
+      pieceH = n.valor;
+      isLeaf = true;
+    } else if (n.tipo === 'Q') {
+      pieceW = n.valor;
+      pieceH = wAncestor?.valor || 0;
+      isLeaf = true;
+    }
+
+    if (isLeaf && pieceW > 0 && pieceH > 0) {
+      for (let i = 0; i < pool.length; i++) {
+        const p = pool[i];
+        if ((Math.round(p.w) === Math.round(pieceW) && Math.round(p.h) === Math.round(pieceH)) ||
+            (Math.round(p.w) === Math.round(pieceH) && Math.round(p.h) === Math.round(pieceW))) {
+          n.label = p.label;
+          pool.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    n.filhos.forEach(f => walk(f, [...parents, n]));
+  }
+
+  walk(tree, []);
 }
 
 let _c = 0;

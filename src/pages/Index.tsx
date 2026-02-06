@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import {
   TreeNode, PieceItem,
   createRoot, cloneTree, findNode, findParentOfType,
-  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6
+  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6, annotateTreeLabels
 } from '@/lib/cnc-engine';
 import SheetViewer from '@/components/SheetViewer';
 
@@ -98,6 +98,7 @@ const Index = () => {
     setStatus({ msg: 'Otimizando...', type: 'warn' });
     setTimeout(() => {
       const result = optimizeV6(inv, usableW, usableH);
+      annotateTreeLabels(result, pieces);
       setTree(result);
       setSelectedId('root');
       setStatus({ msg: 'Plano de Corte Otimizado V6!', type: 'success' });
@@ -192,6 +193,7 @@ const Index = () => {
       // Otimiza para esta chapa
       const result = optimizeV6(inv, usableW, usableH);
       const usedArea = calcPlacedArea(result);
+      annotateTreeLabels(result, remaining);
 
       chapaList.push({ tree: result, usedArea });
 
@@ -263,18 +265,27 @@ const Index = () => {
           const value = rowKey ? row[rowKey] : null;
           return Number(value) || 0;
         };
+
+        const getString = (row: any, names: string[]): string => {
+          const rowKey = Object.keys(row).find(k => 
+            names.some(n => k.toLowerCase().trim() === n.toLowerCase().trim())
+          );
+          return rowKey ? String(row[rowKey] || '').trim() : '';
+        };
         
         const items: PieceItem[] = json
           .map((row, i) => {
             const qty = getValue(row, ['qtd', 'quantidade', 'qtde', 'qty', 'q']);
             const w = getValue(row, ['largura', 'width', 'l', 'w']);
             const h = getValue(row, ['altura', 'height', 'h']);
+            const label = getString(row, ['id', 'identificação', 'identificacao', 'nome', 'name', 'código', 'codigo', 'cod', 'ref']);
             
             return {
               id: `p${Date.now()}_${i}`,
               qty: qty > 0 ? qty : 1,
               w: w,
               h: h,
+              label: label || undefined,
             };
           })
           .filter(p => p.w > 0 && p.h > 0);
@@ -585,6 +596,7 @@ const Index = () => {
                 <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
                 <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>x</span>
                 <input type="number" value={p.h} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, h: +e.target.value } : x))} className="cnc-input" />
+                <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" style={{ fontSize: '10px' }} />
               </div>
             ))}
           </div>
