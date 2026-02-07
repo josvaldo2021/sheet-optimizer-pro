@@ -5,9 +5,12 @@ import {
   createRoot, cloneTree, findNode, findParentOfType,
   insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6
 } from '@/lib/cnc-engine';
+import { groupIdenticalLayouts, LayoutGroup } from '@/lib/layout-utils';
 import SheetViewer from '@/components/SheetViewer';
+import SidebarSection from '@/components/SidebarSection';
 
 const Index = () => {
+  // ─── Sheet setup ───
   const [chapaW, setChapaW] = useState(6000);
   const [chapaH, setChapaH] = useState(3210);
   const [ml, setMl] = useState(10);
@@ -18,13 +21,13 @@ const Index = () => {
   const usableW = chapaW - ml - mr;
   const usableH = chapaH - mt - mb;
 
+  // ─── State ───
   const [tree, setTree] = useState<TreeNode>(() => createRoot(usableW, usableH));
   const [selectedId, setSelectedId] = useState('root');
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: 'Pronto', type: 'info' });
   const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
-  const [remainingPieces, setRemainingPieces] = useState<PieceItem[]>([]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
@@ -45,9 +48,18 @@ const Index = () => {
     return () => obs.disconnect();
   }, []);
 
+  // ─── Layout groups (deduplicated) ───
+  const layoutGroups = useMemo(() => {
+    if (chapas.length === 0) return [];
+    return groupIdenticalLayouts(chapas);
+  }, [chapas]);
+
+  // ─── Actions ───
   const applySetup = useCallback(() => {
     setTree(createRoot(usableW, usableH));
     setSelectedId('root');
+    setChapas([]);
+    setActiveChapa(0);
     setStatus({ msg: 'Setup aplicado', type: 'success' });
   }, [usableW, usableH]);
 
@@ -65,17 +77,9 @@ const Index = () => {
     if (m) { multi = parseInt(m[1]); cmd = m[2]; }
     const tipo = cmd.charAt(0) as any;
     const valor = parseFloat(cmd.substring(1));
-    
-    console.log('Comando:', { texto: text, tipo, valor, selectedId, multi });
-    
-    if (isNaN(valor) || !['X', 'Y', 'Z', 'W', 'Q'].includes(tipo)) {
-      console.log('Tipo ou valor inválido!');
-      return;
-    }
+    if (isNaN(valor) || !['X', 'Y', 'Z', 'W', 'Q'].includes(tipo)) return;
 
     const res = calcAllocation(tree, selectedId, tipo, valor, multi, usableW, usableH);
-    console.log('Alocação:', res);
-    
     if (res.allocated > 0) {
       const t = cloneTree(tree);
       const nid = insertNode(t, selectedId, tipo, valor, res.allocated);
@@ -86,6 +90,33 @@ const Index = () => {
       setStatus({ msg: res.error || 'Sem espaço', type: 'error' });
     }
   }, [tree, selectedId, usableW, usableH]);
+
+  const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
+    const used: Array<{ w: number; h: number; label?: string }> = [];
+    const traverse = (n: TreeNode, parents: TreeNode[]) => {
+      const yAncestor = parents.find(p => p.tipo === 'Y');
+      const zAncestor = parents.find(p => p.tipo === 'Z');
+      const wAncestor = parents.find(p => p.tipo === 'W');
+      let pieceW = 0, pieceH = 0, isLeaf = false;
+
+      if (n.tipo === 'Z' && n.filhos.length === 0) {
+        pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
+      } else if (n.tipo === 'W' && n.filhos.length === 0) {
+        pieceW = zAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
+      } else if (n.tipo === 'Q') {
+        pieceW = n.valor; pieceH = wAncestor?.valor || 0; isLeaf = true;
+      }
+
+      if (isLeaf && pieceW > 0 && pieceH > 0) {
+        for (let m = 0; m < n.multi; m++) {
+          used.push({ w: pieceW, h: pieceH, label: n.label });
+        }
+      }
+      n.filhos.forEach(f => traverse(f, [...parents, n]));
+    };
+    traverse(node, []);
+    return used;
+  }, []);
 
   const optimize = useCallback(() => {
     const inv: { w: number; h: number; area: number; label?: string }[] = [];
@@ -99,90 +130,46 @@ const Index = () => {
     setTimeout(() => {
       const result = optimizeV6(inv, usableW, usableH);
       setTree(result);
+      setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
+      setActiveChapa(0);
       setSelectedId('root');
       setStatus({ msg: 'Plano de Corte Otimizado V6!', type: 'success' });
     }, 50);
   }, [pieces, usableW, usableH]);
 
-  // Versão melhorada que rastreia contexto com stack
-  const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
-    const used: Array<{ w: number; h: number; label?: string }> = [];
-
-    const traverse = (n: TreeNode, parents: TreeNode[]) => {
-      const yAncestor = parents.find(p => p.tipo === 'Y');
-      const zAncestor = parents.find(p => p.tipo === 'Z');
-      const wAncestor = parents.find(p => p.tipo === 'W');
-
-      let pieceW = 0, pieceH = 0;
-      let isLeaf = false;
-
-      if (n.tipo === 'Z' && n.filhos.length === 0) {
-        pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
-      } else if (n.tipo === 'W' && n.filhos.length === 0) {
-        pieceW = zAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
-      } else if (n.tipo === 'Q') {
-        pieceW = n.valor; pieceH = wAncestor?.valor || 0; isLeaf = true;
-      }
-
-      if (isLeaf && pieceW > 0 && pieceH > 0) {
-        // Account for multi > 1
-        for (let m = 0; m < n.multi; m++) {
-          used.push({ w: pieceW, h: pieceH, label: n.label });
-        }
-      }
-
-      n.filhos.forEach(f => traverse(f, [...parents, n]));
-    };
-
-    traverse(node, []);
-    return used;
-  }, []);
-
-  // Loop de otimização múltiplas chapas
   const optimizeAllSheets = useCallback(() => {
-    if (pieces.length === 0) { 
-      setStatus({ msg: 'Inventário vazio!', type: 'error' }); 
-      return; 
+    if (pieces.length === 0) {
+      setStatus({ msg: 'Inventário vazio!', type: 'error' });
+      return;
     }
-
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
-    
+
     const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
     let remaining = [...pieces];
     let sheetCount = 0;
 
-    while (remaining.length > 0 && sheetCount < 100) { // máximo 100 chapas para evitar loop infinito
+    while (remaining.length > 0 && sheetCount < 100) {
       sheetCount++;
-
-      // Cria inventário para esta chapa
       const inv: { w: number; h: number; area: number; label?: string }[] = [];
       remaining.forEach(p => {
         for (let i = 0; i < p.qty; i++) {
           if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
         }
       });
-
       if (inv.length === 0) break;
 
-      // Otimiza para esta chapa
       const result = optimizeV6(inv, usableW, usableH);
       const usedArea = calcPlacedArea(result);
-
       chapaList.push({ tree: result, usedArea });
 
-      // Extrai peças usadas
       const usedPieces = extractUsedPiecesWithContext(result);
-
-      // Remove peças usadas do inventário
       const tempRemaining = [...remaining];
       usedPieces.forEach(used => {
         for (let i = 0; i < tempRemaining.length; i++) {
           const p = tempRemaining[i];
           if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
             p.qty--;
-            if (p.qty <= 0) {
-              tempRemaining.splice(i, 1);
-            }
+            if (p.qty <= 0) tempRemaining.splice(i, 1);
             break;
           }
         }
@@ -195,85 +182,47 @@ const Index = () => {
       setTree(chapaList[0].tree);
       setSelectedId('root');
     }
+    setActiveChapa(0);
     setStatus({ msg: `✅ ${sheetCount} chapa(s) gerada(s)!`, type: 'success' });
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) {
-      setStatus({ msg: 'Nenhum arquivo selecionado', type: 'error' });
-      return;
-    }
+    if (!file) { setStatus({ msg: 'Nenhum arquivo selecionado', type: 'error' }); return; }
     const reader = new FileReader();
-    reader.onerror = () => {
-      setStatus({ msg: 'Erro ao ler arquivo', type: 'error' });
-    };
+    reader.onerror = () => setStatus({ msg: 'Erro ao ler arquivo', type: 'error' });
     reader.onload = (evt) => {
       try {
         const result = evt.target?.result;
-        if (!result) {
-          setStatus({ msg: 'Falha ao ler arquivo', type: 'error' });
-          return;
-        }
+        if (!result) { setStatus({ msg: 'Falha ao ler arquivo', type: 'error' }); return; }
         const wb = XLSX.read(result, { type: 'binary' });
-        if (!wb.SheetNames || wb.SheetNames.length === 0) {
-          setStatus({ msg: 'Arquivo Excel vazio', type: 'error' });
-          return;
-        }
+        if (!wb.SheetNames?.length) { setStatus({ msg: 'Arquivo Excel vazio', type: 'error' }); return; }
         const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as any[];
-        if (!Array.isArray(json) || json.length === 0) {
-          setStatus({ msg: 'Nenhuma linha encontrada no Excel', type: 'error' });
-          return;
-        }
-        
-        // Debug: mostrar primeira linha e colunas
-        console.log('Primeira linha do Excel:', json[0]);
-        console.log('Colunas encontradas:', Object.keys(json[0] || {}));
-        
-        // Função para encontrar valor por múltiplos nomes (case-insensitive, sem espaços)
-        const getValue = (row: any, names: string[]): number => {
-          const rowKey = Object.keys(row).find(k => 
-            names.some(n => k.toLowerCase().trim() === n.toLowerCase().trim())
-          );
-          const value = rowKey ? row[rowKey] : null;
-          return Number(value) || 0;
-        };
+        if (!Array.isArray(json) || json.length === 0) { setStatus({ msg: 'Nenhuma linha encontrada', type: 'error' }); return; }
 
+        const getValue = (row: any, names: string[]): number => {
+          const rowKey = Object.keys(row).find(k => names.some(n => k.toLowerCase().trim() === n.toLowerCase().trim()));
+          return Number(rowKey ? row[rowKey] : null) || 0;
+        };
         const getString = (row: any, names: string[]): string => {
-          const rowKey = Object.keys(row).find(k => 
-            names.some(n => k.toLowerCase().trim() === n.toLowerCase().trim())
-          );
+          const rowKey = Object.keys(row).find(k => names.some(n => k.toLowerCase().trim() === n.toLowerCase().trim()));
           return rowKey ? String(row[rowKey] || '').trim() : '';
         };
-        
+
         const items: PieceItem[] = json
-          .map((row, i) => {
-            const qty = getValue(row, ['qtd', 'quantidade', 'qtde', 'qty', 'q']);
-            const w = getValue(row, ['largura', 'width', 'l', 'w']);
-            const h = getValue(row, ['altura', 'height', 'h']);
-            const label = getString(row, ['id', 'identificação', 'identificacao', 'nome', 'name', 'código', 'codigo', 'cod', 'ref']);
-            
-            return {
-              id: `p${Date.now()}_${i}`,
-              qty: qty > 0 ? qty : 1,
-              w: w,
-              h: h,
-              label: label || undefined,
-            };
-          })
+          .map((row, i) => ({
+            id: `p${Date.now()}_${i}`,
+            qty: getValue(row, ['qtd', 'quantidade', 'qtde', 'qty', 'q']) || 1,
+            w: getValue(row, ['largura', 'width', 'l', 'w']),
+            h: getValue(row, ['altura', 'height', 'h']),
+            label: getString(row, ['id', 'identificação', 'identificacao', 'nome', 'name', 'código', 'codigo', 'cod', 'ref']) || undefined,
+          }))
           .filter(p => p.w > 0 && p.h > 0);
-        
-        console.log('Peças processadas:', items);
-        
-        if (items.length === 0) {
-          setStatus({ msg: 'Nenhuma peça válida. Verifique ALTURA, LARGURA, qtd no console.', type: 'error' });
-          return;
-        }
-        
+
+        if (items.length === 0) { setStatus({ msg: 'Nenhuma peça válida encontrada.', type: 'error' }); return; }
         setPieces(items);
         setStatus({ msg: `${items.length} peças importadas!`, type: 'success' });
       } catch (err) {
-        console.error('Erro ao processar Excel:', err);
         setStatus({ msg: `Erro: ${(err as Error).message}`, type: 'error' });
       }
     };
@@ -286,9 +235,7 @@ const Index = () => {
     return usableW > 0 && usableH > 0 ? (area / (usableW * usableH)) * 100 : 0;
   }, [tree, usableW, usableH]);
 
-  const currentNode = useMemo(() => findNode(tree, selectedId), [tree, selectedId]);
-
-  // Render action tree
+  // ─── Render helpers ───
   const renderActionTree = (node: TreeNode, depth = 0): JSX.Element[] =>
     node.filhos.map(child => (
       <div key={child.id}>
@@ -303,289 +250,173 @@ const Index = () => {
       </div>
     ));
 
-  // Render cut plan
-  const renderCutPlan = () => {
-    const els: JSX.Element[] = [];
-    let xOff = 0;
-
-    tree.filhos.forEach(xNode => {
-      for (let ix = 0; ix < xNode.multi; ix++) {
-        const cx = xOff;
-        let yOff = 0;
-        const strips: JSX.Element[] = [];
-
-        xNode.filhos.forEach(yNode => {
-          for (let iy = 0; iy < yNode.multi; iy++) {
-            const cy = yOff;
-            const zEls: JSX.Element[] = [];
-            let zOff = 0;
-
-            yNode.filhos.forEach(zNode => {
-              for (let iz = 0; iz < zNode.multi; iz++) {
-                const wEls: JSX.Element[] = [];
-
-                if (zNode.filhos.length === 0) {
-                  wEls.push(
-                    <div key="final" className="cnc-piece-final">
-                      <div className="cnc-label">{Math.round(zNode.valor)}x{Math.round(yNode.valor)}</div>
-                    </div>
-                  );
-                } else {
-                  let wOff = 0;
-                  zNode.filhos.forEach(wNode => {
-                    for (let iw = 0; iw < wNode.multi; iw++) {
-                      // Se W tem filhos (Q), renderiza Q's
-                      if (wNode.filhos.length === 0) {
-                        wEls.push(
-                          <div
-                            key={`w-${wNode.id}-${iw}`}
-                            className={`cnc-piece-w ${selectedId === wNode.id ? 'cnc-selected' : ''}`}
-                            style={{ height: wNode.valor * scale }}
-                            onClick={e => { e.stopPropagation(); setSelectedId(wNode.id); }}
-                          >
-                            <div className="cnc-piece-final">
-                              <div className="cnc-label">{Math.round(zNode.valor)}x{Math.round(wNode.valor)}</div>
-                            </div>
-                          </div>
-                        );
-                      } else {
-                        // W com filhos Q - Q's são colocados horizontalmente DENTRO de W
-                        let qOff = 0;
-                        const qEls: JSX.Element[] = [];
-                        
-                        wNode.filhos.forEach(qNode => {
-                          for (let iq = 0; iq < qNode.multi; iq++) {
-                            qEls.push(
-                              <div
-                                key={`q-${qNode.id}-${iq}`}
-                                className={`cnc-piece-q ${selectedId === qNode.id ? 'cnc-selected' : ''}`}
-                                style={{ 
-                                  position: 'absolute',
-                                  left: qOff * scale,
-                                  bottom: 0,
-                                  width: qNode.valor * scale,
-                                  height: wNode.valor * scale,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center'
-                                }}
-                                onClick={e => { e.stopPropagation(); setSelectedId(qNode.id); }}
-                              >
-                                <div className="cnc-piece-final">
-                                  <div className="cnc-label">{Math.round(qNode.valor)}x{Math.round(wNode.valor)}</div>
-                                </div>
-                              </div>
-                            );
-                            qOff += qNode.valor;
-                          }
-                        });
-                        
-                        // Sobra em Q (horizontal)
-                        if (qOff < wNode.valor && (wNode.valor - qOff) * scale >= 5) {
-                          qEls.push(
-                            <div
-                              key={`sobra-q-${wNode.id}`}
-                              className={`cnc-waste ${selectedId === wNode.id ? 'cnc-selected' : ''}`}
-                              style={{ 
-                                position: 'absolute',
-                                left: qOff * scale, 
-                                bottom: 0, 
-                                width: (wNode.valor - qOff) * scale, 
-                                height: wNode.valor * scale 
-                              }}
-                              onClick={e => { e.stopPropagation(); setSelectedId(wNode.id); }}
-                            >
-                              <div className="cnc-waste-label">S.Q<br />{Math.round(wNode.valor - qOff)}x{Math.round(wNode.valor)}</div>
-                            </div>
-                          );
-                        }
-                        
-                        wEls.push(
-                          <div
-                            key={`w-${wNode.id}-${iw}`}
-                            className={`cnc-piece-w ${selectedId === wNode.id ? 'cnc-selected' : ''}`}
-                            style={{ 
-                              height: wNode.valor * scale,
-                              position: 'relative',
-                              overflow: 'hidden'
-                            }}
-                            onClick={e => { e.stopPropagation(); setSelectedId(wNode.id); }}
-                          >
-                            {qEls}
-                          </div>
-                        );
-                      }
-                      wOff += wNode.valor;
-                    }
-                  });
-                  if (wOff < yNode.valor && (yNode.valor - wOff) * scale >= 5) {
-                    wEls.push(
-                      <div
-                        key="sobra-w"
-                        className={`cnc-waste ${selectedId === zNode.id ? 'cnc-selected' : ''}`}
-                        style={{ left: 0, bottom: wOff * scale, width: zNode.valor * scale, height: (yNode.valor - wOff) * scale }}
-                        onClick={e => { e.stopPropagation(); setSelectedId(zNode.id); }}
-                      >
-                        <div className="cnc-waste-label">S.W<br />{Math.round(zNode.valor)}x{Math.round(yNode.valor - wOff)}</div>
-                      </div>
-                    );
-                  }
-                }
-
-                zEls.push(
-                  <div
-                    key={`z-${zNode.id}-${iz}`}
-                    className={`cnc-piece-z ${selectedId === zNode.id ? 'cnc-selected' : ''}`}
-                    style={{ width: zNode.valor * scale }}
-                    onClick={e => { e.stopPropagation(); setSelectedId(zNode.id); }}
-                  >
-                    {wEls}
-                  </div>
-                );
-                zOff += zNode.valor;
-              }
-            });
-
-            if (zOff < xNode.valor && (xNode.valor - zOff) * scale >= 5) {
-              zEls.push(
-                <div
-                  key="sobra-z"
-                  className={`cnc-waste ${selectedId === yNode.id ? 'cnc-selected' : ''}`}
-                  style={{ left: zOff * scale, bottom: 0, width: (xNode.valor - zOff) * scale, height: yNode.valor * scale }}
-                  onClick={e => { e.stopPropagation(); setSelectedId(yNode.id); }}
-                >
-                  <div className="cnc-waste-label">S.Z<br />{Math.round(xNode.valor - zOff)}x{Math.round(yNode.valor)}</div>
-                </div>
-              );
-            }
-
-            strips.push(
-              <div
-                key={`y-${yNode.id}-${iy}`}
-                className={`cnc-strip ${selectedId === yNode.id ? 'cnc-selected' : ''}`}
-                style={{ bottom: cy * scale, height: yNode.valor * scale }}
-                onClick={e => { e.stopPropagation(); setSelectedId(yNode.id); }}
-              >
-                {zEls}
-              </div>
-            );
-            yOff += yNode.valor;
-          }
-        });
-
-        if (yOff < usableH && (usableH - yOff) * scale >= 5) {
-          strips.push(
-            <div
-              key="sobra-y"
-              className={`cnc-waste ${selectedId === xNode.id ? 'cnc-selected' : ''}`}
-              style={{ left: 0, bottom: yOff * scale, width: xNode.valor * scale, height: (usableH - yOff) * scale }}
-              onClick={e => { e.stopPropagation(); setSelectedId(xNode.id); }}
-            >
-              <div className="cnc-waste-label">S.Y<br />{Math.round(xNode.valor)}x{Math.round(usableH - yOff)}</div>
-            </div>
-          );
-        }
-
-        els.push(
-          <div
-            key={`x-${xNode.id}-${ix}`}
-            className={`cnc-col ${selectedId === xNode.id ? 'cnc-selected' : ''}`}
-            style={{ left: cx * scale, width: xNode.valor * scale }}
-            onClick={e => { e.stopPropagation(); setSelectedId(xNode.id); }}
-          >
-            {strips}
-          </div>
-        );
-        xOff += xNode.valor;
-      }
-    });
-
-    if (xOff < usableW && (usableW - xOff) * scale >= 5) {
-      els.push(
-        <div
-          key="sobra-x"
-          className={`cnc-waste ${selectedId === 'root' ? 'cnc-selected' : ''}`}
-          style={{ left: xOff * scale, bottom: 0, width: (usableW - xOff) * scale, height: usableH * scale }}
-          onClick={e => { e.stopPropagation(); setSelectedId('root'); }}
-        >
-          <div className="cnc-waste-label">SOBRA<br />{Math.round(usableW - xOff)}x{Math.round(usableH)}</div>
-        </div>
-      );
-    }
-
-    return els;
-  };
+  const totalPieces = useMemo(() => pieces.reduce((sum, p) => sum + p.qty, 0), [pieces]);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }}>
       {/* SIDEBAR */}
-      <div className="w-80 min-w-[320px] flex flex-col h-screen" style={{ background: 'hsl(0 0% 10%)', borderRight: '2px solid hsl(0 0% 20%)' }}>
-        <h3 className="p-3 m-0 text-xs text-center uppercase tracking-widest font-semibold" style={{ background: 'hsl(0 0% 17%)', borderBottom: '1px solid hsl(0 0% 20%)' }}>
-          Setup Chapa
-        </h3>
-        <div className="p-4 text-xs flex-shrink-0" style={{ background: 'hsl(0 0% 13%)', borderBottom: '2px solid hsl(0 0% 20%)' }}>
-          <div className="flex justify-between items-center mb-2 gap-1">
-            <span>Chapa:</span>
-            <input type="number" value={chapaW} onChange={e => setChapaW(+e.target.value)} className="cnc-input w-16" />
-            <span>x</span>
-            <input type="number" value={chapaH} onChange={e => setChapaH(+e.target.value)} className="cnc-input w-16" />
-          </div>
-          <div className="flex justify-between items-center mb-2 gap-1">
-            <span>Refilo L/R:</span>
-            <input type="number" value={ml} onChange={e => setMl(+e.target.value)} className="cnc-input w-16" />
-            <span>/</span>
-            <input type="number" value={mr} onChange={e => setMr(+e.target.value)} className="cnc-input w-16" />
-          </div>
-          <div className="flex justify-between items-center mb-2 gap-1">
-            <span>Refilo T/B:</span>
-            <input type="number" value={mt} onChange={e => setMt(+e.target.value)} className="cnc-input w-16" />
-            <span>/</span>
-            <input type="number" value={mb} onChange={e => setMb(+e.target.value)} className="cnc-input w-16" />
-          </div>
-          <button onClick={applySetup} className="cnc-btn-success w-full mt-1">APLICAR SETUP</button>
-        </div>
+      <div className="w-80 min-w-[320px] flex flex-col h-screen overflow-y-auto cnc-scroll" style={{ background: 'hsl(0 0% 10%)', borderRight: '2px solid hsl(0 0% 20%)' }}>
 
-        <h3 className="p-3 m-0 text-xs text-center uppercase tracking-widest font-semibold" style={{ background: 'hsl(0 0% 17%)', borderBottom: '1px solid hsl(0 0% 20%)' }}>
-          Lista de Peças
-        </h3>
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'hsl(0 0% 7%)' }}>
-          <div className="p-2.5 flex-shrink-0" style={{ background: 'hsl(0 0% 10%)', borderBottom: '1px solid hsl(0 0% 20%)' }}>
-            <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcel} />
-            <button className="cnc-btn-excel w-full mb-2" onClick={() => document.getElementById('excelInput')?.click()}>
-              📂 IMPORTAR EXCEL
-            </button>
-            <div style={{ fontSize: '9px', color: 'hsl(0 0% 60%)', marginBottom: '8px', lineHeight: '1.3' }}>
-              Colunas esperadas: Qtd/Quantidade, Largura/Width/L, Altura/Height/H/Comprimento
+        {/* ─── SECTION 1: Setup da Chapa ─── */}
+        <SidebarSection title="Setup da Chapa" icon="📐" defaultOpen={true}>
+          <div className="p-4 text-xs" style={{ background: 'hsl(0 0% 13%)' }}>
+            <div className="flex justify-between items-center mb-2 gap-1">
+              <span>Chapa:</span>
+              <input type="number" value={chapaW} onChange={e => setChapaW(+e.target.value)} className="cnc-input w-16" />
+              <span>x</span>
+              <input type="number" value={chapaH} onChange={e => setChapaH(+e.target.value)} className="cnc-input w-16" />
             </div>
-            <button onClick={() => setPieces(p => [...p, { id: `p${Date.now()}`, qty: 1, w: 1000, h: 1000 }])} className="cnc-btn-secondary w-full">
-              + ADICIONAR MANUAL
-            </button>
+            <div className="flex justify-between items-center mb-2 gap-1">
+              <span>Refilo L/R:</span>
+              <input type="number" value={ml} onChange={e => setMl(+e.target.value)} className="cnc-input w-16" />
+              <span>/</span>
+              <input type="number" value={mr} onChange={e => setMr(+e.target.value)} className="cnc-input w-16" />
+            </div>
+            <div className="flex justify-between items-center mb-2 gap-1">
+              <span>Refilo T/B:</span>
+              <input type="number" value={mt} onChange={e => setMt(+e.target.value)} className="cnc-input w-16" />
+              <span>/</span>
+              <input type="number" value={mb} onChange={e => setMb(+e.target.value)} className="cnc-input w-16" />
+            </div>
+            <div className="mt-2 text-[10px]" style={{ color: 'hsl(0 0% 50%)' }}>
+              Área útil: {usableW} × {usableH} mm
+            </div>
+            <button onClick={applySetup} className="cnc-btn-success w-full mt-2">APLICAR SETUP</button>
           </div>
+        </SidebarSection>
 
-          <div className="flex-1 overflow-y-auto p-2.5 cnc-scroll">
-            {pieces.map(p => (
-              <div key={p.id} className="cnc-inv-item">
-                <input type="number" value={p.qty} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, qty: +e.target.value } : x))} className="cnc-input" />
-                <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
-                <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>x</span>
-                <input type="number" value={p.h} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, h: +e.target.value } : x))} className="cnc-input" />
-                <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" style={{ fontSize: '10px' }} />
+        {/* ─── SECTION 2: Lista de Peças ─── */}
+        <SidebarSection title={`Lista de Peças (${totalPieces})`} icon="📦" defaultOpen={true}>
+          <div className="flex flex-col" style={{ background: 'hsl(0 0% 7%)' }}>
+            <div className="p-2.5 flex-shrink-0" style={{ background: 'hsl(0 0% 10%)', borderBottom: '1px solid hsl(0 0% 20%)' }}>
+              <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcel} />
+              <button className="cnc-btn-excel w-full mb-2" onClick={() => document.getElementById('excelInput')?.click()}>
+                📂 IMPORTAR EXCEL
+              </button>
+              <div style={{ fontSize: '9px', color: 'hsl(0 0% 60%)', marginBottom: '8px', lineHeight: '1.3' }}>
+                Colunas: Qtd, Largura, Altura, ID (opcional)
               </div>
-            ))}
-          </div>
+              <div className="flex gap-2">
+                <button onClick={() => setPieces(p => [...p, { id: `p${Date.now()}`, qty: 1, w: 1000, h: 1000 }])} className="cnc-btn-secondary flex-1">
+                  + ADICIONAR
+                </button>
+                {pieces.length > 0 && (
+                  <button onClick={() => setPieces([])} className="cnc-btn-secondary flex-1" style={{ background: 'hsl(0 40% 25%)' }}>
+                    LIMPAR
+                  </button>
+                )}
+              </div>
+            </div>
 
-          <div className="p-3 flex-shrink-0" style={{ background: 'hsl(0 0% 10%)', borderTop: '1px solid hsl(0 0% 20%)' }}>
-            <button className="cnc-btn-primary w-full mb-2" onClick={optimize}>IA: OTIMIZAR V6</button>
-            <button className="cnc-btn-primary w-full" onClick={optimizeAllSheets} style={{ background: 'hsl(240 100% 50%)' }}>📋 TODAS AS CHAPAS</button>
+            <div className="max-h-[280px] overflow-y-auto p-2.5 cnc-scroll">
+              {/* Header */}
+              {pieces.length > 0 && (
+                <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '40px 1fr 15px 1fr 55px 20px', color: 'hsl(0 0% 45%)' }}>
+                  <span className="text-center">Qtd</span>
+                  <span className="text-center">Larg</span>
+                  <span></span>
+                  <span className="text-center">Alt</span>
+                  <span className="text-center">ID</span>
+                  <span></span>
+                </div>
+              )}
+              {pieces.map(p => (
+                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '40px 1fr 15px 1fr 55px 20px' }}>
+                  <input type="number" value={p.qty} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, qty: +e.target.value } : x))} className="cnc-input" />
+                  <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
+                  <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
+                  <input type="number" value={p.h} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, h: +e.target.value } : x))} className="cnc-input" />
+                  <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" style={{ fontSize: '10px' }} />
+                  <button
+                    onClick={() => setPieces(ps => ps.filter(x => x.id !== p.id))}
+                    className="text-[14px] cursor-pointer hover:text-red-400 transition-colors"
+                    style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
+                    title="Remover peça"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {pieces.length === 0 && (
+                <div className="text-center text-[11px] py-6" style={{ color: 'hsl(0 0% 35%)' }}>
+                  Nenhuma peça adicionada
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </SidebarSection>
 
-        <h3 className="p-3 m-0 text-xs text-center uppercase tracking-widest font-semibold" style={{ background: 'hsl(0 0% 17%)', borderBottom: '1px solid hsl(0 0% 20%)' }}>
-          Estrutura de Corte
-        </h3>
-        <div className="h-[150px] overflow-y-auto p-2 flex-shrink-0 cnc-scroll" style={{ background: 'hsl(0 0% 4%)', borderTop: '2px solid hsl(0 0% 20%)' }}>
-          {renderActionTree(tree)}
-        </div>
+        {/* ─── SECTION 3: Execução ─── */}
+        <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
+          <div className="p-3" style={{ background: 'hsl(0 0% 10%)' }}>
+            <button className="cnc-btn-primary w-full mb-2" onClick={optimize}>
+              ⚡ OTIMIZAR (1 CHAPA)
+            </button>
+            <button className="cnc-btn-primary w-full" onClick={optimizeAllSheets} style={{ background: 'hsl(240 100% 50%)' }}>
+              📋 OTIMIZAR TODAS AS CHAPAS
+            </button>
+
+            {/* Layout summary */}
+            {layoutGroups.length > 0 && (
+              <div className="mt-3 p-2 rounded" style={{ background: 'hsl(0 0% 6%)', border: '1px solid hsl(0 0% 18%)' }}>
+                <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: 'hsl(0 0% 50%)' }}>
+                  Resumo dos Layouts
+                </div>
+                <div className="text-[11px] mb-2" style={{ color: 'hsl(0 0% 70%)' }}>
+                  {chapas.length} chapa(s) total • {layoutGroups.length} layout(s) único(s)
+                </div>
+                {layoutGroups.map((group, gIdx) => {
+                  const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
+                  return (
+                    <button
+                      key={gIdx}
+                      className="w-full flex items-center justify-between p-2 mb-1 rounded cursor-pointer transition-all text-left"
+                      style={{
+                        background: group.indices.includes(activeChapa) ? 'hsl(211 60% 25%)' : 'hsl(0 0% 12%)',
+                        border: `1px solid ${group.indices.includes(activeChapa) ? 'hsl(211 60% 40%)' : 'hsl(0 0% 20%)'}`,
+                      }}
+                      onClick={() => {
+                        const idx = group.indices[0];
+                        setActiveChapa(idx);
+                        setTree(chapas[idx].tree);
+                        setSelectedId('root');
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold" style={{ color: 'white' }}>
+                          Layout {gIdx + 1}
+                        </span>
+                        {group.count > 1 && (
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                            style={{ background: 'hsl(30 100% 45%)', color: 'white' }}
+                          >
+                            ×{group.count}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-semibold" style={{ color: util > 80 ? 'hsl(120 70% 55%)' : util > 50 ? 'hsl(45 80% 55%)' : 'hsl(0 60% 55%)' }}>
+                        {util.toFixed(1)}%
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </SidebarSection>
+
+        {/* ─── SECTION 4: Estrutura de Corte (advanced) ─── */}
+        <SidebarSection title="Estrutura de Corte" icon="🌳" defaultOpen={false}>
+          <div className="max-h-[200px] overflow-y-auto p-2 cnc-scroll" style={{ background: 'hsl(0 0% 4%)' }}>
+            {renderActionTree(tree)}
+            {tree.filhos.length === 0 && (
+              <div className="text-center text-[11px] py-4" style={{ color: 'hsl(0 0% 35%)' }}>
+                Nenhum nó na árvore
+              </div>
+            )}
+          </div>
+        </SidebarSection>
       </div>
 
       {/* MAIN */}
@@ -609,6 +440,7 @@ const Index = () => {
           ml={ml}
           mb={mb}
           utilization={utilization}
+          layoutGroups={layoutGroups}
         />
 
         <div className="flex flex-col p-2 px-4" style={{ height: 80, background: 'hsl(0 0% 13%)', borderTop: '4px solid hsl(0 0% 20%)' }}>
