@@ -1,5 +1,4 @@
-// CNC Cut Plan Engine with Improved V6 Optimizer
-
+// CNC Cut Plan Engine with IMPROVED Height Grouping
 export type NodeType = 'ROOT' | 'X' | 'Y' | 'Z' | 'W' | 'Q';
 
 export interface TreeNode {
@@ -41,6 +40,7 @@ export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
       }
     }
   });
+
   if (pool.length === 0) return;
 
   // Walk tree and assign labels to leaf nodes by matching dimensions
@@ -85,7 +85,9 @@ export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
 }
 
 let _c = 0;
-function gid(): string { return `n${++_c}_${Math.random().toString(36).substr(2, 4)}`; }
+function gid(): string {
+  return `n${++_c}_${Math.random().toString(36).substr(2, 4)}`;
+}
 
 export function createRoot(w: number, h: number): TreeNode {
   return { id: 'root', tipo: 'ROOT', valor: w, multi: 1, filhos: [] };
@@ -97,7 +99,10 @@ export function cloneTree(t: TreeNode): TreeNode {
 
 export function findNode(n: TreeNode, id: string): TreeNode | null {
   if (n.id === id) return n;
-  for (const f of n.filhos) { const r = findNode(f, id); if (r) return r; }
+  for (const f of n.filhos) {
+    const r = findNode(f, id);
+    if (r) return r;
+  }
   return null;
 }
 
@@ -105,10 +110,12 @@ export function findParentOfType(tree: TreeNode, nodeId: string, tipo: NodeType)
   function findParent(n: TreeNode, tid: string): TreeNode | null {
     for (const f of n.filhos) {
       if (f.id === tid) return n;
-      const r = findParent(f, tid); if (r) return r;
+      const r = findParent(f, tid);
+      if (r) return r;
     }
     return null;
   }
+
   const parent = findParent(tree, nodeId);
   if (!parent) return null;
   return parent.tipo === tipo ? parent : findParentOfType(tree, parent.id, tipo);
@@ -117,22 +124,42 @@ export function findParentOfType(tree: TreeNode, nodeId: string, tipo: NodeType)
 export function insertNode(tree: TreeNode, selectedId: string, tipo: NodeType, valor: number, multi: number): string {
   const node: TreeNode = { id: gid(), tipo, valor, multi, filhos: [] };
   const target = findNode(tree, selectedId);
-  if (tipo === 'X') { tree.filhos.push(node); }
-  else if (tipo === 'Y') { const p = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X'); if (p) p.filhos.push(node); }
-  else if (tipo === 'Z') { const p = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y'); if (p) p.filhos.push(node); }
-  else if (tipo === 'W') { const p = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z'); if (p) p.filhos.push(node); }
-  else if (tipo === 'Q') { const p = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W'); if (p) p.filhos.push(node); }
+
+  if (tipo === 'X') {
+    tree.filhos.push(node);
+  } else if (tipo === 'Y') {
+    const p = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X');
+    if (p) p.filhos.push(node);
+  } else if (tipo === 'Z') {
+    const p = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y');
+    if (p) p.filhos.push(node);
+  } else if (tipo === 'W') {
+    const p = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z');
+    if (p) p.filhos.push(node);
+  } else if (tipo === 'Q') {
+    const p = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
+    if (p) p.filhos.push(node);
+  }
+
   return node.id;
 }
 
 export function deleteNode(tree: TreeNode, id: string): void {
-  const rm = (n: TreeNode) => { n.filhos = n.filhos.filter(f => f.id !== id); n.filhos.forEach(rm); };
+  const rm = (n: TreeNode) => {
+    n.filhos = n.filhos.filter(f => f.id !== id);
+    n.filhos.forEach(rm);
+  };
   rm(tree);
 }
 
 export function calcAllocation(
-  tree: TreeNode, selectedId: string, tipo: NodeType, valor: number, multi: number,
-  usableW: number, usableH: number
+  tree: TreeNode,
+  selectedId: string,
+  tipo: NodeType,
+  valor: number,
+  multi: number,
+  usableW: number,
+  usableH: number
 ): { allocated: number; error?: string } {
   const target = findNode(tree, selectedId);
   let free = 0;
@@ -154,12 +181,10 @@ export function calcAllocation(
     if (!zP) return { allocated: 0, error: 'Selecione Z' };
     const yP = findParentOfType(tree, zP.id, 'Y');
     if (!yP) return { allocated: 0, error: 'Selecione Z' };
-    // W deve caber na altura de Y, considerando os W's já adicionados
     free = yP.valor - zP.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
   } else if (tipo === 'Q') {
     const wP = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
     if (!wP) return { allocated: 0, error: 'Selecione W' };
-    // Q ocupa largura dentro do Z pai de W
     const zP = findParentOfType(tree, wP.id, 'Z');
     if (!zP) return { allocated: 0, error: 'Selecione Z' };
     const occupiedQ = wP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
@@ -172,28 +197,29 @@ export function calcAllocation(
 
 export function calcPlacedArea(tree: TreeNode): number {
   let area = 0;
+
   function procX(x: TreeNode) {
     for (let ix = 0; ix < x.multi; ix++) {
       for (const y of x.filhos) {
         for (let iy = 0; iy < y.multi; iy++) {
           for (const z of y.filhos) {
             for (let iz = 0; iz < z.multi; iz++) {
-              if (z.filhos.length === 0) { 
-                area += z.valor * y.valor; 
-              } else { 
-                for (const w of z.filhos) { 
-                  for (let iw = 0; iw < w.multi; iw++) { 
+              if (z.filhos.length === 0) {
+                area += z.valor * y.valor;
+              } else {
+                for (const w of z.filhos) {
+                  for (let iw = 0; iw < w.multi; iw++) {
                     if (w.filhos.length === 0) {
-                      area += z.valor * w.valor; 
+                      area += z.valor * w.valor;
                     } else {
-                      for (const q of w.filhos) { 
-                        for (let iq = 0; iq < q.multi; iq++) { 
-                          area += z.valor * q.valor; 
-                        } 
+                      for (const q of w.filhos) {
+                        for (let iq = 0; iq < q.multi; iq++) {
+                          area += z.valor * q.valor;
+                        }
                       }
                     }
-                  } 
-                } 
+                  }
+                }
               }
             }
           }
@@ -201,16 +227,31 @@ export function calcPlacedArea(tree: TreeNode): number {
       }
     }
   }
+
   tree.filhos.forEach(procX);
   return area;
 }
 
-// ========== OPTIMIZER V6 ULTRA ==========
+// ========== IMPROVED GROUPING ALGORITHMS ==========
 
-// --- Grouping helpers ---
-
+/**
+ * NOVA IMPLEMENTAÇÃO: Agrupamento por Altura
+ * 
+ * Detecta peças com a mesma altura e as agrupa em pares ou trios,
+ * somando as larguras. Isso reduz o número de cortes em X e melhora
+ * o aproveitamento da chapa.
+ * 
+ * Exemplo:
+ * Input:  [600×1296, 610×1296, 610×1296]
+ * Output: [1210×1296 (count=2), 610×1296 (count=1)]
+ * 
+ * Na árvore de corte:
+ * X(1210) -> Y(1296) -> Z(600) + Z(610)
+ */
 function groupPiecesByHeight(pieces: Piece[]): Piece[] {
+  // Mapeia peças por altura (usando a menor dimensão como altura)
   const heightGroups = new Map<number, Piece[]>();
+  
   pieces.forEach(p => {
     const h = Math.min(p.w, p.h);
     if (!heightGroups.has(h)) heightGroups.set(h, []);
@@ -218,53 +259,91 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
   });
 
   const result: Piece[] = [];
+
   heightGroups.forEach(group => {
-    // Sort by width descending for better packing
-    const sorted = group.map(p => ({ ...p, nw: Math.max(p.w, p.h), nh: Math.min(p.w, p.h) }))
-      .sort((a, b) => b.nw - a.nw);
+    // Normaliza peças: largura = max, altura = min
+    const normalized = group.map(p => ({
+      ...p,
+      nw: Math.max(p.w, p.h),
+      nh: Math.min(p.w, p.h)
+    })).sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
 
     let i = 0;
-    while (i < sorted.length) {
-      const h = sorted[i].nh;
-      // Try to group 3, then 2
+    while (i < normalized.length) {
+      const h = normalized[i].nh;
+      
+      // Tenta agrupar 3, depois 2 peças
       let groupSize = 0;
       let sumW = 0;
       const candidates: number[] = [];
-      for (let j = i; j < sorted.length && candidates.length < 3; j++) {
+      
+      for (let j = i; j < normalized.length && candidates.length < 3; j++) {
         candidates.push(j);
-        sumW += sorted[j].nw;
+        sumW += normalized[j].nw;
       }
-      // Accept group of 3 or 2
+
+      // Aceita grupo de 3 ou 2
       if (candidates.length >= 2) {
-        // Try 3 first, then 2
+        // Tenta 3 primeiro, depois 2
         const trySize = candidates.length >= 3 ? 3 : 2;
         let bestGroupW = 0;
         let bestCount = 0;
+
         for (let gs = trySize; gs >= 2; gs--) {
           let gw = 0;
-          for (let k = 0; k < gs; k++) gw += sorted[candidates[k]].nw;
+          for (let k = 0; k < gs; k++) gw += normalized[candidates[k]].nw;
           bestGroupW = gw;
           bestCount = gs;
           break;
         }
+
         if (bestCount >= 2) {
-          result.push({ w: bestGroupW, h, area: bestGroupW * h, count: bestCount });
-          // Remove grouped items (reverse order)
-          for (let k = bestCount - 1; k >= 1; k--) sorted.splice(candidates[k], 1);
-          sorted.splice(i, 1);
+          // Cria peça agrupada com labels individuais preservados
+          const groupedLabels: string[] = [];
+          for (let k = 0; k < bestCount; k++) {
+            if (normalized[candidates[k]].label) {
+              groupedLabels.push(normalized[candidates[k]].label!);
+            }
+          }
+
+          result.push({
+            w: bestGroupW,
+            h,
+            area: bestGroupW * h,
+            count: bestCount,
+            labels: groupedLabels.length > 0 ? groupedLabels : undefined
+          });
+
+          // Remove itens agrupados (em ordem reversa para não afetar índices)
+          for (let k = bestCount - 1; k >= 1; k--) {
+            normalized.splice(candidates[k], 1);
+          }
+          normalized.splice(i, 1);
           continue;
         }
       }
-      // Single piece
-      result.push({ w: sorted[i].nw, h: sorted[i].nh, area: sorted[i].nw * sorted[i].nh, count: 1 });
+
+      // Peça individual
+      result.push({
+        w: normalized[i].nw,
+        h: normalized[i].nh,
+        area: normalized[i].nw * normalized[i].nh,
+        count: 1,
+        label: normalized[i].label
+      });
       i++;
     }
   });
+
   return result;
 }
 
+/**
+ * Agrupamento por Largura (implementação original mantida)
+ */
 function groupPiecesByWidth(pieces: Piece[]): Piece[] {
   const widthGroups = new Map<number, Piece[]>();
+  
   pieces.forEach(p => {
     const w = Math.max(p.w, p.h);
     if (!widthGroups.has(w)) widthGroups.set(w, []);
@@ -272,24 +351,47 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
   });
 
   const result: Piece[] = [];
+
   widthGroups.forEach(group => {
-    const sorted = group.map(p => ({ ...p, nw: Math.max(p.w, p.h), nh: Math.min(p.w, p.h) }))
-      .sort((a, b) => b.nh - a.nh);
+    const sorted = group.map(p => ({
+      ...p,
+      nw: Math.max(p.w, p.h),
+      nh: Math.min(p.w, p.h)
+    })).sort((a, b) => b.nh - a.nh);
 
     let i = 0;
     while (i < sorted.length) {
       if (i + 1 < sorted.length) {
         const w = sorted[i].nw;
         const sumH = sorted[i].nh + sorted[i + 1].nh;
-        result.push({ w, h: sumH, area: w * sumH, count: 2 });
+        
+        const groupedLabels: string[] = [];
+        if (sorted[i].label) groupedLabels.push(sorted[i].label);
+        if (sorted[i + 1].label) groupedLabels.push(sorted[i + 1].label);
+        
+        result.push({
+          w,
+          h: sumH,
+          area: w * sumH,
+          count: 2,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined
+        });
         sorted.splice(i + 1, 1);
         sorted.splice(i, 1);
         continue;
       }
-      result.push({ w: sorted[i].nw, h: sorted[i].nh, area: sorted[i].nw * sorted[i].nh, count: 1 });
+
+      result.push({
+        w: sorted[i].nw,
+        h: sorted[i].nh,
+        area: sorted[i].nw * sorted[i].nh,
+        count: 1,
+        label: sorted[i].label
+      });
       i++;
     }
   });
+
   return result;
 }
 
@@ -298,11 +400,13 @@ function oris(p: Piece): { w: number; h: number }[] {
   return [{ w: p.w, h: p.h }, { w: p.h, h: p.w }];
 }
 
-// --- Scoring with lookahead ---
+// ========== SCORING WITH LOOKAHEAD ==========
 
 function scoreFit(
-  spaceW: number, spaceH: number,
-  pieceW: number, pieceH: number,
+  spaceW: number,
+  spaceH: number,
+  pieceW: number,
+  pieceH: number,
   remaining: Piece[]
 ): number {
   const wasteW = spaceW - pieceW;
@@ -314,6 +418,7 @@ function scoreFit(
   // Lookahead: check if leftover spaces can fit at least one remaining piece
   let wFits = false;
   let hFits = false;
+
   for (const r of remaining) {
     for (const o of oris(r)) {
       if (!wFits && wasteW >= o.w && spaceH >= o.h) wFits = true;
@@ -334,7 +439,7 @@ function scoreFit(
   return score;
 }
 
-// --- Void filling ---
+// ========== VOID FILLING ==========
 
 function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number): number {
   let filledArea = 0;
@@ -371,17 +476,24 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
 
 function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: number, maxH: number, _level: string): number {
   let filled = 0;
+
   for (let i = 0; i < remaining.length; i++) {
     if (maxH <= 0) break;
+
     const pc = remaining[i];
     let bestO: { w: number; h: number } | null = null;
     let bestScore = Infinity;
+
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
-        if (s < bestScore) { bestScore = s; bestO = o; }
+        if (s < bestScore) {
+          bestScore = s;
+          bestO = o;
+        }
       }
     }
+
     if (bestO) {
       const yId = insertNode(tree, colX.id, 'Y', bestO.h, 1);
       const yNode = findNode(tree, yId)!;
@@ -393,22 +505,30 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
       i--;
     }
   }
+
   return filled;
 }
 
 function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: number, maxH: number): number {
   let filled = 0;
+
   for (let i = 0; i < remaining.length; i++) {
     if (maxW <= 0) break;
+
     const pc = remaining[i];
     let bestO: { w: number; h: number } | null = null;
     let bestScore = Infinity;
+
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
-        if (s < bestScore) { bestScore = s; bestO = o; }
+        if (s < bestScore) {
+          bestScore = s;
+          bestO = o;
+        }
       }
     }
+
     if (bestO) {
       const zId = insertNode(_tree, yNode.id, 'Z', bestO.w, 1);
       insertNode(_tree, zId, 'W', bestO.h, 1);
@@ -418,13 +538,16 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
       i--;
     }
   }
+
   return filled;
 }
 
 function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: number): number {
   let filled = 0;
+
   for (let i = 0; i < remaining.length; i++) {
     if (maxH <= 0) break;
+
     const pc = remaining[i];
     for (const o of oris(pc)) {
       if (o.w <= zWidth && o.h <= maxH) {
@@ -438,10 +561,11 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
       }
     }
   }
+
   return filled;
 }
 
-// --- Main optimizer ---
+// ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): TreeNode {
   if (pieces.length === 0) return createRoot(usableW, usableH);
@@ -468,18 +592,16 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
   ];
 
   // Skip grouping variants when pieces have labels to preserve correct dimensions
-  const pieceVariants: Piece[][] = hasLabels
-    ? [
-        pieces,
-        pieces.map(p => ({ ...p, w: p.h, h: p.w })),
-      ]
-    : [
-        pieces,
-        pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
-        groupPiecesByHeight(pieces),
-        groupPiecesByWidth(pieces),
-        groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
-      ];
+  const pieceVariants: Piece[][] = hasLabels ? [
+    pieces,
+    pieces.map(p => ({ ...p, w: p.h, h: p.w })),
+  ] : [
+    pieces,
+    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
+    groupPiecesByHeight(pieces),
+    groupPiecesByWidth(pieces),
+    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+  ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
@@ -498,6 +620,12 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
   return bestTree || createRoot(usableW, usableH);
 }
 
+/**
+ * MODIFICAÇÃO: Detecção de peças agrupadas
+ * 
+ * Quando uma peça tem count > 1, significa que é resultado de agrupamento.
+ * Neste caso, criamos múltiplos nós Z em vez de um único Z com largura somada.
+ */
 function runPlacement(inventory: Piece[], usableW: number, usableH: number): { tree: TreeNode; area: number } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
@@ -507,25 +635,35 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     const piece = remaining[0];
     let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; score: number } | null = null;
 
-    // 1. Try existing columns (original scoring + light lookahead)
+    // 1. Try existing columns
     for (const colX of tree.filhos) {
       const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
       const freeH = usableH - usedH;
+
       for (const o of oris(piece)) {
         if (o.w <= colX.valor && o.h <= freeH) {
           const widthRatio = o.w / colX.valor;
           const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
-          // Light lookahead: bonus if remaining space fits another piece
+
+          // Light lookahead
           let lookBonus = 0;
           const remH = freeH - o.h;
           const remW = colX.valor - o.w;
+
           for (const r of remaining.slice(1)) {
             for (const ro of oris(r)) {
-              if (ro.w <= colX.valor && ro.h <= remH) { lookBonus -= 0.5; break; }
-              if (ro.w <= remW && ro.h <= o.h) { lookBonus -= 0.3; break; }
+              if (ro.w <= colX.valor && ro.h <= remH) {
+                lookBonus -= 0.5;
+                break;
+              }
+              if (ro.w <= remW && ro.h <= o.h) {
+                lookBonus -= 0.3;
+                break;
+              }
             }
             if (lookBonus < -1) break;
           }
+
           const score = baseScore + lookBonus;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: 'EXISTING', col: colX, w: o.w, h: o.h, score };
@@ -534,9 +672,10 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       }
     }
 
-    // 2. Try new column with piece's own width
+    // 2. Try new column
     const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
+
     if (freeW > 0) {
       for (const o of oris(piece)) {
         if (o.w <= freeW && o.h <= usableH) {
@@ -548,7 +687,10 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       }
     }
 
-    if (!bestFit) { remaining.shift(); continue; }
+    if (!bestFit) {
+      remaining.shift();
+      continue;
+    }
 
     let col: TreeNode;
     if (bestFit.type === 'NEW') {
@@ -561,21 +703,42 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     const yId = insertNode(tree, col.id, 'Y', bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
-    const grouped = piece.count && piece.count > 1;
+    // *** MELHORIA: Detecta peças agrupadas ***
+    const isGrouped = piece.count && piece.count > 1;
 
-    if (grouped) {
-      const partW = Math.round(bestFit.w / (piece.count || 2));
-      const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
-      const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
-      insertNode(tree, wId, 'Q', partW, piece.count || 2);
+    if (isGrouped) {
+      // Calcula largura individual de cada peça no grupo
+      const individualWidth = Math.round(bestFit.w / piece.count!);
+      
+      // Cria múltiplos nós Z, um para cada peça original
+      for (let i = 0; i < piece.count!; i++) {
+        const zId = insertNode(tree, yNode.id, 'Z', individualWidth, 1);
+        const zNode = findNode(tree, zId)!;
+        
+        // Preserva label individual se disponível
+        if (piece.labels && piece.labels[i]) {
+          zNode.label = piece.labels[i];
+        }
+        
+        const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
+        const wNode = findNode(tree, wId)!;
+        
+        if (piece.labels && piece.labels[i]) {
+          wNode.label = piece.labels[i];
+        }
+      }
+      
       placedArea += bestFit.w * bestFit.h;
     } else {
+      // Peça individual (comportamento original)
       const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
       const zNode = findNode(tree, zId)!;
       if (piece.label) zNode.label = piece.label;
+
       const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
       const wNode = findNode(tree, wId)!;
       if (piece.label) wNode.label = piece.label;
+
       placedArea += bestFit.w * bestFit.h;
     }
 
@@ -591,7 +754,10 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       for (const o of oris(pc)) {
         if (o.w <= freeZW && o.h <= bestFit.h) {
           const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
-          if (score < bestScore) { bestScore = score; bestOri = o; }
+          if (score < bestScore) {
+            bestScore = score;
+            bestOri = o;
+          }
         }
       }
 
@@ -600,12 +766,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
           const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
           const zNode2 = findNode(tree, zId)!;
           if (pc.label) zNode2.label = pc.label;
+
           const wId2 = insertNode(tree, zId, 'W', bestOri.h, 1);
           const wNode2 = findNode(tree, wId2)!;
           if (pc.label) wNode2.label = pc.label;
+
           placedArea += bestOri.w * bestOri.h;
 
-          // Flexible W filling: accept w <= Z width
+          // Flexible W filling
           let freeWH = bestFit.h - bestOri.h;
           for (let j = 0; j < remaining.length && freeWH > 0; j++) {
             if (j === i) continue;
@@ -615,6 +783,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
                 const wId3 = insertNode(tree, zId, 'W', wo.h, 1);
                 const wNode3 = findNode(tree, wId3)!;
                 if (pw.label) wNode3.label = pw.label;
+
                 placedArea += zNode2.valor * wo.h;
                 freeWH -= wo.h;
                 remaining.splice(j, 1);
@@ -628,8 +797,10 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
           const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
           const zNode2 = findNode(tree, zId)!;
           if (pc.label) zNode2.label = pc.label;
+
           placedArea += bestOri.w * bestFit.h;
         }
+
         freeZW -= bestOri.w;
         remaining.splice(i, 1);
         i--;
@@ -637,7 +808,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     }
   }
 
-  // Void filling: try to fill remaining spaces in existing columns
+  // Void filling
   if (remaining.length > 0) {
     placedArea += fillVoids(tree, remaining, usableW, usableH);
   }
