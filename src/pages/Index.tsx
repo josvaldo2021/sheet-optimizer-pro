@@ -2,10 +2,12 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
   TreeNode, PieceItem,
+
   createRoot, cloneTree, findNode, findParentOfType,
   insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6
 } from '@/lib/cnc-engine';
 import { groupIdenticalLayouts, LayoutGroup } from '@/lib/layout-utils';
+import { exportPdf } from '@/lib/pdf-export';
 import SheetViewer from '@/components/SheetViewer';
 import SidebarSection from '@/components/SidebarSection';
 
@@ -355,6 +357,19 @@ const Index = () => {
             <button className="cnc-btn-primary w-full" onClick={optimizeAllSheets} style={{ background: 'hsl(240 100% 50%)' }}>
               📋 OTIMIZAR TODAS AS CHAPAS
             </button>
+
+            {layoutGroups.length > 0 && (
+              <button
+                className="cnc-btn-secondary w-full mt-2"
+                style={{ background: 'hsl(0 0% 20%)', padding: '10px', fontSize: '12px', fontWeight: 'bold' }}
+                onClick={() => exportPdf({
+                  chapas, layoutGroups, chapaW, chapaH,
+                  usableW, usableH, ml, mr, mt, mb, utilization,
+                })}
+              >
+                📄 EXPORTAR PDF
+              </button>
+            )}
 
             {/* Layout summary */}
             {layoutGroups.length > 0 && (
