@@ -219,33 +219,44 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
 
   const result: Piece[] = [];
   heightGroups.forEach(group => {
+    // Sort by width descending for better packing
     const sorted = group.map(p => ({ ...p, nw: Math.max(p.w, p.h), nh: Math.min(p.w, p.h) }))
       .sort((a, b) => b.nw - a.nw);
 
     let i = 0;
     while (i < sorted.length) {
       const h = sorted[i].nh;
+      // Try to group 3, then 2
+      let groupSize = 0;
+      let sumW = 0;
       const candidates: number[] = [];
       for (let j = i; j < sorted.length && candidates.length < 3; j++) {
         candidates.push(j);
+        sumW += sorted[j].nw;
       }
+      // Accept group of 3 or 2
       if (candidates.length >= 2) {
+        // Try 3 first, then 2
         const trySize = candidates.length >= 3 ? 3 : 2;
+        let bestGroupW = 0;
+        let bestCount = 0;
         for (let gs = trySize; gs >= 2; gs--) {
           let gw = 0;
-          const groupLabels: string[] = [];
-          for (let k = 0; k < gs; k++) {
-            gw += sorted[candidates[k]].nw;
-            if (sorted[candidates[k]].label) groupLabels.push(sorted[candidates[k]].label!);
-          }
-          result.push({ w: gw, h, area: gw * h, count: gs, labels: groupLabels.length > 0 ? groupLabels : undefined });
-          for (let k = gs - 1; k >= 1; k--) sorted.splice(candidates[k], 1);
-          sorted.splice(i, 1);
+          for (let k = 0; k < gs; k++) gw += sorted[candidates[k]].nw;
+          bestGroupW = gw;
+          bestCount = gs;
           break;
         }
-        continue;
+        if (bestCount >= 2) {
+          result.push({ w: bestGroupW, h, area: bestGroupW * h, count: bestCount });
+          // Remove grouped items (reverse order)
+          for (let k = bestCount - 1; k >= 1; k--) sorted.splice(candidates[k], 1);
+          sorted.splice(i, 1);
+          continue;
+        }
       }
-      result.push({ w: sorted[i].nw, h: sorted[i].nh, area: sorted[i].nw * sorted[i].nh, count: 1, label: sorted[i].label });
+      // Single piece
+      result.push({ w: sorted[i].nw, h: sorted[i].nh, area: sorted[i].nw * sorted[i].nh, count: 1 });
       i++;
     }
   });
@@ -270,15 +281,12 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
       if (i + 1 < sorted.length) {
         const w = sorted[i].nw;
         const sumH = sorted[i].nh + sorted[i + 1].nh;
-        const groupLabels: string[] = [];
-        if (sorted[i].label) groupLabels.push(sorted[i].label!);
-        if (sorted[i + 1].label) groupLabels.push(sorted[i + 1].label!);
-        result.push({ w, h: sumH, area: w * sumH, count: 2, labels: groupLabels.length > 0 ? groupLabels : undefined });
+        result.push({ w, h: sumH, area: w * sumH, count: 2 });
         sorted.splice(i + 1, 1);
         sorted.splice(i, 1);
         continue;
       }
-      result.push({ w: sorted[i].nw, h: sorted[i].nh, area: sorted[i].nw * sorted[i].nh, count: 1, label: sorted[i].label });
+      result.push({ w: sorted[i].nw, h: sorted[i].nh, area: sorted[i].nw * sorted[i].nh, count: 1 });
       i++;
     }
   });
@@ -459,13 +467,19 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
     (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
   ];
 
-  const pieceVariants: Piece[][] = [
-    pieces,
-    pieces.map(p => ({ ...p, w: p.h, h: p.w })),
-    groupPiecesByHeight(pieces),
-    groupPiecesByWidth(pieces),
-    groupPiecesByHeight(pieces.map(p => ({ ...p, w: p.h, h: p.w }))),
-  ];
+  // Skip grouping variants when pieces have labels to preserve correct dimensions
+  const pieceVariants: Piece[][] = hasLabels
+    ? [
+        pieces,
+        pieces.map(p => ({ ...p, w: p.h, h: p.w })),
+      ]
+    : [
+        pieces,
+        pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
+        groupPiecesByHeight(pieces),
+        groupPiecesByWidth(pieces),
+        groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+      ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
@@ -553,17 +567,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       const partW = Math.round(bestFit.w / (piece.count || 2));
       const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
       const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
-      // Assign individual labels to Q nodes when available
-      if (piece.labels && piece.labels.length > 0) {
-        const cnt = piece.count || 2;
-        for (let qi = 0; qi < cnt; qi++) {
-          const qId = insertNode(tree, wId, 'Q', partW, 1);
-          const qNode = findNode(tree, qId)!;
-          if (qi < piece.labels.length) qNode.label = piece.labels[qi];
-        }
-      } else {
-        insertNode(tree, wId, 'Q', partW, piece.count || 2);
-      }
+      insertNode(tree, wId, 'Q', partW, piece.count || 2);
       placedArea += bestFit.w * bestFit.h;
     } else {
       const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
