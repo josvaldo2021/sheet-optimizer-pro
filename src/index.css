@@ -206,6 +206,15 @@
   font-weight: 600;
   opacity: 0.8;
 }
+.sv-tab-badge {
+  font-size: 8px;
+  font-weight: 800;
+  background: hsl(30 100% 45%);
+  color: white;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
 .sv-sheet {
   position: relative;
   background: hsl(0 0% 12%);
@@ -431,12 +440,12 @@
 
 .cnc-inv-item {
   display: grid;
-  grid-template-columns: 45px 1fr 15px 1fr 60px;
+  grid-template-columns: 40px 1fr 15px 1fr 55px 20px;
   gap: 5px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   align-items: center;
   background: hsl(var(--card));
-  padding: 5px;
+  padding: 4px 5px;
   border-radius: 4px;
 }
 

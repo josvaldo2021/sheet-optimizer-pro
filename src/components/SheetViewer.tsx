@@ -1,5 +1,6 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { TreeNode, findNode } from '@/lib/cnc-engine';
+import { LayoutGroup } from '@/lib/layout-utils';
 
 // Clean piece style
 const PIECE_BG = 'hsl(0 0% 100%)';
@@ -18,13 +19,14 @@ interface SheetViewerProps {
   ml: number;
   mb: number;
   utilization: number;
+  layoutGroups?: LayoutGroup[];
 }
 
 export default function SheetViewer({
   chapas, activeIndex, onSelectSheet,
   selectedId, onSelectNode,
   usableW, usableH, chapaW, chapaH,
-  ml, mb, utilization,
+  ml, mb, utilization, layoutGroups,
 }: SheetViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
@@ -288,6 +290,17 @@ export default function SheetViewer({
             </span>
           </div>
         )}
+        {(() => {
+          const group = layoutGroups?.find(g => g.indices.includes(activeIndex));
+          return group && group.count > 1 ? (
+            <div className="sv-header-stat">
+              <span className="sv-header-label">LAYOUT REPETIDO</span>
+              <span className="sv-header-value" style={{ color: 'hsl(30 100% 55%)' }}>
+                ×{group.count}
+              </span>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Sheet tabs - scrollable */}
@@ -295,6 +308,9 @@ export default function SheetViewer({
         <div className="sv-tabs cnc-scroll" style={{ maxHeight: '120px', overflowY: 'auto', flexShrink: 0, flexWrap: 'wrap' }}>
           {chapas.map((_, idx) => {
             const u = usableW > 0 && usableH > 0 ? (chapas[idx].usedArea / (usableW * usableH)) * 100 : 0;
+            // Find if this sheet belongs to a group with count > 1
+            const group = layoutGroups?.find(g => g.indices.includes(idx));
+            const isGroupFirst = group && group.indices[0] === idx;
             return (
               <button
                 key={idx}
@@ -303,6 +319,9 @@ export default function SheetViewer({
               >
                 <span className="sv-tab-num">{idx + 1}</span>
                 <span className="sv-tab-util">{u.toFixed(0)}%</span>
+                {isGroupFirst && group.count > 1 && (
+                  <span className="sv-tab-badge">×{group.count}</span>
+                )}
               </button>
             );
           })}
