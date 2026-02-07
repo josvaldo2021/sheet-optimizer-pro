@@ -303,30 +303,7 @@ export default function SheetViewer({
         })()}
       </div>
 
-      {/* Sheet tabs - scrollable */}
-      {chapas.length > 1 && (
-        <div className="sv-tabs cnc-scroll" style={{ maxHeight: '120px', overflowY: 'auto', flexShrink: 0, flexWrap: 'wrap' }}>
-          {chapas.map((_, idx) => {
-            const u = usableW > 0 && usableH > 0 ? (chapas[idx].usedArea / (usableW * usableH)) * 100 : 0;
-            // Find if this sheet belongs to a group with count > 1
-            const group = layoutGroups?.find(g => g.indices.includes(idx));
-            const isGroupFirst = group && group.indices[0] === idx;
-            return (
-              <button
-                key={idx}
-                onClick={() => onSelectSheet(idx)}
-                className={`sv-tab ${idx === activeIndex ? 'sv-tab-active' : ''}`}
-              >
-                <span className="sv-tab-num">{idx + 1}</span>
-                <span className="sv-tab-util">{u.toFixed(0)}%</span>
-                {isGroupFirst && group.count > 1 && (
-                  <span className="sv-tab-badge">×{group.count}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Sheet tabs removed - navigation via layout summary in sidebar */}
 
       {/* Sheet viewport */}
       <div ref={containerRef} className="flex-1 flex justify-center items-center overflow-hidden p-4">
