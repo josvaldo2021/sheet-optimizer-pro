@@ -81,6 +81,26 @@ const Index = () => {
     const valor = parseFloat(cmd.substring(1));
     if (isNaN(valor) || !['X', 'Y', 'Z', 'W', 'Q'].includes(tipo)) return;
 
+    // If inserting Z and the Y parent has a single auto-created full-width Z, remove it first
+    if (tipo === 'Z') {
+      const t = cloneTree(tree);
+      const target = findNode(t, selectedId);
+      const yParent = target?.tipo === 'Y' ? target : findParentOfType(t, selectedId, 'Y');
+      const xParent = yParent ? findParentOfType(t, yParent.id, 'X') : null;
+      if (yParent && xParent && yParent.filhos.length === 1 && yParent.filhos[0].tipo === 'Z' && yParent.filhos[0].filhos.length === 0 && yParent.filhos[0].valor === xParent.valor) {
+        // Remove the auto-created full-width Z
+        deleteNode(t, yParent.filhos[0].id);
+        const res2 = calcAllocation(t, yParent.id, 'Z', valor, multi, usableW, usableH);
+        if (res2.allocated > 0) {
+          const nid = insertNode(t, yParent.id, 'Z', valor, res2.allocated);
+          setTree(t);
+          setSelectedId(nid);
+          setStatus({ msg: `Z${valor} criado!`, type: 'success' });
+          return;
+        }
+      }
+    }
+
     const res = calcAllocation(tree, selectedId, tipo, valor, multi, usableW, usableH);
     if (res.allocated > 0) {
       const t = cloneTree(tree);
