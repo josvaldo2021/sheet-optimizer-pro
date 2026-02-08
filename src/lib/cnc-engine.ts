@@ -633,7 +633,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
 
   while (remaining.length > 0) {
     const piece = remaining[0];
-    let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; score: number } | null = null;
+    let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; score: number; companions?: Array<{ idx: number; w: number; h: number }>; pieceW?: number; pieceH?: number } | null = null;
 
     // 1. Try existing columns
     for (const colX of tree.filhos) {
@@ -672,16 +672,32 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       }
     }
 
-    // 2. Try new column
+    // 2. Try new column — with lookahead to combine same-height pieces
     const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
 
     if (freeW > 0) {
       for (const o of oris(piece)) {
         if (o.w <= freeW && o.h <= usableH) {
-          const score = ((freeW - o.w) / usableW) * 0.5;
+          // Look ahead: find pieces with same height that can share this Y strip
+          let combinedW = o.w;
+          const companions: Array<{ idx: number; w: number; h: number }> = [];
+
+          for (let j = 1; j < remaining.length; j++) {
+            const rp = remaining[j];
+            for (const ro of oris(rp)) {
+              if (ro.h === o.h && combinedW + ro.w <= freeW) {
+                companions.push({ idx: j, w: ro.w, h: ro.h });
+                combinedW += ro.w;
+                break;
+              }
+            }
+          }
+
+          // Score: wider combined columns = better utilization
+          const score = ((freeW - combinedW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'NEW', w: o.w, h: o.h, score };
+            bestFit = { type: 'NEW', w: combinedW, h: o.h, score, companions, pieceW: o.w, pieceH: o.h };
           }
         }
       }
@@ -700,27 +716,24 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       col = bestFit.col!;
     }
 
-    const yId = insertNode(tree, col.id, 'Y', bestFit.h, 1);
+    const yId = insertNode(tree, col.id, 'Y', bestFit.type === 'NEW' && bestFit.pieceH ? bestFit.pieceH : bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
     // *** MELHORIA: Detecta peças agrupadas ***
     const isGrouped = piece.count && piece.count > 1;
 
     if (isGrouped) {
-      // Calcula largura individual de cada peça no grupo
-      const individualWidth = Math.round(bestFit.w / piece.count!);
+      const individualWidth = Math.round((bestFit.type === 'NEW' && bestFit.pieceW ? bestFit.pieceW : bestFit.w) / piece.count!);
       
-      // Cria múltiplos nós Z, um para cada peça original
       for (let i = 0; i < piece.count!; i++) {
         const zId = insertNode(tree, yNode.id, 'Z', individualWidth, 1);
         const zNode = findNode(tree, zId)!;
         
-        // Preserva label individual se disponível
         if (piece.labels && piece.labels[i]) {
           zNode.label = piece.labels[i];
         }
         
-        const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
+        const wId = insertNode(tree, zId, 'W', yNode.valor, 1);
         const wNode = findNode(tree, wId)!;
         
         if (piece.labels && piece.labels[i]) {
@@ -728,24 +741,47 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
         }
       }
       
-      placedArea += bestFit.w * bestFit.h;
+      placedArea += (bestFit.type === 'NEW' && bestFit.pieceW ? bestFit.pieceW : bestFit.w) * yNode.valor;
     } else {
-      // Peça individual (comportamento original)
-      const zId = insertNode(tree, yNode.id, 'Z', bestFit.w, 1);
+      const mainPieceW = bestFit.type === 'NEW' && bestFit.pieceW ? bestFit.pieceW : bestFit.w;
+      const zId = insertNode(tree, yNode.id, 'Z', mainPieceW, 1);
       const zNode = findNode(tree, zId)!;
       if (piece.label) zNode.label = piece.label;
 
-      const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
+      const wId = insertNode(tree, zId, 'W', yNode.valor, 1);
       const wNode = findNode(tree, wId)!;
       if (piece.label) wNode.label = piece.label;
 
-      placedArea += bestFit.w * bestFit.h;
+      placedArea += mainPieceW * yNode.valor;
     }
 
     remaining.shift();
 
-    // Lateral Z filling (flexible height)
-    let freeZW = col.valor - bestFit.w;
+    // Place companion pieces (same-height pieces combined in this column)
+    if (bestFit.type === 'NEW' && bestFit.companions && bestFit.companions.length > 0) {
+      // Sort companion indices descending so splicing doesn't affect earlier indices
+      const sortedCompanions = [...bestFit.companions].sort((a, b) => b.idx - a.idx);
+      for (const comp of sortedCompanions) {
+        // Adjust index since we already shifted the first piece
+        const adjIdx = comp.idx - 1;
+        if (adjIdx >= 0 && adjIdx < remaining.length) {
+          const compPiece = remaining[adjIdx];
+          const zId = insertNode(tree, yNode.id, 'Z', comp.w, 1);
+          const zNode2 = findNode(tree, zId)!;
+          if (compPiece.label) zNode2.label = compPiece.label;
+
+          const wId2 = insertNode(tree, zId, 'W', comp.h, 1);
+          const wNode2 = findNode(tree, wId2)!;
+          if (compPiece.label) wNode2.label = compPiece.label;
+
+          placedArea += comp.w * comp.h;
+          remaining.splice(adjIdx, 1);
+        }
+      }
+    }
+
+    // Lateral Z filling (for pieces that fit in remaining column width but different height)
+    let freeZW = col.valor - yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
     for (let i = 0; i < remaining.length && freeZW > 0; i++) {
       const pc = remaining[i];
       let bestOri: { w: number; h: number } | null = null;
