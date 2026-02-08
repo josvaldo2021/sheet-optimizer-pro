@@ -81,26 +81,7 @@ const Index = () => {
     const valor = parseFloat(cmd.substring(1));
     if (isNaN(valor) || !['X', 'Y', 'Z', 'W', 'Q'].includes(tipo)) return;
 
-    // If inserting Z and the Y parent has a single auto-created full-width Z, remove it first
-    if (tipo === 'Z') {
-      const t = cloneTree(tree);
-      const target = findNode(t, selectedId);
-      const yParent = target?.tipo === 'Y' ? target : findParentOfType(t, selectedId, 'Y');
-      const xParent = yParent ? findParentOfType(t, yParent.id, 'X') : null;
-      if (yParent && xParent && yParent.filhos.length === 1 && yParent.filhos[0].tipo === 'Z' && yParent.filhos[0].filhos.length === 0 && yParent.filhos[0].valor === xParent.valor) {
-        // Remove the auto-created full-width Z
-        deleteNode(t, yParent.filhos[0].id);
-        const res2 = calcAllocation(t, yParent.id, 'Z', valor, multi, usableW, usableH);
-        if (res2.allocated > 0) {
-          const nid = insertNode(t, yParent.id, 'Z', valor, res2.allocated);
-          setTree(t);
-          setSelectedId(nid);
-          setStatus({ msg: `Z${valor} criado!`, type: 'success' });
-          return;
-        }
-      }
-    }
-
+    // Try normal allocation first
     const res = calcAllocation(tree, selectedId, tipo, valor, multi, usableW, usableH);
     if (res.allocated > 0) {
       const t = cloneTree(tree);
@@ -122,9 +103,102 @@ const Index = () => {
       setTree(t);
       setSelectedId(nid);
       setStatus({ msg: `${tipo}${valor} criado!`, type: 'success' });
-    } else {
-      setStatus({ msg: res.error || 'Sem espaço', type: 'error' });
+      return;
     }
+
+    // No free space — try to subdivide the selected leaf node
+    const t = cloneTree(tree);
+    const target = findNode(t, selectedId);
+    if (!target) {
+      setStatus({ msg: res.error || 'Sem espaço', type: 'error' });
+      return;
+    }
+
+    // Z insertion: split selected Z node or replace auto-Z in Y parent
+    if (tipo === 'Z') {
+      const yParent = target.tipo === 'Y' ? target : findParentOfType(t, selectedId, 'Y');
+      if (yParent) {
+        // If selected node is a leaf Z, shrink it to make room
+        if (target.tipo === 'Z' && target.filhos.length === 0 && target.valor > valor) {
+          target.valor -= valor;
+          const nid = insertNode(t, yParent.id, 'Z', valor, 1);
+          setTree(t);
+          setSelectedId(nid);
+          setStatus({ msg: `Z${valor} criado (subdivisão)!`, type: 'success' });
+          return;
+        }
+        // If Y has a single full-width Z leaf, replace it
+        const xParent = findParentOfType(t, yParent.id, 'X');
+        if (xParent && yParent.filhos.length === 1 && yParent.filhos[0].tipo === 'Z' && yParent.filhos[0].filhos.length === 0) {
+          const oldZ = yParent.filhos[0];
+          if (oldZ.valor > valor) {
+            oldZ.valor -= valor;
+            const nid = insertNode(t, yParent.id, 'Z', valor, 1);
+            setTree(t);
+            setSelectedId(nid);
+            setStatus({ msg: `Z${valor} criado!`, type: 'success' });
+            return;
+          }
+        }
+      }
+    }
+
+    // W insertion: split selected W node or leaf Z gets W children
+    if (tipo === 'W') {
+      if (target.tipo === 'Z' && target.filhos.length === 0) {
+        // Leaf Z — convert to Z with W children: keep existing piece as W, add new W
+        const yParent = findParentOfType(t, target.id, 'Y');
+        if (yParent && yParent.valor > valor) {
+          const remainH = yParent.valor - valor;
+          insertNode(t, target.id, 'W', remainH, 1);
+          const nid = insertNode(t, target.id, 'W', valor, 1);
+          setTree(t);
+          setSelectedId(nid);
+          setStatus({ msg: `W${valor} criado (subdivisão)!`, type: 'success' });
+          return;
+        }
+      }
+      if (target.tipo === 'W' && target.filhos.length === 0) {
+        const zParent = findParentOfType(t, target.id, 'Z');
+        if (zParent && target.valor > valor) {
+          target.valor -= valor;
+          const nid = insertNode(t, zParent.id, 'W', valor, 1);
+          setTree(t);
+          setSelectedId(nid);
+          setStatus({ msg: `W${valor} criado (subdivisão)!`, type: 'success' });
+          return;
+        }
+      }
+    }
+
+    // Q insertion: split selected Q or leaf W
+    if (tipo === 'Q') {
+      if (target.tipo === 'W' && target.filhos.length === 0) {
+        const zParent = findParentOfType(t, target.id, 'Z');
+        if (zParent && zParent.valor > valor) {
+          const remainW = zParent.valor - valor;
+          insertNode(t, target.id, 'Q', remainW, 1);
+          const nid = insertNode(t, target.id, 'Q', valor, 1);
+          setTree(t);
+          setSelectedId(nid);
+          setStatus({ msg: `Q${valor} criado (subdivisão)!`, type: 'success' });
+          return;
+        }
+      }
+      if (target.tipo === 'Q' && target.valor > valor) {
+        const wParent = findParentOfType(t, target.id, 'W');
+        if (wParent) {
+          target.valor -= valor;
+          const nid = insertNode(t, wParent.id, 'Q', valor, 1);
+          setTree(t);
+          setSelectedId(nid);
+          setStatus({ msg: `Q${valor} criado (subdivisão)!`, type: 'success' });
+          return;
+        }
+      }
+    }
+
+    setStatus({ msg: res.error || 'Sem espaço', type: 'error' });
   }, [tree, selectedId, usableW, usableH]);
 
   const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
