@@ -604,13 +604,16 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
   ];
 
   let bestTree: TreeNode | null = null;
+  let bestPlaced = 0;
   let bestArea = 0;
 
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
       const sorted = [...variant].sort(sortFn);
       const result = runPlacement(sorted, usableW, usableH);
-      if (result.area > bestArea) {
+      // Prioritize: 1) most pieces placed, 2) most area used
+      if (result.placed > bestPlaced || (result.placed === bestPlaced && result.area > bestArea)) {
+        bestPlaced = result.placed;
         bestArea = result.area;
         bestTree = JSON.parse(JSON.stringify(result.tree));
       }
@@ -626,16 +629,49 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
  * Quando uma peça tem count > 1, significa que é resultado de agrupamento.
  * Neste caso, criamos múltiplos nós Z em vez de um único Z com largura somada.
  */
-function runPlacement(inventory: Piece[], usableW: number, usableH: number): { tree: TreeNode; area: number } {
+function runPlacement(inventory: Piece[], usableW: number, usableH: number): { tree: TreeNode; area: number; placed: number } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
+  let placedCount = 0;
   const remaining = [...inventory];
+  let skipCount = 0; // track consecutive skips to avoid infinite loop
 
-  while (remaining.length > 0) {
+  while (remaining.length > 0 && skipCount < remaining.length) {
     const piece = remaining[0];
-    let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; score: number; companions?: Array<{ idx: number; w: number; h: number }>; pieceW?: number; pieceH?: number } | null = null;
+    let bestFit: { type: 'EXISTING' | 'NEW' | 'VOID_Z' | 'VOID_W'; col?: TreeNode; w: number; h: number; score: number; companions?: Array<{ idx: number; w: number; h: number }>; pieceW?: number; pieceH?: number; yNode?: TreeNode; zNode?: TreeNode } | null = null;
 
-    // 1. Try existing columns
+    // 1a. Try fitting into existing Z/W voids (within already-placed strips)
+    for (const colX of tree.filhos) {
+      for (const yNode of colX.filhos) {
+        // Check Z void (remaining width in Y strip)
+        const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+        const freeZ = colX.valor - usedZ;
+        for (const o of oris(piece)) {
+          if (o.w <= freeZ && o.h <= yNode.valor) {
+            const score = -5 + (freeZ - o.w) / colX.valor; // strongly prefer voids
+            if (!bestFit || score < bestFit.score) {
+              bestFit = { type: 'VOID_Z', col: colX, w: o.w, h: o.h, score, yNode: yNode };
+            }
+          }
+        }
+
+        // Check W void (remaining height inside each Z)
+        for (const zNode of yNode.filhos) {
+          const usedW = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+          const freeWH = yNode.valor - usedW;
+          for (const o of oris(piece)) {
+            if (o.w <= zNode.valor && o.h <= freeWH) {
+              const score = -5 + (freeWH - o.h) / yNode.valor;
+              if (!bestFit || score < bestFit.score) {
+                bestFit = { type: 'VOID_W', col: colX, w: o.w, h: o.h, score, zNode: zNode };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 1b. Try existing columns (add new Y strip)
     for (const colX of tree.filhos) {
       const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
       const freeH = usableH - usedH;
@@ -704,6 +740,36 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     }
 
     if (!bestFit) {
+      // Don't discard - move piece to end of queue and try next
+      const skipped = remaining.shift()!;
+      remaining.push(skipped);
+      skipCount++;
+      continue;
+    }
+
+    // Reset skip counter on successful placement
+    skipCount = 0;
+
+    // === Handle VOID placements (fit into existing gaps) ===
+    if (bestFit.type === 'VOID_Z') {
+      // Add Z node into existing Y strip
+      const zId = insertNode(tree, bestFit.yNode!.id, 'Z', bestFit.w, 1);
+      const zNode = findNode(tree, zId)!;
+      if (piece.label) zNode.label = piece.label;
+      const wId = insertNode(tree, zId, 'W', bestFit.h, 1);
+      const wNode = findNode(tree, wId)!;
+      if (piece.label) wNode.label = piece.label;
+      placedArea += bestFit.w * bestFit.h;
+      remaining.shift();
+      continue;
+    }
+
+    if (bestFit.type === 'VOID_W') {
+      // Add W node into existing Z
+      const wId = insertNode(tree, bestFit.zNode!.id, 'W', bestFit.h, 1);
+      const wNode = findNode(tree, wId)!;
+      if (piece.label) wNode.label = piece.label;
+      placedArea += bestFit.zNode!.valor * bestFit.h;
       remaining.shift();
       continue;
     }
@@ -711,8 +777,6 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
     let col: TreeNode;
     if (bestFit.type === 'NEW') {
       // === MELHORIA: "Cortar até o final" no nível X ===
-      // Se a sobra após esta coluna não cabe nenhuma peça restante,
-      // estender a coluna para usar toda a largura disponível.
       const currentUsedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
       const currentFreeW = usableW - currentUsedW;
       const wasteAfterCol = currentFreeW - bestFit.w;
@@ -889,8 +953,10 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
 
   // Void filling
   if (remaining.length > 0) {
-    placedArea += fillVoids(tree, remaining, usableW, usableH);
+    const voidFilled = fillVoids(tree, remaining, usableW, usableH);
+    placedArea += voidFilled;
   }
 
-  return { tree, area: placedArea };
+  placedCount = inventory.length - remaining.length;
+  return { tree, area: placedArea, placed: placedCount };
 }
