@@ -710,13 +710,56 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
 
     let col: TreeNode;
     if (bestFit.type === 'NEW') {
-      insertNode(tree, 'root', 'X', bestFit.w, 1);
+      // === MELHORIA: "Cortar até o final" no nível X ===
+      // Se a sobra após esta coluna não cabe nenhuma peça restante,
+      // estender a coluna para usar toda a largura disponível.
+      const currentUsedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+      const currentFreeW = usableW - currentUsedW;
+      const wasteAfterCol = currentFreeW - bestFit.w;
+      
+      let canFitInWasteW = false;
+      if (wasteAfterCol > 0) {
+        for (const r of remaining.slice(1)) {
+          for (const o of oris(r)) {
+            if (o.w <= wasteAfterCol && o.h <= usableH) {
+              canFitInWasteW = true;
+              break;
+            }
+          }
+          if (canFitInWasteW) break;
+        }
+      }
+      
+      const colWidth = canFitInWasteW ? bestFit.w : currentFreeW;
+      insertNode(tree, 'root', 'X', colWidth, 1);
       col = tree.filhos[tree.filhos.length - 1];
     } else {
       col = bestFit.col!;
     }
 
-    const yId = insertNode(tree, col.id, 'Y', bestFit.type === 'NEW' && bestFit.pieceH ? bestFit.pieceH : bestFit.h, 1);
+    // === MELHORIA: "Cortar até o final" no nível Y ===
+    // Se a sobra de altura após esta fita Y não cabe nenhuma peça,
+    // estender a fita Y para usar toda a altura disponível na coluna.
+    const baseYH = bestFit.type === 'NEW' && bestFit.pieceH ? bestFit.pieceH : bestFit.h;
+    const colUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    const colFreeH = usableH - colUsedH;
+    const wasteAfterY = colFreeH - baseYH;
+    
+    let canFitInWasteH = false;
+    if (wasteAfterY > 0) {
+      for (const r of remaining.slice(1)) {
+        for (const o of oris(r)) {
+          if (o.h <= wasteAfterY && o.w <= col.valor) {
+            canFitInWasteH = true;
+            break;
+          }
+        }
+        if (canFitInWasteH) break;
+      }
+    }
+    
+    const yHeight = canFitInWasteH ? baseYH : colFreeH;
+    const yId = insertNode(tree, col.id, 'Y', yHeight, 1);
     const yNode = findNode(tree, yId)!;
 
     // *** MELHORIA: Detecta peças agrupadas ***
@@ -788,7 +831,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       let bestScore = Infinity;
 
       for (const o of oris(pc)) {
-        if (o.w <= freeZW && o.h <= bestFit.h) {
+        if (o.w <= freeZW && o.h <= yHeight) {
           const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
           if (score < bestScore) {
             bestScore = score;
@@ -798,7 +841,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       }
 
       if (bestOri) {
-        if (bestOri.h < bestFit.h) {
+        if (bestOri.h < yHeight) {
           const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
           const zNode2 = findNode(tree, zId)!;
           if (pc.label) zNode2.label = pc.label;
@@ -810,7 +853,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
           placedArea += bestOri.w * bestOri.h;
 
           // Flexible W filling
-          let freeWH = bestFit.h - bestOri.h;
+          let freeWH = yHeight - bestOri.h;
           for (let j = 0; j < remaining.length && freeWH > 0; j++) {
             if (j === i) continue;
             const pw = remaining[j];
@@ -834,7 +877,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
           const zNode2 = findNode(tree, zId)!;
           if (pc.label) zNode2.label = pc.label;
 
-          placedArea += bestOri.w * bestFit.h;
+          placedArea += bestOri.w * yHeight;
         }
 
         freeZW -= bestOri.w;
