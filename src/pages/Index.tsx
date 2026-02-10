@@ -19,6 +19,7 @@ const Index = () => {
   const [mr, setMr] = useState(10);
   const [mt, setMt] = useState(10);
   const [mb, setMb] = useState(10);
+  const [minBreak, setMinBreak] = useState(0);
 
   const usableW = chapaW - ml - mr;
   const usableH = chapaH - mt - mb;
@@ -90,7 +91,7 @@ const Index = () => {
       if (yParent && xParent && yParent.filhos.length === 1 && yParent.filhos[0].tipo === 'Z' && yParent.filhos[0].filhos.length === 0 && yParent.filhos[0].valor === xParent.valor) {
         // Remove the auto-created full-width Z
         deleteNode(t, yParent.filhos[0].id);
-        const res2 = calcAllocation(t, yParent.id, 'Z', valor, multi, usableW, usableH);
+        const res2 = calcAllocation(t, yParent.id, 'Z', valor, multi, usableW, usableH, minBreak);
         if (res2.allocated > 0) {
           const nid = insertNode(t, yParent.id, 'Z', valor, res2.allocated);
           setTree(t);
@@ -101,7 +102,7 @@ const Index = () => {
       }
     }
 
-    const res = calcAllocation(tree, selectedId, tipo, valor, multi, usableW, usableH);
+    const res = calcAllocation(tree, selectedId, tipo, valor, multi, usableW, usableH, minBreak);
     if (res.allocated > 0) {
       const t = cloneTree(tree);
       const nid = insertNode(t, selectedId, tipo, valor, res.allocated);
@@ -125,7 +126,7 @@ const Index = () => {
     } else {
       setStatus({ msg: res.error || 'Sem espaço', type: 'error' });
     }
-  }, [tree, selectedId, usableW, usableH]);
+  }, [tree, selectedId, usableW, usableH, minBreak]);
 
   const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
     const used: Array<{ w: number; h: number; label?: string }> = [];
@@ -164,14 +165,14 @@ const Index = () => {
     if (inv.length === 0) { setStatus({ msg: 'Inventário vazio!', type: 'error' }); return; }
     setStatus({ msg: 'Otimizando...', type: 'warn' });
     setTimeout(() => {
-      const result = optimizeV6(inv, usableW, usableH);
+      const result = optimizeV6(inv, usableW, usableH, minBreak);
       setTree(result);
       setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
       setActiveChapa(0);
       setSelectedId('root');
       setStatus({ msg: 'Plano de Corte Otimizado V6!', type: 'success' });
     }, 50);
-  }, [pieces, usableW, usableH]);
+  }, [pieces, usableW, usableH, minBreak]);
 
   const optimizeAllSheets = useCallback(() => {
     if (pieces.length === 0) {
@@ -194,7 +195,7 @@ const Index = () => {
       });
       if (inv.length === 0) break;
 
-      const result = optimizeV6(inv, usableW, usableH);
+      const result = optimizeV6(inv, usableW, usableH, minBreak);
       const usedArea = calcPlacedArea(result);
       chapaList.push({ tree: result, usedArea });
 
@@ -220,7 +221,7 @@ const Index = () => {
     }
     setActiveChapa(0);
     setStatus({ msg: `✅ ${sheetCount} chapa(s) gerada(s)!`, type: 'success' });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -313,6 +314,11 @@ const Index = () => {
               <input type="number" value={mt} onChange={e => setMt(+e.target.value)} className="cnc-input w-16" />
               <span>/</span>
               <input type="number" value={mb} onChange={e => setMb(+e.target.value)} className="cnc-input w-16" />
+            </div>
+            <div className="flex justify-between items-center mb-2 gap-1">
+              <span>Dist. Quebra:</span>
+              <input type="number" value={minBreak} onChange={e => setMinBreak(+e.target.value)} className="cnc-input w-16" />
+              <span className="text-[9px]" style={{ color: 'hsl(0 0% 50%)' }}>mm</span>
             </div>
             <div className="mt-2 text-[10px]" style={{ color: 'hsl(0 0% 50%)' }}>
               Área útil: {usableW} × {usableH} mm

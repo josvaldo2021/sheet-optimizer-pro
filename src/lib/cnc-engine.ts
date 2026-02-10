@@ -159,7 +159,8 @@ export function calcAllocation(
   valor: number,
   multi: number,
   usableW: number,
-  usableH: number
+  usableH: number,
+  minBreak: number = 0
 ): { allocated: number; error?: string } {
   const target = findNode(tree, selectedId);
   let free = 0;
@@ -192,7 +193,33 @@ export function calcAllocation(
   }
 
   const alloc = Math.min(multi, Math.floor(free / valor));
-  return alloc <= 0 ? { allocated: 0, error: 'Sem espaço' } : { allocated: alloc };
+  if (alloc <= 0) return { allocated: 0, error: 'Sem espaço' };
+
+  // Check minimum break distance constraint
+  if (minBreak > 0) {
+    let siblings: TreeNode[] = [];
+    if (tipo === 'Y') {
+      const xP = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X');
+      if (xP) siblings = xP.filhos;
+    } else if (tipo === 'Z') {
+      const yP = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y');
+      if (yP) siblings = yP.filhos;
+    } else if (tipo === 'W') {
+      const zP = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z');
+      if (zP) siblings = zP.filhos;
+    } else if (tipo === 'Q') {
+      const wP = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
+      if (wP) siblings = wP.filhos;
+    }
+    for (const sib of siblings) {
+      const diff = Math.abs(sib.valor - valor);
+      if (diff > 0 && diff < minBreak) {
+        return { allocated: 0, error: `Distância de quebra insuficiente: ${diff}mm < ${minBreak}mm` };
+      }
+    }
+  }
+
+  return { allocated: alloc };
 }
 
 export function calcPlacedArea(tree: TreeNode): number {
@@ -567,7 +594,7 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
 
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
-export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): TreeNode {
+export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, minBreak: number = 0): TreeNode {
   if (pieces.length === 0) return createRoot(usableW, usableH);
 
   const hasLabels = pieces.some(p => p.label);
@@ -609,7 +636,7 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
       const sorted = [...variant].sort(sortFn);
-      const result = runPlacement(sorted, usableW, usableH);
+      const result = runPlacement(sorted, usableW, usableH, minBreak);
       if (result.area > bestArea) {
         bestArea = result.area;
         bestTree = JSON.parse(JSON.stringify(result.tree));
@@ -626,7 +653,7 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number): T
  * Quando uma peça tem count > 1, significa que é resultado de agrupamento.
  * Neste caso, criamos múltiplos nós Z em vez de um único Z com largura somada.
  */
-function runPlacement(inventory: Piece[], usableW: number, usableH: number): { tree: TreeNode; area: number } {
+function runPlacement(inventory: Piece[], usableW: number, usableH: number, minBreak: number = 0): { tree: TreeNode; area: number } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
@@ -641,6 +668,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       const freeH = usableH - usedH;
 
       for (const o of oris(piece)) {
+        // Check min break distance for Y values in this column
+        if (minBreak > 0) {
+          const violates = colX.filhos.some(y => {
+            const diff = Math.abs(y.valor - o.h);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violates) continue;
+        }
         if (o.w <= colX.valor && o.h <= freeH) {
           const widthRatio = o.w / colX.valor;
           const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
@@ -752,6 +787,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
       let bestScore = Infinity;
 
       for (const o of oris(pc)) {
+        // Check min break distance for Z values in this Y strip
+        if (minBreak > 0) {
+          const violatesZ = yNode.filhos.some(z => {
+            const diff = Math.abs(z.valor - o.w);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violatesZ) continue;
+        }
         if (o.w <= freeZW && o.h <= bestFit.h) {
           const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
           if (score < bestScore) {
@@ -779,6 +822,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number): { t
             if (j === i) continue;
             const pw = remaining[j];
             for (const wo of oris(pw)) {
+              // Check min break distance for W values
+              if (minBreak > 0) {
+                const violatesW = zNode2.filhos.some(w => {
+                  const diff = Math.abs(w.valor - wo.h);
+                  return diff > 0 && diff < minBreak;
+                });
+                if (violatesW) continue;
+              }
               if (wo.w <= zNode2.valor && wo.h <= freeWH) {
                 const wId3 = insertNode(tree, zId, 'W', wo.h, 1);
                 const wNode3 = findNode(tree, wId3)!;
