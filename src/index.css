@@ -308,6 +308,10 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.sv-label-vertical {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
 .sv-waste {
   display: flex;
   align-items: center;

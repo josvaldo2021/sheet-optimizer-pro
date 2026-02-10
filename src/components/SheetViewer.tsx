@@ -78,9 +78,10 @@ export default function SheetViewer({
 
                 if (zNode.filhos.length === 0) {
                   colorIdx++;
+                  const isVertical = yNode.valor > zNode.valor;
                   wEls.push(
                     <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
-                      <span className="sv-piece-label">
+                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`}>
                         {zNode.label && <span className="sv-piece-id">{zNode.label}</span>}
                         {Math.round(zNode.valor)}×{Math.round(yNode.valor)}
                       </span>
@@ -99,7 +100,7 @@ export default function SheetViewer({
                             style={{ height: wNode.valor * scale, background: PIECE_BG, borderColor: PIECE_BORDER }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
-                            <span className="sv-piece-label">
+                          <span className={`sv-piece-label ${wNode.valor > zNode.valor ? 'sv-label-vertical' : ''}`}>
                               {wNode.label && <span className="sv-piece-id">{wNode.label}</span>}
                               {Math.round(zNode.valor)}×{Math.round(wNode.valor)}
                             </span>
@@ -126,7 +127,7 @@ export default function SheetViewer({
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
-                                <span className="sv-piece-label">
+                                <span className={`sv-piece-label ${wNode.valor > qNode.valor ? 'sv-label-vertical' : ''}`}>
                                   {qNode.label && <span className="sv-piece-id">{qNode.label}</span>}
                                   {Math.round(qNode.valor)}×{Math.round(wNode.valor)}
                                 </span>
