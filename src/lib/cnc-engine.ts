@@ -198,7 +198,9 @@ export function calcAllocation(
   // Check minimum break distance constraint
   if (minBreak > 0) {
     let siblings: TreeNode[] = [];
-    if (tipo === 'Y') {
+    if (tipo === 'X') {
+      siblings = tree.filhos;
+    } else if (tipo === 'Y') {
       const xP = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X');
       if (xP) siblings = xP.filhos;
     } else if (tipo === 'Z') {
@@ -713,6 +715,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
     if (freeW > 0) {
       for (const o of oris(piece)) {
+        // Check min break distance for X values
+        if (minBreak > 0) {
+          const violatesX = tree.filhos.some(x => {
+            const diff = Math.abs(x.valor - o.w);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violatesX) continue;
+        }
         if (o.w <= freeW && o.h <= usableH) {
           const score = ((freeW - o.w) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
