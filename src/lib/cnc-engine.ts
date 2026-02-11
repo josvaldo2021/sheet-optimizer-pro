@@ -468,6 +468,41 @@ function scoreFit(
   return score;
 }
 
+// ========== RESIDUAL DOMINANCE CHECK ==========
+
+/**
+ * Verifica se pelo menos uma peça restante cabe no espaço residual,
+ * considerando rotações permitidas e distância mínima de quebra.
+ * Retorna true se alguma peça cabe, false se a sobra é inútil.
+ */
+function canResidualFitAnyPiece(
+  residualW: number,
+  residualH: number,
+  remainingPieces: Piece[],
+  minBreak: number = 0,
+  existingSiblingValues: number[] = [],
+  axis: 'w' | 'h' = 'w'
+): boolean {
+  if (residualW <= 0 || residualH <= 0) return false;
+  for (const p of remainingPieces) {
+    for (const o of oris(p)) {
+      if (o.w <= residualW && o.h <= residualH) {
+        // Check minBreak against existing siblings
+        if (minBreak > 0 && existingSiblingValues.length > 0) {
+          const val = axis === 'w' ? o.w : o.h;
+          const violates = existingSiblingValues.some(sv => {
+            const diff = Math.abs(sv - val);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violates) continue;
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ========== VOID FILLING ==========
 
 function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number): number {
@@ -524,12 +559,18 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
     }
 
     if (bestO) {
-      const yId = insertNode(tree, colX.id, 'Y', bestO.h, 1);
+      // Residual dominance: extend Y height if residual can't fit anything
+      let effectiveH = bestO.h;
+      const residualH = maxH - bestO.h;
+      if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, 0)) {
+        effectiveH = maxH;
+      }
+      const yId = insertNode(tree, colX.id, 'Y', effectiveH, 1);
       const yNode = findNode(tree, yId)!;
       const zId = insertNode(tree, yNode.id, 'Z', bestO.w, 1);
-      insertNode(tree, zId, 'W', bestO.h, 1);
+      insertNode(tree, zId, 'W', effectiveH, 1);
       filled += bestO.w * bestO.h;
-      maxH -= bestO.h;
+      maxH -= effectiveH;
       remaining.splice(i, 1);
       i--;
     }
@@ -559,10 +600,16 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
     }
 
     if (bestO) {
-      const zId = insertNode(_tree, yNode.id, 'Z', bestO.w, 1);
+      // Residual dominance: extend Z width if residual can't fit anything
+      let effectiveW = bestO.w;
+      const residualW = maxW - bestO.w;
+      if (residualW > 0 && !canResidualFitAnyPiece(residualW, maxH, remaining, 0)) {
+        effectiveW = maxW;
+      }
+      const zId = insertNode(_tree, yNode.id, 'Z', effectiveW, 1);
       insertNode(_tree, zId, 'W', bestO.h, 1);
       filled += bestO.w * bestO.h;
-      maxW -= bestO.w;
+      maxW -= effectiveW;
       remaining.splice(i, 1);
       i--;
     }
@@ -580,10 +627,16 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
     const pc = remaining[i];
     for (const o of oris(pc)) {
       if (o.w <= zWidth && o.h <= maxH) {
-        const wNode: TreeNode = { id: gid(), tipo: 'W', valor: o.h, multi: 1, filhos: [] };
+        // Residual dominance: extend W height if residual can't fit anything
+        let effectiveH = o.h;
+        const residualH = maxH - o.h;
+        if (residualH > 0 && !canResidualFitAnyPiece(zWidth, residualH, remaining, 0)) {
+          effectiveH = maxH;
+        }
+        const wNode: TreeNode = { id: gid(), tipo: 'W', valor: effectiveH, multi: 1, filhos: [] };
         zNode.filhos.push(wNode);
         filled += o.w * o.h;
-        maxH -= o.h;
+        maxH -= effectiveH;
         remaining.splice(i, 1);
         i--;
         break;
@@ -679,6 +732,15 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           if (violates) continue;
         }
         if (o.w <= colX.valor && o.h <= freeH) {
+          // Residual dominance: if leftover height can't fit any piece, extend to full freeH
+          let effectiveH = o.h;
+          const residualH = freeH - o.h;
+          if (residualH > 0) {
+            const ySibValues = colX.filhos.map(y => y.valor);
+            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, 'h')) {
+              effectiveH = freeH;
+            }
+          }
           const widthRatio = o.w / colX.valor;
           const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
 
@@ -703,7 +765,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
           const score = baseScore + lookBonus;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'EXISTING', col: colX, w: o.w, h: o.h, score };
+            bestFit = { type: 'EXISTING', col: colX, w: o.w, h: effectiveH, score };
           }
         }
       }
@@ -724,9 +786,18 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           if (violatesX) continue;
         }
         if (o.w <= freeW && o.h <= usableH) {
-          const score = ((freeW - o.w) / usableW) * 0.5;
+          // Residual dominance: if leftover width can't fit any piece, extend to full freeW
+          let effectiveW = o.w;
+          const residualW = freeW - o.w;
+          if (residualW > 0) {
+            const xSibValues = tree.filhos.map(x => x.valor);
+            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
+              effectiveW = freeW;
+            }
+          }
+          const score = ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'NEW', w: o.w, h: o.h, score };
+            bestFit = { type: 'NEW', w: effectiveW, h: o.h, score };
           }
         }
       }
@@ -806,7 +877,16 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           if (violatesZ) continue;
         }
         if (o.w <= freeZW && o.h <= bestFit.h) {
-          const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
+          // Residual dominance for lateral Z: check if remaining freeZW after this piece is useful
+          let effectiveZW = o.w;
+          const residualZW = freeZW - o.w;
+          if (residualZW > 0) {
+            const zSibValues = yNode.filhos.map(z => z.valor);
+            if (!canResidualFitAnyPiece(residualZW, bestFit.h, remaining, minBreak, zSibValues, 'w')) {
+              effectiveZW = freeZW;
+            }
+          }
+          const score = (bestFit.h - o.h) * 2 + (freeZW - effectiveZW);
           if (score < bestScore) {
             bestScore = score;
             bestOri = o;
@@ -815,8 +895,18 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       }
 
       if (bestOri) {
+        // Residual dominance: extend Z to full freeZW if residual is unusable
+        let effectiveZWidth = bestOri.w;
+        const residualAfterZ = freeZW - bestOri.w;
+        if (residualAfterZ > 0) {
+          const zSibVals = yNode.filhos.map(z => z.valor);
+          if (!canResidualFitAnyPiece(residualAfterZ, bestFit.h, remaining, minBreak, zSibVals, 'w')) {
+            effectiveZWidth = freeZW;
+          }
+        }
+
         if (bestOri.h < bestFit.h) {
-          const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
+          const zId = insertNode(tree, yNode.id, 'Z', effectiveZWidth, 1);
           const zNode2 = findNode(tree, zId)!;
           if (pc.label) zNode2.label = pc.label;
 
@@ -841,12 +931,21 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
                 if (violatesW) continue;
               }
               if (wo.w <= zNode2.valor && wo.h <= freeWH) {
-                const wId3 = insertNode(tree, zId, 'W', wo.h, 1);
+                // Residual dominance for W filling
+                let effectiveWH = wo.h;
+                const residualWH = freeWH - wo.h;
+                if (residualWH > 0) {
+                  const wSibValues = zNode2.filhos.map(w => w.valor);
+                  if (!canResidualFitAnyPiece(zNode2.valor, residualWH, remaining, minBreak, wSibValues, 'h')) {
+                    effectiveWH = freeWH;
+                  }
+                }
+                const wId3 = insertNode(tree, zId, 'W', effectiveWH, 1);
                 const wNode3 = findNode(tree, wId3)!;
                 if (pw.label) wNode3.label = pw.label;
 
                 placedArea += zNode2.valor * wo.h;
-                freeWH -= wo.h;
+                freeWH -= effectiveWH;
                 remaining.splice(j, 1);
                 if (j < i) i--;
                 j--;
@@ -855,14 +954,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
             }
           }
         } else {
-          const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
+          const zId = insertNode(tree, yNode.id, 'Z', effectiveZWidth, 1);
           const zNode2 = findNode(tree, zId)!;
           if (pc.label) zNode2.label = pc.label;
 
           placedArea += bestOri.w * bestFit.h;
         }
 
-        freeZW -= bestOri.w;
+        freeZW -= effectiveZWidth;
         remaining.splice(i, 1);
         i--;
       }
