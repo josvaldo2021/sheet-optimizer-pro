@@ -550,13 +550,22 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
 
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Y siblings
+        // Check minBreak for Y siblings and Z values across all Y strips
         if (minBreak > 0) {
-          const violates = colX.filhos.some(y => {
+          const violatesY = colX.filhos.some(y => {
             const diff = Math.abs(y.valor - o.h);
             return diff > 0 && diff < minBreak;
           });
-          if (violates) continue;
+          if (violatesY) continue;
+          const allZVals: number[] = [];
+          for (const yStrip of colX.filhos) {
+            for (const z of yStrip.filhos) allZVals.push(z.valor);
+          }
+          const violatesZ = allZVals.some(zv => {
+            const diff = Math.abs(zv - o.w);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violatesZ) continue;
         }
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
         if (s < bestScore) {
@@ -599,10 +608,20 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
 
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Z siblings
+        // Check minBreak for Z values across all Y strips in parent column
         if (minBreak > 0) {
-          const violates = yNode.filhos.some(z => {
-            const diff = Math.abs(z.valor - o.w);
+          // Find parent X column to check all Z values
+          const parentX = _tree.filhos.find(x => x.filhos.some(y => y.id === yNode.id));
+          const allZVals: number[] = [];
+          if (parentX) {
+            for (const yStrip of parentX.filhos) {
+              for (const z of yStrip.filhos) allZVals.push(z.valor);
+            }
+          } else {
+            for (const z of yNode.filhos) allZVals.push(z.valor);
+          }
+          const violates = allZVals.some(zv => {
+            const diff = Math.abs(zv - o.w);
             return diff > 0 && diff < minBreak;
           });
           if (violates) continue;
@@ -752,11 +771,21 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       for (const o of oris(piece)) {
         // Check min break distance for Y values in this column
         if (minBreak > 0) {
-          const violates = colX.filhos.some(y => {
+          const violatesY = colX.filhos.some(y => {
             const diff = Math.abs(y.valor - o.h);
             return diff > 0 && diff < minBreak;
           });
-          if (violates) continue;
+          if (violatesY) continue;
+          // Check min break distance for Z values across ALL Y strips in this column
+          const allZVals: number[] = [];
+          for (const yStrip of colX.filhos) {
+            for (const z of yStrip.filhos) allZVals.push(z.valor);
+          }
+          const violatesZ = allZVals.some(zv => {
+            const diff = Math.abs(zv - o.w);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violatesZ) continue;
         }
         if (o.w <= colX.valor && o.h <= freeH) {
           // Residual dominance: if leftover height can't fit any piece, extend to full freeH
@@ -895,10 +924,16 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       let bestScore = Infinity;
 
       for (const o of oris(pc)) {
-        // Check min break distance for Z values in this Y strip
+        // Check min break distance for Z values across ALL Y strips in this column
         if (minBreak > 0) {
-          const violatesZ = yNode.filhos.some(z => {
-            const diff = Math.abs(z.valor - o.w);
+          const allZValues: number[] = [];
+          for (const yStrip of col.filhos) {
+            for (const z of yStrip.filhos) {
+              allZValues.push(z.valor);
+            }
+          }
+          const violatesZ = allZValues.some(zv => {
+            const diff = Math.abs(zv - o.w);
             return diff > 0 && diff < minBreak;
           });
           if (violatesZ) continue;
