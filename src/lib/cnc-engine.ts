@@ -505,7 +505,7 @@ function canResidualFitAnyPiece(
 
 // ========== VOID FILLING ==========
 
-function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number): number {
+function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number, minBreak: number = 0): number {
   let filledArea = 0;
 
   for (const colX of tree.filhos) {
@@ -513,7 +513,7 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
     const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
     const freeH = usableH - usedH;
     if (freeH > 0) {
-      filledArea += fillRect(tree, colX, remaining, colX.valor, freeH, 'Y');
+      filledArea += fillRect(tree, colX, remaining, colX.valor, freeH, 'Y', minBreak);
     }
 
     // Void in Z direction (remaining width in each Y strip)
@@ -521,7 +521,7 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
       const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
       const freeZ = colX.valor - usedZ;
       if (freeZ > 0) {
-        filledArea += fillRectZ(tree, yNode, remaining, freeZ, yNode.valor);
+        filledArea += fillRectZ(tree, yNode, remaining, freeZ, yNode.valor, minBreak);
       }
 
       // Void in W direction (remaining height inside each Z)
@@ -529,7 +529,7 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
         const usedW = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
         const freeW = yNode.valor - usedW;
         if (freeW > 0) {
-          filledArea += fillRectW(remaining, zNode, zNode.valor, freeW);
+          filledArea += fillRectW(remaining, zNode, zNode.valor, freeW, minBreak);
         }
       }
     }
@@ -538,7 +538,7 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
   return filledArea;
 }
 
-function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: number, maxH: number, _level: string): number {
+function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: number, maxH: number, _level: string, minBreak: number = 0): number {
   let filled = 0;
 
   for (let i = 0; i < remaining.length; i++) {
@@ -550,6 +550,14 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
 
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
+        // Check minBreak for Y siblings
+        if (minBreak > 0) {
+          const violates = colX.filhos.some(y => {
+            const diff = Math.abs(y.valor - o.h);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violates) continue;
+        }
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
         if (s < bestScore) {
           bestScore = s;
@@ -562,7 +570,7 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
       // Residual dominance: extend Y container if residual can't fit anything
       let consumed = bestO.h;
       const residualH = maxH - bestO.h;
-      if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, 0)) {
+      if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
         consumed = maxH;
       }
       const yId = insertNode(tree, colX.id, 'Y', consumed, 1);
@@ -579,7 +587,7 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
   return filled;
 }
 
-function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: number, maxH: number): number {
+function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: number, maxH: number, minBreak: number = 0): number {
   let filled = 0;
 
   for (let i = 0; i < remaining.length; i++) {
@@ -591,6 +599,14 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
 
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
+        // Check minBreak for Z siblings
+        if (minBreak > 0) {
+          const violates = yNode.filhos.some(z => {
+            const diff = Math.abs(z.valor - o.w);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violates) continue;
+        }
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
         if (s < bestScore) {
           bestScore = s;
@@ -603,7 +619,7 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
       // Residual dominance: skip unusable residual for loop optimization
       let consumed = bestO.w;
       const residualW = maxW - bestO.w;
-      if (residualW > 0 && !canResidualFitAnyPiece(residualW, maxH, remaining, 0)) {
+      if (residualW > 0 && !canResidualFitAnyPiece(residualW, maxH, remaining, minBreak)) {
         consumed = maxW;
       }
       const zId = insertNode(_tree, yNode.id, 'Z', bestO.w, 1);
@@ -618,7 +634,7 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
   return filled;
 }
 
-function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: number): number {
+function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: number, minBreak: number = 0): number {
   let filled = 0;
 
   for (let i = 0; i < remaining.length; i++) {
@@ -627,10 +643,18 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
     const pc = remaining[i];
     for (const o of oris(pc)) {
       if (o.w <= zWidth && o.h <= maxH) {
+        // Check minBreak for W siblings
+        if (minBreak > 0) {
+          const violates = zNode.filhos.some(w => {
+            const diff = Math.abs(w.valor - o.h);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violates) continue;
+        }
         // Residual dominance: skip unusable residual for loop optimization
         let consumed = o.h;
         const residualH = maxH - o.h;
-        if (residualH > 0 && !canResidualFitAnyPiece(zWidth, residualH, remaining, 0)) {
+        if (residualH > 0 && !canResidualFitAnyPiece(zWidth, residualH, remaining, minBreak)) {
           consumed = maxH;
         }
         const wNode: TreeNode = { id: gid(), tipo: 'W', valor: o.h, multi: 1, filhos: [] };
@@ -649,7 +673,7 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
 
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
-export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, minBreak: number = 0): TreeNode {
+export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, minBreak: number = 0, useGrouping?: boolean): TreeNode {
   if (pieces.length === 0) return createRoot(usableW, usableH);
 
   const hasLabels = pieces.some(p => p.label);
@@ -673,10 +697,13 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, mi
     (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
   ];
 
-  // Skip grouping variants when pieces have labels to preserve correct dimensions
+  // Skip grouping variants when pieces have labels or useGrouping is false
   const pieceVariants: Piece[][] = hasLabels ? [
     pieces,
     pieces.map(p => ({ ...p, w: p.h, h: p.w })),
+  ] : useGrouping === false ? [
+    pieces,
+    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
   ] : [
     pieces,
     pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
@@ -946,7 +973,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
   // Void filling
   if (remaining.length > 0) {
-    placedArea += fillVoids(tree, remaining, usableW, usableH);
+    placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
   }
 
   return { tree, area: placedArea };
