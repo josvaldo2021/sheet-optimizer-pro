@@ -66,12 +66,23 @@ const Index = () => {
     setStatus({ msg: 'Setup aplicado', type: 'success' });
   }, [usableW, usableH]);
 
+  // Helper to sync tree changes to chapas after manual edits
+  const updateTreeAndChapas = useCallback((newTree: TreeNode) => {
+    setTree(newTree);
+    setChapas(prev => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      updated[activeChapa] = { tree: newTree, usedArea: calcPlacedArea(newTree) };
+      return updated;
+    });
+  }, [activeChapa]);
+
   const processCommand = useCallback((text: string) => {
     if (text === 'U') {
       if (selectedId === 'root') return;
       const t = cloneTree(tree);
       deleteNode(t, selectedId);
-      setTree(t);
+      updateTreeAndChapas(t);
       setSelectedId('root');
       return;
     }
@@ -94,7 +105,7 @@ const Index = () => {
         const res2 = calcAllocation(t, yParent.id, 'Z', valor, multi, usableW, usableH, minBreak);
         if (res2.allocated > 0) {
           const nid = insertNode(t, yParent.id, 'Z', valor, res2.allocated);
-          setTree(t);
+          updateTreeAndChapas(t);
           setSelectedId(nid);
           setStatus({ msg: `Z${valor} criado!`, type: 'success' });
           return;
@@ -113,20 +124,20 @@ const Index = () => {
         const xParent = findParentOfType(t, nid, 'X');
         if (yNode && xParent) {
           const zId = insertNode(t, nid, 'Z', xParent.valor, 1);
-          setTree(t);
+          updateTreeAndChapas(t);
           setSelectedId(zId);
           setStatus({ msg: `Peça ${xParent.valor}×${valor} criada!`, type: 'success' });
           return;
         }
       }
 
-      setTree(t);
+      updateTreeAndChapas(t);
       setSelectedId(nid);
       setStatus({ msg: `${tipo}${valor} criado!`, type: 'success' });
     } else {
       setStatus({ msg: res.error || 'Sem espaço', type: 'error' });
     }
-  }, [tree, selectedId, usableW, usableH, minBreak]);
+  }, [tree, selectedId, usableW, usableH, minBreak, updateTreeAndChapas]);
 
   const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
     const used: Array<{ w: number; h: number; label?: string }> = [];
@@ -181,46 +192,68 @@ const Index = () => {
     }
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
 
-    const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
-    let remaining = [...pieces];
-    let sheetCount = 0;
+    const runAllSheets = (useGrouping?: boolean) => {
+      const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
+      const remaining = pieces.map(p => ({ ...p })); // deep copy to avoid mutating originals
+      let sheetCount = 0;
 
-    while (remaining.length > 0 && sheetCount < 100) {
-      sheetCount++;
-      const inv: { w: number; h: number; area: number; label?: string }[] = [];
-      remaining.forEach(p => {
-        for (let i = 0; i < p.qty; i++) {
-          if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
-        }
-      });
-      if (inv.length === 0) break;
-
-      const result = optimizeV6(inv, usableW, usableH, minBreak);
-      const usedArea = calcPlacedArea(result);
-      chapaList.push({ tree: result, usedArea });
-
-      const usedPieces = extractUsedPiecesWithContext(result);
-      const tempRemaining = [...remaining];
-      usedPieces.forEach(used => {
-        for (let i = 0; i < tempRemaining.length; i++) {
-          const p = tempRemaining[i];
-          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
-            p.qty--;
-            if (p.qty <= 0) tempRemaining.splice(i, 1);
-            break;
+      while (remaining.length > 0 && sheetCount < 100) {
+        sheetCount++;
+        const inv: { w: number; h: number; area: number; label?: string }[] = [];
+        remaining.forEach(p => {
+          for (let i = 0; i < p.qty; i++) {
+            if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
           }
-        }
-      });
-      remaining = tempRemaining;
-    }
+        });
+        if (inv.length === 0) break;
 
-    setChapas(chapaList);
-    if (chapaList.length > 0) {
-      setTree(chapaList[0].tree);
-      setSelectedId('root');
-    }
-    setActiveChapa(0);
-    setStatus({ msg: `✅ ${sheetCount} chapa(s) gerada(s)!`, type: 'success' });
+        const result = optimizeV6(inv, usableW, usableH, minBreak, useGrouping);
+        const usedArea = calcPlacedArea(result);
+        chapaList.push({ tree: result, usedArea });
+
+        const usedPieces = extractUsedPiecesWithContext(result);
+        usedPieces.forEach(used => {
+          for (let i = 0; i < remaining.length; i++) {
+            const p = remaining[i];
+            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+              p.qty--;
+              if (p.qty <= 0) remaining.splice(i, 1);
+              break;
+            }
+          }
+        });
+      }
+
+      return chapaList;
+    };
+
+    setTimeout(() => {
+      // Compare with grouping, without grouping, and mixed
+      const candidates = [
+        runAllSheets(false),
+        runAllSheets(true),
+        runAllSheets(undefined),
+      ].filter(r => r.length > 0);
+
+      const sheetArea = usableW * usableH;
+      candidates.sort((a, b) => {
+        // Fewer sheets first
+        if (a.length !== b.length) return a.length - b.length;
+        // Higher average utilization first
+        const avgA = a.reduce((s, c) => s + c.usedArea / sheetArea, 0) / a.length;
+        const avgB = b.reduce((s, c) => s + c.usedArea / sheetArea, 0) / b.length;
+        return avgB - avgA;
+      });
+
+      const best = candidates[0] || [];
+      setChapas(best);
+      if (best.length > 0) {
+        setTree(best[0].tree);
+        setSelectedId('root');
+      }
+      setActiveChapa(0);
+      setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
+    }, 50);
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
