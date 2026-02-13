@@ -503,6 +503,56 @@ function canResidualFitAnyPiece(
   return false;
 }
 
+// ========== CUT POSITION HELPERS ==========
+
+/**
+ * Retorna as posições acumuladas de corte Z dentro de uma fita Y.
+ * Ex: Z valores [1465, 518, 518] → posições [1465, 1983, 2501]
+ */
+function getZCutPositions(yStrip: TreeNode): number[] {
+  const positions: number[] = [];
+  let acc = 0;
+  for (const z of yStrip.filhos) {
+    acc += z.valor * z.multi;
+    positions.push(acc);
+  }
+  return positions;
+}
+
+/**
+ * Retorna todas as posições de corte Z de todas as fitas Y de uma coluna X.
+ * Cada fita retorna seu próprio array de posições acumuladas.
+ */
+function getAllZCutPositionsInColumn(colX: TreeNode): number[][] {
+  return colX.filhos.map(y => getZCutPositions(y));
+}
+
+/**
+ * Verifica se uma nova posição de corte Z viola a distância mínima de quebra
+ * contra posições existentes em OUTRAS fitas Y da mesma coluna.
+ * @param newCutPositions - posições de corte que seriam criadas pela nova peça
+ * @param allPositions - posições existentes por fita Y
+ * @param excludeYIndex - índice da fita Y atual (para não comparar consigo mesma)
+ * @param minBreak - distância mínima de quebra
+ */
+function violatesZMinBreak(
+  newCutPositions: number[],
+  allPositions: number[][],
+  minBreak: number,
+  excludeYIndex: number = -1
+): boolean {
+  for (let i = 0; i < allPositions.length; i++) {
+    if (i === excludeYIndex) continue;
+    for (const existPos of allPositions[i]) {
+      for (const newPos of newCutPositions) {
+        const diff = Math.abs(existPos - newPos);
+        if (diff > 0 && diff < minBreak) return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ========== VOID FILLING ==========
 
 function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number, minBreak: number = 0): number {
@@ -550,22 +600,12 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
 
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Y siblings and Z values across all Y strips
+        // Check minBreak for Y height and Z cut positions across all Y strips
         if (minBreak > 0) {
-          const violatesY = colX.filhos.some(y => {
-            const diff = Math.abs(y.valor - o.h);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violatesY) continue;
-          const allZVals: number[] = [];
-          for (const yStrip of colX.filhos) {
-            for (const z of yStrip.filhos) allZVals.push(z.valor);
-          }
-          const violatesZ = allZVals.some(zv => {
-            const diff = Math.abs(zv - o.w);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violatesZ) continue;
+          if (o.h < minBreak) continue;
+          // Check Z cut positions: new piece creates a cut at position o.w
+          const allZPositions = getAllZCutPositionsInColumn(colX);
+          if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
         }
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
         if (s < bestScore) {
@@ -608,23 +648,17 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
 
     for (const o of oris(pc)) {
       if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Z values across all Y strips in parent column
+        // Check minBreak for Z cut positions across all Y strips in parent column
         if (minBreak > 0) {
-          // Find parent X column to check all Z values
           const parentX = _tree.filhos.find(x => x.filhos.some(y => y.id === yNode.id));
-          const allZVals: number[] = [];
           if (parentX) {
-            for (const yStrip of parentX.filhos) {
-              for (const z of yStrip.filhos) allZVals.push(z.valor);
-            }
-          } else {
-            for (const z of yNode.filhos) allZVals.push(z.valor);
+            const yIndex = parentX.filhos.indexOf(yNode);
+            const allZPositions = getAllZCutPositionsInColumn(parentX);
+            // Current offset in this Y strip
+            const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+            const newCutPos = currentOffset + o.w;
+            if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
           }
-          const violates = allZVals.some(zv => {
-            const diff = Math.abs(zv - o.w);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violates) continue;
         }
         const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
         if (s < bestScore) {
@@ -771,21 +805,11 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       for (const o of oris(piece)) {
         // Check min break distance for Y values in this column
         if (minBreak > 0) {
-          const violatesY = colX.filhos.some(y => {
-            const diff = Math.abs(y.valor - o.h);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violatesY) continue;
-          // Check min break distance for Z values across ALL Y strips in this column
-          const allZVals: number[] = [];
-          for (const yStrip of colX.filhos) {
-            for (const z of yStrip.filhos) allZVals.push(z.valor);
-          }
-          const violatesZ = allZVals.some(zv => {
-            const diff = Math.abs(zv - o.w);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violatesZ) continue;
+          if (o.h < minBreak) continue;
+          // Check Z cut positions across ALL Y strips in this column
+          const allZPositions = getAllZCutPositionsInColumn(colX);
+          // New piece creates cut at position o.w (starts at offset 0 in new Y strip)
+          if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
         }
         if (o.w <= colX.valor && o.h <= freeH) {
           // Residual dominance: if leftover height can't fit any piece, extend to full freeH
@@ -924,19 +948,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       let bestScore = Infinity;
 
       for (const o of oris(pc)) {
-        // Check min break distance for Z values across ALL Y strips in this column
+        // Check min break distance for Z cut positions across ALL Y strips in this column
         if (minBreak > 0) {
-          const allZValues: number[] = [];
-          for (const yStrip of col.filhos) {
-            for (const z of yStrip.filhos) {
-              allZValues.push(z.valor);
-            }
-          }
-          const violatesZ = allZValues.some(zv => {
-            const diff = Math.abs(zv - o.w);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violatesZ) continue;
+          const allZPositions = getAllZCutPositionsInColumn(col);
+          const yIndex = col.filhos.indexOf(yNode);
+          // Current offset = pieces already placed in this Y strip
+          const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+          const newCutPos = currentOffset + o.w;
+          if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
         }
         if (o.w <= freeZW && o.h <= bestFit.h) {
           const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
