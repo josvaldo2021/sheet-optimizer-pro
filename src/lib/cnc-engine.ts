@@ -851,48 +851,33 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       }
     }
 
-    // 2. Try new column - ALWAYS use the largest remaining piece for new columns
+    // 2. Try new column
     const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
 
     if (freeW > 0) {
-      // Find the largest piece by area among all remaining pieces
-      let largestIdx = 0;
-      for (let ri = 1; ri < remaining.length; ri++) {
-        if (remaining[ri].area > remaining[largestIdx].area) largestIdx = ri;
-      }
-      const largestPiece = remaining[largestIdx];
-
-      // Try the largest piece for the new column (prioritize it)
-      const candidatesForNewCol = largestIdx === 0 ? [piece] : [largestPiece, piece];
-      
-      for (const candidate of candidatesForNewCol) {
-        for (const o of oris(candidate)) {
-          // Check min break distance for X values
-          if (minBreak > 0) {
-            const violatesX = tree.filhos.some(x => {
-              const diff = Math.abs(x.valor - o.w);
-              return diff > 0 && diff < minBreak;
-            });
-            if (violatesX) continue;
+      for (const o of oris(piece)) {
+        // Check min break distance for X values
+        if (minBreak > 0) {
+          const violatesX = tree.filhos.some(x => {
+            const diff = Math.abs(x.valor - o.w);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violatesX) continue;
+        }
+        if (o.w <= freeW && o.h <= usableH) {
+          // Residual dominance: if leftover width can't fit any piece, extend to full freeW
+          let effectiveW = o.w;
+          const residualW = freeW - o.w;
+          if (residualW > 0) {
+            const xSibValues = tree.filhos.map(x => x.valor);
+            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
+              effectiveW = freeW;
+            }
           }
-          if (o.w <= freeW && o.h <= usableH) {
-            // Residual dominance: if leftover width can't fit any piece, extend to full freeW
-            let effectiveW = o.w;
-            const residualW = freeW - o.w;
-            if (residualW > 0) {
-              const xSibValues = tree.filhos.map(x => x.valor);
-              if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
-                effectiveW = freeW;
-              }
-            }
-            // Give strong priority to larger pieces for new columns
-            const sizeBonus = candidate === largestPiece ? -2.0 : 0;
-            const score = ((freeW - effectiveW) / usableW) * 0.5 + sizeBonus;
-            const candidateIdx = remaining.indexOf(candidate);
-            if (!bestFit || score < bestFit.score) {
-              bestFit = { type: 'NEW', w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, newColPieceIdx: candidateIdx } as any;
-            }
+          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          if (!bestFit || score < bestFit.score) {
+            bestFit = { type: 'NEW', w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score };
           }
         }
       }
@@ -902,12 +887,6 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       remaining.shift();
       continue;
     }
-
-    // Determine which piece was actually selected (may differ for NEW columns)
-    const selectedPieceIdx = bestFit.type === 'NEW' && (bestFit as any).newColPieceIdx != null
-      ? (bestFit as any).newColPieceIdx
-      : 0;
-    const selectedPiece = remaining[selectedPieceIdx];
 
     let col: TreeNode;
     if (bestFit.type === 'NEW') {
@@ -921,27 +900,27 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
     const yNode = findNode(tree, yId)!;
 
     // *** MELHORIA: Detecta peças agrupadas ***
-    const isGrouped = selectedPiece.count && selectedPiece.count > 1;
+    const isGrouped = piece.count && piece.count > 1;
 
     if (isGrouped) {
       // Calcula largura individual de cada peça no grupo
-      const individualWidth = Math.round(bestFit.pieceW / selectedPiece.count!);
+      const individualWidth = Math.round(bestFit.pieceW / piece.count!);
       
       // Cria múltiplos nós Z, um para cada peça original
-      for (let i = 0; i < selectedPiece.count!; i++) {
+      for (let i = 0; i < piece.count!; i++) {
         const zId = insertNode(tree, yNode.id, 'Z', individualWidth, 1);
         const zNode = findNode(tree, zId)!;
         
         // Preserva label individual se disponível
-        if (selectedPiece.labels && selectedPiece.labels[i]) {
-          zNode.label = selectedPiece.labels[i];
+        if (piece.labels && piece.labels[i]) {
+          zNode.label = piece.labels[i];
         }
         
         const wId = insertNode(tree, zId, 'W', bestFit.pieceH, 1);
         const wNode = findNode(tree, wId)!;
         
-        if (selectedPiece.labels && selectedPiece.labels[i]) {
-          wNode.label = selectedPiece.labels[i];
+        if (piece.labels && piece.labels[i]) {
+          wNode.label = piece.labels[i];
         }
       }
       
@@ -950,16 +929,16 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       // Peça individual (comportamento original)
       const zId = insertNode(tree, yNode.id, 'Z', bestFit.pieceW, 1);
       const zNode = findNode(tree, zId)!;
-      if (selectedPiece.label) zNode.label = selectedPiece.label;
+      if (piece.label) zNode.label = piece.label;
 
       const wId = insertNode(tree, zId, 'W', bestFit.pieceH, 1);
       const wNode = findNode(tree, wId)!;
-      if (selectedPiece.label) wNode.label = selectedPiece.label;
+      if (piece.label) wNode.label = piece.label;
 
       placedArea += bestFit.pieceW * bestFit.pieceH;
     }
 
-    remaining.splice(selectedPieceIdx, 1);
+    remaining.shift();
 
     // Lateral Z filling (flexible height)
     let freeZW = col.valor - bestFit.pieceW;
