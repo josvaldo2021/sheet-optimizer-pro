@@ -940,19 +940,61 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
     remaining.shift();
 
-    // Lateral Z filling (flexible height)
+    // Lateral Z filling - TWO PASSES:
+    // Pass 1: same-height pieces first (consolidates waste above the Y strip)
+    // Pass 2: shorter pieces with W subdivision
     let freeZW = col.valor - bestFit.pieceW;
+
+    // Pass 1: exact height matches (these create clean Z nodes with no W waste)
     for (let i = 0; i < remaining.length && freeZW > 0; i++) {
       const pc = remaining[i];
       let bestOri: { w: number; h: number } | null = null;
       let bestScore = Infinity;
 
       for (const o of oris(pc)) {
-        // Check min break distance for Z cut positions across ALL Y strips in this column
+        if (o.h !== bestFit.pieceH) continue; // Only exact height matches
         if (minBreak > 0) {
           const allZPositions = getAllZCutPositionsInColumn(col);
           const yIndex = col.filhos.indexOf(yNode);
-          // Current offset = pieces already placed in this Y strip
+          const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+          const newCutPos = currentOffset + o.w;
+          if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+        }
+        if (o.w <= freeZW) {
+          const score = freeZW - o.w; // prefer pieces that fill the width best
+          if (score < bestScore) {
+            bestScore = score;
+            bestOri = o;
+          }
+        }
+      }
+
+      if (bestOri) {
+        const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
+        const zNode2 = findNode(tree, zId)!;
+        if (pc.label) zNode2.label = pc.label;
+
+        const wId2 = insertNode(tree, zId, 'W', bestOri.h, 1);
+        const wNode2 = findNode(tree, wId2)!;
+        if (pc.label) wNode2.label = pc.label;
+
+        placedArea += bestOri.w * bestOri.h;
+        freeZW -= bestOri.w;
+        remaining.splice(i, 1);
+        i--;
+      }
+    }
+
+    // Pass 2: shorter pieces (with W subdivision for remaining width)
+    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+      const pc = remaining[i];
+      let bestOri: { w: number; h: number } | null = null;
+      let bestScore = Infinity;
+
+      for (const o of oris(pc)) {
+        if (minBreak > 0) {
+          const allZPositions = getAllZCutPositionsInColumn(col);
+          const yIndex = col.filhos.indexOf(yNode);
           const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
           const newCutPos = currentOffset + o.w;
           if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
@@ -984,7 +1026,6 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
             if (j === i) continue;
             const pw = remaining[j];
             for (const wo of oris(pw)) {
-              // Check min break distance for W values
               if (minBreak > 0) {
                 const violatesW = zNode2.filhos.some(w => {
                   const diff = Math.abs(w.valor - wo.h);
