@@ -1064,6 +1064,93 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         i--;
       }
     }
+
+    // --- Vertical continuation: repeat Y strips with same height in same column ---
+    // After lateral filling, check if we can create more Y strips with the same piece pattern
+    {
+      const usedHAfter = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      let freeHRemain = usableH - usedHAfter;
+      
+      while (freeHRemain >= bestFit.pieceH && remaining.length > 0) {
+        // Find pieces that match the original piece dimensions (same w and h)
+        const candidates: number[] = [];
+        for (let i = 0; i < remaining.length; i++) {
+          const pc = remaining[i];
+          const matchesOriginal = oris(pc).some(o => 
+            o.w === bestFit.pieceW && o.h === bestFit.pieceH
+          );
+          if (matchesOriginal) candidates.push(i);
+        }
+        
+        if (candidates.length === 0) break;
+        
+        // Check minBreak for new Y strip
+        if (minBreak > 0) {
+          const ySibValues = col.filhos.map(y => y.valor);
+          const violatesY = ySibValues.some(yv => {
+            const diff = Math.abs(yv - bestFit.pieceH);
+            return diff > 0 && diff < minBreak;
+          });
+          if (violatesY) break;
+          
+          // Check Z positions
+          const allZPositions = getAllZCutPositionsInColumn(col);
+          if (violatesZMinBreak([bestFit.pieceW], allZPositions, minBreak, col.filhos.length)) break;
+        }
+        
+        // Create new Y strip
+        const newYId = insertNode(tree, col.id, 'Y', bestFit.pieceH, 1);
+        const newYNode = findNode(tree, newYId)!;
+        
+        // Place first piece
+        const firstIdx = candidates[0];
+        const firstPc = remaining[firstIdx];
+        const zId = insertNode(tree, newYNode.id, 'Z', bestFit.pieceW, 1);
+        const zNode = findNode(tree, zId)!;
+        if (firstPc.label) zNode.label = firstPc.label;
+        const wId = insertNode(tree, zId, 'W', bestFit.pieceH, 1);
+        const wNode = findNode(tree, wId)!;
+        if (firstPc.label) wNode.label = firstPc.label;
+        placedArea += bestFit.pieceW * bestFit.pieceH;
+        remaining.splice(firstIdx, 1);
+        
+        // Lateral fill with same-height pieces (like Pass 1)
+        let newFreeZW = col.valor - bestFit.pieceW;
+        for (let i = 0; i < remaining.length && newFreeZW > 0; i++) {
+          const pc = remaining[i];
+          let matchOri: { w: number; h: number } | null = null;
+          
+          for (const o of oris(pc)) {
+            if (o.h !== bestFit.pieceH) continue;
+            if (o.w > newFreeZW) continue;
+            if (minBreak > 0) {
+              const allZPos = getAllZCutPositionsInColumn(col);
+              const yIdx = col.filhos.indexOf(newYNode);
+              const curOff = newYNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+              if (violatesZMinBreak([curOff + o.w], allZPos, minBreak, yIdx)) continue;
+            }
+            if (!matchOri || (newFreeZW - o.w) < (newFreeZW - matchOri.w)) {
+              matchOri = o;
+            }
+          }
+          
+          if (matchOri) {
+            const zId2 = insertNode(tree, newYNode.id, 'Z', matchOri.w, 1);
+            const zNode2 = findNode(tree, zId2)!;
+            if (pc.label) zNode2.label = pc.label;
+            const wId2 = insertNode(tree, zId2, 'W', matchOri.h, 1);
+            const wNode2 = findNode(tree, wId2)!;
+            if (pc.label) wNode2.label = pc.label;
+            placedArea += matchOri.w * matchOri.h;
+            newFreeZW -= matchOri.w;
+            remaining.splice(i, 1);
+            i--;
+          }
+        }
+        
+        freeHRemain -= bestFit.pieceH;
+      }
+    }
   }
 
   // Void filling
