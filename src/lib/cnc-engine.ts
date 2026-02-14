@@ -1102,7 +1102,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         const newYId = insertNode(tree, col.id, 'Y', bestFit.pieceH, 1);
         const newYNode = findNode(tree, newYId)!;
         
-        // Place first piece
+        // Place first piece and stack vertically (W multi)
         const firstIdx = candidates[0];
         const firstPc = remaining[firstIdx];
         const zId = insertNode(tree, newYNode.id, 'Z', bestFit.pieceW, 1);
@@ -1113,6 +1113,35 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         if (firstPc.label) wNode.label = firstPc.label;
         placedArea += bestFit.pieceW * bestFit.pieceH;
         remaining.splice(firstIdx, 1);
+        
+        // Stack more identical pieces vertically in same Z node
+        const maxWStack = Math.floor(newYNode.valor / bestFit.pieceH);
+        let wCount = 1;
+        while (wCount < maxWStack && remaining.length > 0) {
+          // Find another matching piece
+          let nextIdx = -1;
+          for (let i = 0; i < remaining.length; i++) {
+            const pc = remaining[i];
+            if (oris(pc).some(o => o.w === bestFit.pieceW && o.h === bestFit.pieceH)) {
+              nextIdx = i;
+              break;
+            }
+          }
+          if (nextIdx === -1) break;
+          
+          const nextPc = remaining[nextIdx];
+          // Use multi on W node if same label, otherwise add new W node
+          if (wNode.label === (nextPc.label || '')) {
+            wNode.multi++;
+          } else {
+            const wId2 = insertNode(tree, zId, 'W', bestFit.pieceH, 1);
+            const wNode2 = findNode(tree, wId2)!;
+            if (nextPc.label) wNode2.label = nextPc.label;
+          }
+          placedArea += bestFit.pieceW * bestFit.pieceH;
+          remaining.splice(nextIdx, 1);
+          wCount++;
+        }
         
         // Lateral fill with same-height pieces (like Pass 1)
         let newFreeZW = col.valor - bestFit.pieceW;
