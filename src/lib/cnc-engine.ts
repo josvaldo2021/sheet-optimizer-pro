@@ -955,7 +955,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           let bestWScore = Infinity;
 
           for (const o of oris(pc)) {
-            if (o.w > firstZNode.valor) continue; // must fit within Z width
+            if (o.w !== firstZNode.valor) continue; // must match Z width exactly to display correct dimensions
             if (currentStackH + o.h > maxExpandH) continue; // must fit vertically
             // Check min break for W
             if (minBreak > 0) {
