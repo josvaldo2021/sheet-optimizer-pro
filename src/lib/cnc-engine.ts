@@ -940,6 +940,66 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
     remaining.shift();
 
+    // --- W-stacking on the FIRST Z node ---
+    // Try to stack more pieces vertically in the primary Z node, expanding Y strip height
+    {
+      const firstZNode = yNode.filhos[0];
+      if (firstZNode) {
+        const usedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        const maxExpandH = usableH - usedH + yNode.valor; // total height available for this Y strip
+        let currentStackH = firstZNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+
+        for (let i = 0; i < remaining.length && currentStackH < maxExpandH; i++) {
+          const pc = remaining[i];
+          let bestWOri: { w: number; h: number } | null = null;
+          let bestWScore = Infinity;
+
+          for (const o of oris(pc)) {
+            if (o.w > firstZNode.valor) continue; // must fit within Z width
+            if (currentStackH + o.h > maxExpandH) continue; // must fit vertically
+            // Check min break for W
+            if (minBreak > 0) {
+              const violatesW = firstZNode.filhos.some(w => {
+                const diff = Math.abs(w.valor - o.h);
+                return diff > 0 && diff < minBreak;
+              });
+              if (violatesW) continue;
+              // Also check new Y height against Y siblings
+              const newYH = Math.max(yNode.valor, currentStackH + o.h);
+              const violatesY = col.filhos.some(y => {
+                if (y.id === yNode.id) return false;
+                const diff = Math.abs(y.valor - newYH);
+                return diff > 0 && diff < minBreak;
+              });
+              if (violatesY) continue;
+            }
+            const score = (firstZNode.valor - o.w) + (maxExpandH - currentStackH - o.h) * 0.5;
+            if (score < bestWScore) {
+              bestWScore = score;
+              bestWOri = o;
+            }
+          }
+
+          if (bestWOri) {
+            const wId3 = insertNode(tree, firstZNode.id, 'W', bestWOri.h, 1);
+            const wNode3 = findNode(tree, wId3)!;
+            if (pc.label) wNode3.label = pc.label;
+
+            placedArea += firstZNode.valor * bestWOri.h;
+            currentStackH += bestWOri.h;
+
+            // Expand Y strip height if needed
+            if (currentStackH > yNode.valor) {
+              yNode.valor = currentStackH;
+            }
+
+            remaining.splice(i, 1);
+            i--;
+          }
+        }
+      }
+    }
+
     // Lateral Z filling - TWO PASSES:
     // Pass 1: same-height pieces first (consolidates waste above the Y strip)
     // Pass 2: shorter pieces with W subdivision
