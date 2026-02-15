@@ -727,32 +727,12 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, minBreak: number = 0, useGrouping?: boolean): TreeNode {
-  console.log("🚨 V6 ESTA SENDO USADO 🚨");
-
   if (pieces.length === 0) return createRoot(usableW, usableH);
 
   const hasLabels = pieces.some(p => p.label);
 
-  const strategies: ((a: Piece, b: Piece) => number)[] = [
-    (a, b) => b.area - a.area || Math.max(b.w, b.h) - Math.max(a.w, a.h),
-    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.area - a.area,
-    (a, b) => b.h - a.h || b.w - a.w,
-    (a, b) => b.w - a.w || b.h - a.h,
-    (a, b) => (b.w + b.h) - (a.w + a.h),
-    (a, b) => (b.w / b.h) - (a.w / a.h),
-    (a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h),
-    (a, b) => {
-      const ra = Math.max(a.w, a.h) / Math.min(a.w, a.h);
-      const rb = Math.max(b.w, b.h) / Math.min(b.w, b.h);
-      return rb - ra;
-    },
-    (a, b) => b.area - a.area || b.w - a.w,
-    (a, b) => b.area - a.area || b.h - a.h,
-    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
-    (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
-  ];
+  const strategies = getSortStrategies();
 
-  // Skip grouping variants when pieces have labels or useGrouping is false
   const pieceVariants: Piece[][] = hasLabels ? [
     pieces,
     pieces.map(p => ({ ...p, w: p.h, h: p.w })),
@@ -784,140 +764,108 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, mi
   return bestTree || createRoot(usableW, usableH);
 }
 
-export function optimizeDeterministic(
-  pieces: Piece[],
-  usableW: number,
-  usableH: number,
-  minBreak: number = 0,
-  useGrouping: boolean = false
-): TreeNode {
+// ========== SHARED SORT STRATEGIES ==========
 
-  let working = [...pieces];
-  /*
-  if (useGrouping) {
-    working = groupPiecesByHeight(working);
-  }
-  */
-  const result = runPlacement(
-    working,
-    usableW,
-    usableH,
-    minBreak
-  );
-
-  return result.tree;
+function getSortStrategies(): ((a: Piece, b: Piece) => number)[] {
+  return [
+    (a, b) => b.area - a.area || Math.max(b.w, b.h) - Math.max(a.w, a.h),
+    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.area - a.area,
+    (a, b) => b.h - a.h || b.w - a.w,
+    (a, b) => b.w - a.w || b.h - a.h,
+    (a, b) => (b.w + b.h) - (a.w + a.h),
+    (a, b) => (b.w / b.h) - (a.w / a.h),
+    (a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h),
+    (a, b) => {
+      const ra = Math.max(a.w, a.h) / Math.min(a.w, a.h);
+      const rb = Math.max(b.w, b.h) / Math.min(b.w, b.h);
+      return rb - ra;
+    },
+    (a, b) => b.area - a.area || b.w - a.w,
+    (a, b) => b.area - a.area || b.h - a.h,
+    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
+    (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
+  ];
 }
 
+// ========== PROGRESS CALLBACK TYPE ==========
+
+export interface OptimizationProgress {
+  phase: string;
+  current: number;
+  total: number;
+  bestSheets?: number;
+  bestUtil?: number;
+}
+
+// ========== GENETIC ALGORITHM V2 (FIXED) ==========
 
 interface GAIndividual {
   sortIndex: number;
-  groupingMode: 0 | 1;
+  groupingMode: 0 | 1 | 2; // 0=none, 1=byHeight, 2=byWidth
   rotateAll: boolean;
   shuffleIntensity: number;
 }
 
-
-export function optimizeGeneticV1(
+export async function optimizeGeneticAsync(
   pieces: Piece[],
   usableW: number,
   usableH: number,
-  minBreak: number = 0
-): TreeNode {
+  minBreak: number = 0,
+  onProgress?: (p: OptimizationProgress) => void
+): Promise<TreeNode> {
+  const populationSize = 40;
+  const generations = 50;
+  const eliteCount = 4;
+  const mutationRate = 0.2;
 
-  const populationSize = 30;
-  const generations = 30;
-  const eliteCount = 2;
-  const mutationRate = 0.15;
-
-  const strategies = [
-    (a: Piece, b: Piece) => b.area - a.area,
-    (a: Piece, b: Piece) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
-    (a: Piece, b: Piece) => b.h - a.h,
-    (a: Piece, b: Piece) => b.w - a.w,
-    (a: Piece, b: Piece) => (b.w + b.h) - (a.w + a.h),
-  ];
+  const strategies = getSortStrategies();
+  const numStrategies = strategies.length;
 
   function randomIndividual(): GAIndividual {
     return {
-      sortIndex: Math.floor(Math.random() * strategies.length),
-      groupingMode: Math.random() > 0.5 ? 1 : 0,
+      sortIndex: Math.floor(Math.random() * numStrategies),
+      groupingMode: ([0, 1, 2] as const)[Math.floor(Math.random() * 3)],
       rotateAll: Math.random() > 0.5,
-      shuffleIntensity: Math.random()
+      shuffleIntensity: Math.random(),
     };
   }
 
-  function shufflePieces(pieces: Piece[]): Piece[] {
-  const clone = [...pieces];
+  function buildPieces(ind: GAIndividual): Piece[] {
+    let work = pieces.map(p => ({ ...p }));
 
-  for (let i = clone.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [clone[i], clone[j]] = [clone[j], clone[i]];
-  }
-
-  return clone;
-}
-
-
-  function runIndividual(ind: GAIndividual): { tree: TreeNode; fitness: number } {
-
-    let testPieces = pieces.map(p => ({ ...p }));
-
-    // Rotação global
+    // Global rotation
     if (ind.rotateAll) {
-      testPieces = testPieces.map(p => ({
-        ...p,
-        w: p.h,
-        h: p.w,
-        area: p.area
-      }));
+      work = work.map(p => ({ ...p, w: p.h, h: p.w }));
     }
 
-    // Pequeno shuffle controlado
-    testPieces = perturbOrder(testPieces, ind.shuffleIntensity);
+    // Grouping
+    if (ind.groupingMode === 1) {
+      work = groupPiecesByHeight(work);
+    } else if (ind.groupingMode === 2) {
+      work = groupPiecesByWidth(work);
+    }
 
-    // Ordenação
-    testPieces.sort(strategies[ind.sortIndex]);
-    /*
-    const tree = optimizeV6(
-      testPieces,
-      usableW,
-      usableH,
-      minBreak,
-      ind.groupingMode === 1
-    );
-    */
-const shuffled = shufflePieces(pieces);
+    // Perturbation
+    work = perturbOrder(work, ind.shuffleIntensity);
 
-console.log("ANTES DO PLACEMENT:", 
-  shuffled[0], 
-  shuffled[1], 
-  shuffled[2]
-);
+    // Sort
+    work.sort(strategies[ind.sortIndex]);
 
-console.log("🔥 GA ESTA RODANDO 🔥");
+    return work;
+  }
 
-
-const tree = optimizeDeterministic(
-  shuffled,
-  usableW,
-  usableH,
-  minBreak,
-  ind.groupingMode === 1
-);
-
-
-
-    const fitness = calcPlacedArea(tree);
-
-    return { tree, fitness };
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number } {
+    const testPieces = buildPieces(ind);
+    const result = runPlacement(testPieces, usableW, usableH, minBreak);
+    return { tree: result.tree, fitness: result.area };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
     const k = 3;
     let best = pop[Math.floor(Math.random() * pop.length)];
     for (let i = 1; i < k; i++) {
-      const contender = pop[Math.floor(Math.random() * pop.length)];
-      if (contender.fitness > best.fitness) best = contender;
+      const c = pop[Math.floor(Math.random() * pop.length)];
+      if (c.fitness > best.fitness) best = c;
     }
     return best.ind;
   }
@@ -927,53 +875,39 @@ const tree = optimizeDeterministic(
       sortIndex: Math.random() > 0.5 ? a.sortIndex : b.sortIndex,
       groupingMode: Math.random() > 0.5 ? a.groupingMode : b.groupingMode,
       rotateAll: Math.random() > 0.5 ? a.rotateAll : b.rotateAll,
-      shuffleIntensity: (a.shuffleIntensity + b.shuffleIntensity) / 2
+      shuffleIntensity: Math.random() > 0.5 ? a.shuffleIntensity : b.shuffleIntensity,
     };
   }
 
   function mutate(ind: GAIndividual): GAIndividual {
-    const copy = { ...ind };
-
-    if (Math.random() < 0.5)
-      copy.sortIndex = Math.floor(Math.random() * strategies.length);
-
-    if (Math.random() < 0.5)
-      copy.groupingMode = copy.groupingMode === 1 ? 0 : 1;
-
-    if (Math.random() < 0.5)
-      copy.rotateAll = !copy.rotateAll;
-
-    if (Math.random() < 0.5)
-      copy.shuffleIntensity = Math.random();
-
-    return copy;
+    const c = { ...ind };
+    const gene = Math.floor(Math.random() * 4);
+    if (gene === 0) c.sortIndex = Math.floor(Math.random() * numStrategies);
+    else if (gene === 1) c.groupingMode = ([0, 1, 2] as const)[Math.floor(Math.random() * 3)];
+    else if (gene === 2) c.rotateAll = !c.rotateAll;
+    else c.shuffleIntensity = Math.random();
+    return c;
   }
 
   function perturbOrder(arr: Piece[], intensity: number): Piece[] {
     const result = [...arr];
     const swaps = Math.floor(arr.length * intensity * 0.3);
-
     for (let i = 0; i < swaps; i++) {
       const a = Math.floor(Math.random() * arr.length);
       const b = Math.floor(Math.random() * arr.length);
       [result[a], result[b]] = [result[b], result[a]];
     }
-
     return result;
   }
 
-  // -------- EXECUÇÃO GA --------
-
-  let population: GAIndividual[] =
-    Array.from({ length: populationSize }, randomIndividual);
-
+  // --- Run GA with yields ---
+  let population = Array.from({ length: populationSize }, randomIndividual);
   let bestTree: TreeNode | null = null;
   let bestFitness = 0;
 
   for (let g = 0; g < generations; g++) {
-
     const evaluated = population.map(ind => {
-      const { tree, fitness } = runIndividual(ind);
+      const { tree, fitness } = evaluate(ind);
       return { ind, tree, fitness };
     });
 
@@ -981,27 +915,59 @@ const tree = optimizeDeterministic(
 
     if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
-      bestTree = evaluated[0].tree;
+      bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
     }
 
-    const newPopulation: GAIndividual[] =
-      evaluated.slice(0, eliteCount).map(e => e.ind);
-
-    while (newPopulation.length < populationSize) {
-      const parentA = tournament(evaluated);
-      const parentB = tournament(evaluated);
-      let child = crossover(parentA, parentB);
-
-      if (Math.random() < mutationRate)
-        child = mutate(child);
-
-      newPopulation.push(child);
+    // Report progress
+    if (onProgress) {
+      const sheetArea = usableW * usableH;
+      onProgress({
+        phase: 'Algoritmo Genético',
+        current: g + 1,
+        total: generations,
+        bestUtil: sheetArea > 0 ? (bestFitness / sheetArea) * 100 : 0,
+      });
     }
 
-    population = newPopulation;
+    // Yield to UI every 5 generations
+    if (g % 5 === 0) {
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Build next generation
+    const newPop: GAIndividual[] = evaluated.slice(0, eliteCount).map(e => e.ind);
+    while (newPop.length < populationSize) {
+      const pA = tournament(evaluated);
+      const pB = tournament(evaluated);
+      let child = crossover(pA, pB);
+      if (Math.random() < mutationRate) child = mutate(child);
+      newPop.push(child);
+    }
+    population = newPop;
   }
 
-  return bestTree || optimizeV6(pieces, usableW, usableH, minBreak);
+  // Also try V6 deterministic as baseline
+  if (onProgress) {
+    onProgress({ phase: 'Comparando com V6...', current: generations, total: generations });
+  }
+  const v6Tree = optimizeV6(pieces, usableW, usableH, minBreak);
+  const v6Area = calcPlacedArea(v6Tree);
+  if (v6Area > bestFitness) {
+    bestTree = v6Tree;
+  }
+
+  return bestTree || createRoot(usableW, usableH);
+}
+
+// Synchronous wrapper for backward compatibility
+export function optimizeGeneticV1(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number = 0
+): TreeNode {
+  // Use V6 as fallback for sync calls
+  return optimizeV6(pieces, usableW, usableH, minBreak);
 }
 
 /**
@@ -1353,7 +1319,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           
           const nextPc = remaining[nextIdx];
           // Use multi on W node if same label, otherwise add new W node
-          if (wNode.label === (nextPc.label || '')) {
+          if ((wNode.label || undefined) === (nextPc.label || undefined)) {
             wNode.multi++;
           } else {
             const wId2 = insertNode(tree, zId, 'W', bestFit.pieceH, 1);
@@ -1413,23 +1379,3 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
   
 }
-
-// Example integration of optimizeGeneticV1
-function runOptimizationExample() {
-  const pieces: Piece[] = [
-    { w: 50, h: 30, area: 1500 },
-    { w: 40, h: 20, area: 800 },
-    { w: 60, h: 40, area: 2400 },
-  ];
-
-  const usableW = 200;
-  const usableH = 100;
-  const minBreak = 5;
-
-  console.log("Running genetic optimization...");
-  const result = optimizeGeneticV1(pieces, usableW, usableH, minBreak);
-  console.log("Optimization result:", result);
-}
-
-// Call the example function
-runOptimizationExample();
