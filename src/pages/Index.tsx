@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  TreeNode, PieceItem,
-
+  TreeNode, PieceItem, OptimizationProgress,
   createRoot, cloneTree, findNode, findParentOfType,
-  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeGeneticV1
+  insertNode, deleteNode, calcAllocation, calcPlacedArea,
+  optimizeGeneticV1, optimizeGeneticAsync
 } from '@/lib/cnc-engine';
 import { groupIdenticalLayouts, LayoutGroup } from '@/lib/layout-utils';
 import { exportPdf } from '@/lib/pdf-export';
@@ -31,6 +31,8 @@ const Index = () => {
   const [status, setStatus] = useState({ msg: 'Pronto', type: 'info' });
   const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
+  const [progress, setProgress] = useState<OptimizationProgress | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
@@ -166,7 +168,7 @@ const Index = () => {
     return used;
   }, []);
 
-  const optimize = useCallback(() => {
+  const optimize = useCallback(async () => {
     const inv: { w: number; h: number; area: number; label?: string }[] = [];
     pieces.forEach(p => {
       for (let i = 0; i < p.qty; i++) {
@@ -174,27 +176,32 @@ const Index = () => {
       }
     });
     if (inv.length === 0) { setStatus({ msg: 'Inventário vazio!', type: 'error' }); return; }
+    setIsOptimizing(true);
+    setProgress({ phase: 'Iniciando...', current: 0, total: 1 });
     setStatus({ msg: 'Otimizando com Algoritmo Genético...', type: 'warn' });
-    setTimeout(() => {
-      const result = optimizeGeneticV1(inv, usableW, usableH, minBreak);
-      setTree(result);
-      setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
-      setActiveChapa(0);
-      setSelectedId('root');
-      setStatus({ msg: 'Plano de Corte Otimizado com Algoritmo Genético!', type: 'success' });
-    }, 50);
+
+    await new Promise(r => setTimeout(r, 20));
+    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress);
+    setTree(result);
+    setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
+    setActiveChapa(0);
+    setSelectedId('root');
+    setProgress(null);
+    setIsOptimizing(false);
+    setStatus({ msg: 'Plano de Corte Otimizado!', type: 'success' });
   }, [pieces, usableW, usableH, minBreak]);
 
-  const optimizeAllSheets = useCallback(() => {
+  const optimizeAllSheets = useCallback(async () => {
     if (pieces.length === 0) {
       setStatus({ msg: 'Inventário vazio!', type: 'error' });
       return;
     }
+    setIsOptimizing(true);
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
 
-    const runAllSheets = (useGrouping?: boolean) => {
+    const runAllSheets = async (useGrouping?: boolean) => {
       const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
-      const remaining = pieces.map(p => ({ ...p })); // deep copy to avoid mutating originals
+      const remaining = pieces.map(p => ({ ...p }));
       let sheetCount = 0;
 
       while (remaining.length > 0 && sheetCount < 100) {
@@ -207,7 +214,21 @@ const Index = () => {
         });
         if (inv.length === 0) break;
 
-        const result = optimizeGeneticV1(inv, usableW, usableH, minBreak);
+        setProgress({
+          phase: `Chapa ${sheetCount} (variante ${useGrouping === undefined ? 'auto' : useGrouping ? 'agrupado' : 'normal'})`,
+          current: sheetCount,
+          total: sheetCount + 1,
+        });
+
+        await new Promise(r => setTimeout(r, 0));
+        const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, (p) => {
+          setProgress({
+            phase: `Chapa ${sheetCount} - ${p.phase}`,
+            current: p.current,
+            total: p.total,
+            bestUtil: p.bestUtil,
+          });
+        });
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea });
 
@@ -227,33 +248,33 @@ const Index = () => {
       return chapaList;
     };
 
-    setTimeout(() => {
-      // Compare with grouping, without grouping, and mixed
-      const candidates = [
-        runAllSheets(false),
-        runAllSheets(true),
-        runAllSheets(undefined),
-      ].filter(r => r.length > 0);
+    await new Promise(r => setTimeout(r, 20));
 
-      const sheetArea = usableW * usableH;
-      candidates.sort((a, b) => {
-        // Fewer sheets first
-        if (a.length !== b.length) return a.length - b.length;
-        // Higher average utilization first
-        const avgA = a.reduce((s, c) => s + c.usedArea / sheetArea, 0) / a.length;
-        const avgB = b.reduce((s, c) => s + c.usedArea / sheetArea, 0) / b.length;
-        return avgB - avgA;
-      });
+    const candidates = [];
+    for (const variant of [false, true, undefined] as const) {
+      setProgress({ phase: `Testando variante ${variant === undefined ? 'auto' : variant ? 'agrupado' : 'normal'}...`, current: 0, total: 1 });
+      const result = await runAllSheets(variant);
+      if (result.length > 0) candidates.push(result);
+    }
 
-      const best = candidates[0] || [];
-      setChapas(best);
-      if (best.length > 0) {
-        setTree(best[0].tree);
-        setSelectedId('root');
-      }
-      setActiveChapa(0);
-      setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
-    }, 50);
+    const sheetArea = usableW * usableH;
+    candidates.sort((a, b) => {
+      if (a.length !== b.length) return a.length - b.length;
+      const avgA = a.reduce((s, c) => s + c.usedArea / sheetArea, 0) / a.length;
+      const avgB = b.reduce((s, c) => s + c.usedArea / sheetArea, 0) / b.length;
+      return avgB - avgA;
+    });
+
+    const best = candidates[0] || [];
+    setChapas(best);
+    if (best.length > 0) {
+      setTree(best[0].tree);
+      setSelectedId('root');
+    }
+    setActiveChapa(0);
+    setProgress(null);
+    setIsOptimizing(false);
+    setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -424,12 +445,40 @@ const Index = () => {
         {/* ─── SECTION 3: Execução ─── */}
         <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
           <div className="p-3" style={{ background: 'hsl(0 0% 10%)' }}>
-            <button className="cnc-btn-primary w-full mb-2" onClick={optimize}>
+            <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
               ⚡ OTIMIZAR (1 CHAPA)
             </button>
-            <button className="cnc-btn-primary w-full" onClick={optimizeAllSheets} style={{ background: 'hsl(240 100% 50%)' }}>
+            <button className="cnc-btn-primary w-full" onClick={optimizeAllSheets} disabled={isOptimizing} style={{ background: 'hsl(240 100% 50%)' }}>
               📋 OTIMIZAR TODAS AS CHAPAS
             </button>
+
+            {/* Progress bar */}
+            {progress && (
+              <div className="mt-3 p-2 rounded" style={{ background: 'hsl(0 0% 6%)', border: '1px solid hsl(0 0% 25%)' }}>
+                <div className="text-[10px] font-bold mb-1" style={{ color: 'hsl(45 100% 60%)' }}>
+                  {progress.phase}
+                </div>
+                <div className="w-full rounded-full overflow-hidden" style={{ height: 6, background: 'hsl(0 0% 20%)' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-150"
+                    style={{
+                      width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%`,
+                      background: 'linear-gradient(90deg, hsl(200 80% 50%), hsl(160 80% 50%))',
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px]" style={{ color: 'hsl(0 0% 50%)' }}>
+                    {progress.current}/{progress.total}
+                  </span>
+                  {progress.bestUtil !== undefined && (
+                    <span className="text-[9px] font-bold" style={{ color: 'hsl(120 70% 55%)' }}>
+                      Melhor: {progress.bestUtil.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {layoutGroups.length > 0 && (
               <button
