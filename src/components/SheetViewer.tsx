@@ -96,11 +96,11 @@ export default function SheetViewer({
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
-                          className={`sv-piece-w ${selectedId === wNode.id ? 'sv-selected' : ''}`}
+                            className={`sv-piece-w ${selectedId === wNode.id ? 'sv-selected' : ''}`}
                             style={{ height: wNode.valor * scale, background: PIECE_BG, borderColor: PIECE_BORDER }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
-                          <span className={`sv-piece-label ${wNode.valor > zNode.valor ? 'sv-label-vertical' : ''}`}>
+                            <span className={`sv-piece-label ${wNode.valor > zNode.valor ? 'sv-label-vertical' : ''}`}>
                               {wNode.label && <span className="sv-piece-id">{wNode.label}</span>}
                               {Math.round(zNode.valor)}×{Math.round(wNode.valor)}
                             </span>
