@@ -4,7 +4,7 @@ import {
   TreeNode, PieceItem,
 
   createRoot, cloneTree, findNode, findParentOfType,
-  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeV6
+  insertNode, deleteNode, calcAllocation, calcPlacedArea, optimizeGeneticV1
 } from '@/lib/cnc-engine';
 import { groupIdenticalLayouts, LayoutGroup } from '@/lib/layout-utils';
 import { exportPdf } from '@/lib/pdf-export';
@@ -174,14 +174,14 @@ const Index = () => {
       }
     });
     if (inv.length === 0) { setStatus({ msg: 'Inventário vazio!', type: 'error' }); return; }
-    setStatus({ msg: 'Otimizando...', type: 'warn' });
+    setStatus({ msg: 'Otimizando com Algoritmo Genético...', type: 'warn' });
     setTimeout(() => {
-      const result = optimizeV6(inv, usableW, usableH, minBreak);
+      const result = optimizeGeneticV1(inv, usableW, usableH, minBreak);
       setTree(result);
       setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
       setActiveChapa(0);
       setSelectedId('root');
-      setStatus({ msg: 'Plano de Corte Otimizado V6!', type: 'success' });
+      setStatus({ msg: 'Plano de Corte Otimizado com Algoritmo Genético!', type: 'success' });
     }, 50);
   }, [pieces, usableW, usableH, minBreak]);
 
@@ -207,7 +207,7 @@ const Index = () => {
         });
         if (inv.length === 0) break;
 
-        const result = optimizeV6(inv, usableW, usableH, minBreak, useGrouping);
+        const result = optimizeGeneticV1(inv, usableW, usableH, minBreak);
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea });
 

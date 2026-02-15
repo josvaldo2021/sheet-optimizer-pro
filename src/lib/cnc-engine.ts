@@ -727,6 +727,8 @@ function fillRectW(remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: nu
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, minBreak: number = 0, useGrouping?: boolean): TreeNode {
+  console.log("🚨 V6 ESTA SENDO USADO 🚨");
+
   if (pieces.length === 0) return createRoot(usableW, usableH);
 
   const hasLabels = pieces.some(p => p.label);
@@ -780,6 +782,226 @@ export function optimizeV6(pieces: Piece[], usableW: number, usableH: number, mi
   }
 
   return bestTree || createRoot(usableW, usableH);
+}
+
+export function optimizeDeterministic(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number = 0,
+  useGrouping: boolean = false
+): TreeNode {
+
+  let working = [...pieces];
+  /*
+  if (useGrouping) {
+    working = groupPiecesByHeight(working);
+  }
+  */
+  const result = runPlacement(
+    working,
+    usableW,
+    usableH,
+    minBreak
+  );
+
+  return result.tree;
+}
+
+
+interface GAIndividual {
+  sortIndex: number;
+  groupingMode: 0 | 1;
+  rotateAll: boolean;
+  shuffleIntensity: number;
+}
+
+
+export function optimizeGeneticV1(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number = 0
+): TreeNode {
+
+  const populationSize = 30;
+  const generations = 30;
+  const eliteCount = 2;
+  const mutationRate = 0.15;
+
+  const strategies = [
+    (a: Piece, b: Piece) => b.area - a.area,
+    (a: Piece, b: Piece) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
+    (a: Piece, b: Piece) => b.h - a.h,
+    (a: Piece, b: Piece) => b.w - a.w,
+    (a: Piece, b: Piece) => (b.w + b.h) - (a.w + a.h),
+  ];
+
+  function randomIndividual(): GAIndividual {
+    return {
+      sortIndex: Math.floor(Math.random() * strategies.length),
+      groupingMode: Math.random() > 0.5 ? 1 : 0,
+      rotateAll: Math.random() > 0.5,
+      shuffleIntensity: Math.random()
+    };
+  }
+
+  function shufflePieces(pieces: Piece[]): Piece[] {
+  const clone = [...pieces];
+
+  for (let i = clone.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [clone[i], clone[j]] = [clone[j], clone[i]];
+  }
+
+  return clone;
+}
+
+
+  function runIndividual(ind: GAIndividual): { tree: TreeNode; fitness: number } {
+
+    let testPieces = pieces.map(p => ({ ...p }));
+
+    // Rotação global
+    if (ind.rotateAll) {
+      testPieces = testPieces.map(p => ({
+        ...p,
+        w: p.h,
+        h: p.w,
+        area: p.area
+      }));
+    }
+
+    // Pequeno shuffle controlado
+    testPieces = perturbOrder(testPieces, ind.shuffleIntensity);
+
+    // Ordenação
+    testPieces.sort(strategies[ind.sortIndex]);
+    /*
+    const tree = optimizeV6(
+      testPieces,
+      usableW,
+      usableH,
+      minBreak,
+      ind.groupingMode === 1
+    );
+    */
+const shuffled = shufflePieces(pieces);
+
+console.log("ANTES DO PLACEMENT:", 
+  shuffled[0], 
+  shuffled[1], 
+  shuffled[2]
+);
+
+console.log("🔥 GA ESTA RODANDO 🔥");
+
+
+const tree = optimizeDeterministic(
+  shuffled,
+  usableW,
+  usableH,
+  minBreak,
+  ind.groupingMode === 1
+);
+
+
+
+    const fitness = calcPlacedArea(tree);
+
+    return { tree, fitness };
+  }
+
+  function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
+    const k = 3;
+    let best = pop[Math.floor(Math.random() * pop.length)];
+    for (let i = 1; i < k; i++) {
+      const contender = pop[Math.floor(Math.random() * pop.length)];
+      if (contender.fitness > best.fitness) best = contender;
+    }
+    return best.ind;
+  }
+
+  function crossover(a: GAIndividual, b: GAIndividual): GAIndividual {
+    return {
+      sortIndex: Math.random() > 0.5 ? a.sortIndex : b.sortIndex,
+      groupingMode: Math.random() > 0.5 ? a.groupingMode : b.groupingMode,
+      rotateAll: Math.random() > 0.5 ? a.rotateAll : b.rotateAll,
+      shuffleIntensity: (a.shuffleIntensity + b.shuffleIntensity) / 2
+    };
+  }
+
+  function mutate(ind: GAIndividual): GAIndividual {
+    const copy = { ...ind };
+
+    if (Math.random() < 0.5)
+      copy.sortIndex = Math.floor(Math.random() * strategies.length);
+
+    if (Math.random() < 0.5)
+      copy.groupingMode = copy.groupingMode === 1 ? 0 : 1;
+
+    if (Math.random() < 0.5)
+      copy.rotateAll = !copy.rotateAll;
+
+    if (Math.random() < 0.5)
+      copy.shuffleIntensity = Math.random();
+
+    return copy;
+  }
+
+  function perturbOrder(arr: Piece[], intensity: number): Piece[] {
+    const result = [...arr];
+    const swaps = Math.floor(arr.length * intensity * 0.3);
+
+    for (let i = 0; i < swaps; i++) {
+      const a = Math.floor(Math.random() * arr.length);
+      const b = Math.floor(Math.random() * arr.length);
+      [result[a], result[b]] = [result[b], result[a]];
+    }
+
+    return result;
+  }
+
+  // -------- EXECUÇÃO GA --------
+
+  let population: GAIndividual[] =
+    Array.from({ length: populationSize }, randomIndividual);
+
+  let bestTree: TreeNode | null = null;
+  let bestFitness = 0;
+
+  for (let g = 0; g < generations; g++) {
+
+    const evaluated = population.map(ind => {
+      const { tree, fitness } = runIndividual(ind);
+      return { ind, tree, fitness };
+    });
+
+    evaluated.sort((a, b) => b.fitness - a.fitness);
+
+    if (evaluated[0].fitness > bestFitness) {
+      bestFitness = evaluated[0].fitness;
+      bestTree = evaluated[0].tree;
+    }
+
+    const newPopulation: GAIndividual[] =
+      evaluated.slice(0, eliteCount).map(e => e.ind);
+
+    while (newPopulation.length < populationSize) {
+      const parentA = tournament(evaluated);
+      const parentB = tournament(evaluated);
+      let child = crossover(parentA, parentB);
+
+      if (Math.random() < mutationRate)
+        child = mutate(child);
+
+      newPopulation.push(child);
+    }
+
+    population = newPopulation;
+  }
+
+  return bestTree || optimizeV6(pieces, usableW, usableH, minBreak);
 }
 
 /**
@@ -1188,4 +1410,26 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
   }
 
   return { tree, area: placedArea };
+
+  
 }
+
+// Example integration of optimizeGeneticV1
+function runOptimizationExample() {
+  const pieces: Piece[] = [
+    { w: 50, h: 30, area: 1500 },
+    { w: 40, h: 20, area: 800 },
+    { w: 60, h: 40, area: 2400 },
+  ];
+
+  const usableW = 200;
+  const usableH = 100;
+  const minBreak = 5;
+
+  console.log("Running genetic optimization...");
+  const result = optimizeGeneticV1(pieces, usableW, usableH, minBreak);
+  console.log("Optimization result:", result);
+}
+
+// Call the example function
+runOptimizationExample();
