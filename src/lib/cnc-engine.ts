@@ -875,10 +875,10 @@ function simulateSheets(
   // Primary: fewer sheets is better (normalized inversely)
   // Secondary: higher utilization within those sheets
   const avgUtil = sheetsUsed > 0 ? totalUtilArea / (sheetsUsed * sheetArea) : 0;
-  // Fitness: heavily penalize more sheets, reward utilization
-  // Max possible fitness ≈ 1.0 (1 sheet, 100% util)
+  // Fitness: STRONGLY penalize more sheets (quadratic), reward utilization
+  // This ensures 1 sheet is always much better than 2, regardless of utilization
   const fitness = sheetsUsed > 0
-    ? (1.0 / sheetsUsed) * 0.7 + avgUtil * 0.3 - stuckCount * 0.5
+    ? (1.0 / (sheetsUsed * sheetsUsed)) * 0.6 + avgUtil * 0.4 - stuckCount * 0.5
     : 0;
 
   return {
@@ -1236,101 +1236,104 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
+  const cantFit: Piece[] = []; // Pieces that couldn't fit on THIS sheet (preserved for next)
 
   while (remaining.length > 0) {
-    const piece = remaining[0];
-    let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; pieceW: number; pieceH: number; score: number; rotated: boolean } | null = null;
+    // IMPROVEMENT: Scan ALL remaining pieces to find the best global fit
+    type FitCandidate = { 
+      type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; 
+      pieceW: number; pieceH: number; score: number; rotated: boolean; 
+      pieceIdx: number; piece: Piece;
+    };
+    let bestFit: FitCandidate | null = null;
 
-    // 1. Try existing columns
-    for (const colX of tree.filhos) {
-      const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-      const freeH = usableH - usedH;
+    for (let pi = 0; pi < remaining.length; pi++) {
+      const piece = remaining[pi];
 
-      for (const o of oris(piece)) {
-        // Check min break distance for Y values in this column
-        if (minBreak > 0) {
-          if (o.h < minBreak) continue;
-          // Check Z cut positions across ALL Y strips in this column
-          const allZPositions = getAllZCutPositionsInColumn(colX);
-          // New piece creates cut at position o.w (starts at offset 0 in new Y strip)
-          if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
-        }
-        if (o.w <= colX.valor && o.h <= freeH) {
-          // Residual dominance: if leftover height can't fit any piece, extend to full freeH
-          let effectiveH = o.h;
-          const residualH = freeH - o.h;
-          if (residualH > 0) {
-            const ySibValues = colX.filhos.map(y => y.valor);
-            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, 'h')) {
-              effectiveH = freeH;
-            }
+      // 1. Try existing columns
+      for (const colX of tree.filhos) {
+        const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        const freeH = usableH - usedH;
+
+        for (const o of oris(piece)) {
+          if (minBreak > 0) {
+            if (o.h < minBreak) continue;
+            const allZPositions = getAllZCutPositionsInColumn(colX);
+            if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
           }
-          const widthRatio = o.w / colX.valor;
-          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
-
-          // Light lookahead
-          let lookBonus = 0;
-          const remH = freeH - o.h;
-          const remW = colX.valor - o.w;
-
-          for (const r of remaining.slice(1)) {
-            for (const ro of oris(r)) {
-              if (ro.w <= colX.valor && ro.h <= remH) {
-                lookBonus -= 0.5;
-                break;
-              }
-              if (ro.w <= remW && ro.h <= o.h) {
-                lookBonus -= 0.3;
-                break;
+          if (o.w <= colX.valor && o.h <= freeH) {
+            let effectiveH = o.h;
+            const residualH = freeH - o.h;
+            if (residualH > 0) {
+              const ySibValues = colX.filhos.map(y => y.valor);
+              if (!canResidualFitAnyPiece(colX.valor, residualH, remaining, minBreak, ySibValues, 'h')) {
+                effectiveH = freeH;
               }
             }
-            if (lookBonus < -1) break;
-          }
+            const widthRatio = o.w / colX.valor;
+            // Strongly prefer existing columns and high area coverage
+            const areaCoverage = (o.w * o.h) / (colX.valor * freeH);
+            const baseScore = (1 - widthRatio) * 2 + (1 - areaCoverage) * 3 - 2; // -2 bias for existing
 
-          const score = baseScore + lookBonus;
-          if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'EXISTING', col: colX, w: o.w, h: effectiveH, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
+            let lookBonus = 0;
+            const remH = freeH - o.h;
+            const remW = colX.valor - o.w;
+            for (const r of remaining) {
+              if (r === piece) continue;
+              for (const ro of oris(r)) {
+                if (ro.w <= colX.valor && ro.h <= remH) { lookBonus -= 0.5; break; }
+                if (ro.w <= remW && ro.h <= o.h) { lookBonus -= 0.3; break; }
+              }
+              if (lookBonus < -1) break;
+            }
+
+            const score = baseScore + lookBonus;
+            if (!bestFit || score < bestFit.score) {
+              bestFit = { type: 'EXISTING', col: colX, w: o.w, h: effectiveH, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w, pieceIdx: pi, piece };
+            }
           }
         }
       }
-    }
 
-    // 2. Try new column
-    const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    const freeW = usableW - usedW;
+      // 2. Try new column
+      const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+      const freeW = usableW - usedW;
 
-    if (freeW > 0) {
-      for (const o of oris(piece)) {
-        // Check min break distance for X values
-        if (minBreak > 0) {
-          const violatesX = tree.filhos.some(x => {
-            const diff = Math.abs(x.valor - o.w);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violatesX) continue;
-        }
-        if (o.w <= freeW && o.h <= usableH) {
-          // Residual dominance: if leftover width can't fit any piece, extend to full freeW
-          let effectiveW = o.w;
-          const residualW = freeW - o.w;
-          if (residualW > 0) {
-            const xSibValues = tree.filhos.map(x => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
-              effectiveW = freeW;
-            }
+      if (freeW > 0) {
+        for (const o of oris(piece)) {
+          if (minBreak > 0) {
+            const violatesX = tree.filhos.some(x => {
+              const diff = Math.abs(x.valor - o.w);
+              return diff > 0 && diff < minBreak;
+            });
+            if (violatesX) continue;
           }
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
-          if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'NEW', w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
+          if (o.w <= freeW && o.h <= usableH) {
+            let effectiveW = o.w;
+            const residualW = freeW - o.w;
+            if (residualW > 0) {
+              const xSibValues = tree.filhos.map(x => x.valor);
+              if (!canResidualFitAnyPiece(residualW, usableH, remaining, minBreak, xSibValues, 'w')) {
+                effectiveW = freeW;
+              }
+            }
+            const score = ((freeW - effectiveW) / usableW) * 0.5;
+            if (!bestFit || score < bestFit.score) {
+              bestFit = { type: 'NEW', w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w, pieceIdx: pi, piece };
+            }
           }
         }
       }
     }
 
     if (!bestFit) {
-      remaining.shift();
-      continue;
+      // FIX: No piece fits anywhere on this sheet - move ALL remaining to cantFit
+      cantFit.push(...remaining);
+      remaining.length = 0;
+      break;
     }
+
+    const piece = bestFit.piece;
 
     let col: TreeNode;
     if (bestFit.type === 'NEW') {
@@ -1345,7 +1348,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
     placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);
 
-    remaining.shift();
+    remaining.splice(bestFit.pieceIdx, 1);
 
     // Lateral Z filling - TWO PASSES:
     // Pass 1: same-height pieces first (consolidates waste above the Y strip)
@@ -1609,5 +1612,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
     }
   }
 
-  return { tree, area: placedArea, remaining };
+  // Merge back pieces that couldn't fit on this sheet
+  const finalRemaining = [...remaining, ...cantFit];
+  return { tree, area: placedArea, remaining: finalRemaining };
 }
