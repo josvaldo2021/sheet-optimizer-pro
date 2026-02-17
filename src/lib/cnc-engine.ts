@@ -838,13 +838,14 @@ function fillRectW(tree: TreeNode, remaining: Piece[], zNode: TreeNode, zWidth: 
 
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
-export function optimizeV6(
+export async function optimizeV6(
   pieces: Piece[],
   usableW: number,
   usableH: number,
   minBreak: number = 0,
-  useGrouping?: boolean
-): { tree: TreeNode; remaining: Piece[] } {
+  useGrouping?: boolean,
+  onProgress?: (p: OptimizationProgress) => void
+): Promise<{ tree: TreeNode; remaining: Piece[] }> {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
   const hasLabels = pieces.some(p => p.label);
@@ -853,49 +854,82 @@ export function optimizeV6(
   const rotated = pieces.map(p => ({ ...p, w: p.h, h: p.w }));
   const rotatedNoLabel = pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }));
 
-  const pieceVariants: Piece[][] = hasLabels ? [
-    pieces,
-    rotated,
-  ] : useGrouping === false ? [
-    pieces,
-    rotatedNoLabel,
-  ] : [
-    pieces,
-    rotatedNoLabel,
-    // Height grouping with column awareness (passes usableW/usableH for smart sizing)
-    groupPiecesByHeight(pieces, usableW, usableH, pieces),
-    groupPiecesByHeight(rotatedNoLabel, usableW, usableH, pieces),
-    // Width grouping
-    groupPiecesByWidth(pieces),
-    groupPiecesByWidth(rotatedNoLabel),
-    // Greedy row grouping (fills rows up to usableW)
-    greedyRowGrouping(pieces, usableW, usableH),
-    greedyRowGrouping(rotatedNoLabel, usableW, usableH),
-    // Legacy height grouping (no column awareness, for diversity)
-    groupPiecesByHeight(pieces),
-  ];
+  const variantNames: string[] = [];
+  const pieceVariants: Piece[][] = hasLabels ? (() => {
+    variantNames.push('Original', 'Rotacionado');
+    return [pieces, rotated];
+  })() : useGrouping === false ? (() => {
+    variantNames.push('Original', 'Rotacionado');
+    return [pieces, rotatedNoLabel];
+  })() : (() => {
+    variantNames.push(
+      'Original', 'Rotacionado',
+      'Agrup. Altura (smart)', 'Agrup. Altura (smart+rot)',
+      'Agrup. Largura', 'Agrup. Largura (rot)',
+      'Greedy Row', 'Greedy Row (rot)',
+      'Agrup. Altura (legacy)'
+    );
+    return [
+      pieces,
+      rotatedNoLabel,
+      groupPiecesByHeight(pieces, usableW, usableH, pieces),
+      groupPiecesByHeight(rotatedNoLabel, usableW, usableH, pieces),
+      groupPiecesByWidth(pieces),
+      groupPiecesByWidth(rotatedNoLabel),
+      greedyRowGrouping(pieces, usableW, usableH),
+      greedyRowGrouping(rotatedNoLabel, usableW, usableH),
+      groupPiecesByHeight(pieces),
+    ];
+  })();
 
   let bestTree: TreeNode | null = null;
   let bestRemaining: Piece[] = pieces;
   let bestSheets = Infinity;
   let bestArea = 0;
 
-  for (const variant of pieceVariants) {
-    for (const sortFn of strategies) {
-      const sorted = [...variant].sort(sortFn);
-      // Simulate ALL sheets for this strategy
+  const totalCombinations = pieceVariants.length * strategies.length;
+  let combo = 0;
+
+  for (let vi = 0; vi < pieceVariants.length; vi++) {
+    const variant = pieceVariants[vi];
+    for (let si = 0; si < strategies.length; si++) {
+      combo++;
+      const sorted = [...variant].sort(strategies[si]);
       const sim = simulateSheets(sorted, usableW, usableH, minBreak, 100);
       const result = runPlacement(sorted, usableW, usableH, minBreak);
-      
-      // Compare: fewer sheets first, then higher area on first sheet
-      if (sim.sheetsUsed < bestSheets || 
+
+      if (sim.sheetsUsed < bestSheets ||
           (sim.sheetsUsed === bestSheets && result.area > bestArea)) {
         bestSheets = sim.sheetsUsed;
         bestArea = result.area;
         bestTree = result.tree;
         bestRemaining = result.remaining;
       }
+
+      // Report progress every few combos
+      if (onProgress && combo % 3 === 0) {
+        onProgress({
+          phase: `V6 Determinístico — ${variantNames[vi]}`,
+          current: combo,
+          total: totalCombinations,
+          bestSheets,
+          bestUtil: bestSheets > 0 ? (bestArea / (usableW * usableH)) * 100 : 0,
+        });
+      }
+
+      // Yield to UI every 6 combos
+      if (combo % 6 === 0) await new Promise(r => setTimeout(r, 0));
     }
+  }
+
+  if (onProgress) {
+    onProgress({
+      phase: `V6 concluído — ${bestSheets} chapas`,
+      current: totalCombinations,
+      total: totalCombinations,
+      bestSheets,
+      bestUtil: bestSheets > 0 ? (bestArea / (usableW * usableH)) * 100 : 0,
+    });
   }
 
   return {
@@ -1240,21 +1274,14 @@ export async function optimizeGeneticAsync(
 }
 
 // Synchronous wrapper for backward compatibility - Fast Mini-GA Burst
-export function optimizeGeneticV1(
+export async function optimizeGeneticV1(
   pieces: Piece[],
   usableW: number,
   usableH: number,
   minBreak: number = 0
-): TreeNode {
-  // Use a tiny population/gen for sync results that beat pure V6
-  const numPieces = pieces.length;
-  const popSize = 20;
-  const gens = 5;
-  const eliteCount = 2;
-
-  // Reusing build logic internally or just calling Async with restricted params is hard sync.
-  // We'll keep it simple: fallback to best V6 for sync to avoid blocking the thread too long.
-  return optimizeV6(pieces, usableW, usableH, minBreak).tree;
+): Promise<TreeNode> {
+  const result = await optimizeV6(pieces, usableW, usableH, minBreak);
+  return result.tree;
 }
 
 /**
