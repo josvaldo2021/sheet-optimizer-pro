@@ -266,21 +266,23 @@ export function calcPlacedArea(tree: TreeNode): number {
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
 /**
- * NOVA IMPLEMENTAÇÃO: Agrupamento por Altura
+ * Agrupamento por Altura V2 — Column-Aware
  * 
- * Detecta peças com a mesma altura e as agrupa em pares ou trios,
- * somando as larguras. Isso reduz o número de cortes em X e melhora
- * o aproveitamento da chapa.
+ * Agrupa peças com mesma altura somando larguras, respeitando usableW.
+ * Remove o cap fixo de 3 peças: agrupa tantas quanto cabem na largura útil.
+ * Score baseado em aproveitamento do leftover vertical.
  * 
- * Exemplo:
- * Input:  [600×1296, 610×1296, 610×1296]
- * Output: [1210×1296 (count=2), 610×1296 (count=1)]
- * 
- * Na árvore de corte:
- * X(1210) -> Y(1296) -> Z(600) + Z(610)
+ * Exemplo com usableW=2750, usableH=2750, peças 734×951:
+ *   4×734 = 2936 > 2750 → tenta 3×734 = 2202 ✓
+ *   strips = floor(2750/951) = 2, leftover = 848
+ *   Se alguma peça cabe em 2202×848 → bonus no score
  */
-function groupPiecesByHeight(pieces: Piece[]): Piece[] {
-  // Mapeia peças por altura (usando a menor dimensão como altura)
+function groupPiecesByHeight(
+  pieces: Piece[],
+  usableW: number = Infinity,
+  usableH: number = 0,
+  allPieces?: Piece[]
+): Piece[] {
   const heightGroups = new Map<number, Piece[]>();
 
   pieces.forEach(p => {
@@ -290,80 +292,183 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
   });
 
   const result: Piece[] = [];
+  const inventory = allPieces || pieces;
 
   heightGroups.forEach(group => {
-    // Normaliza peças: largura = max, altura = min
     const normalized = group.map(p => ({
       ...p,
       nw: Math.max(p.w, p.h),
       nh: Math.min(p.w, p.h)
-    })).sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
+    })).sort((a, b) => a.nw - b.nw); // ascending width for greedy packing
 
     let i = 0;
     while (i < normalized.length) {
+      if (i + 1 >= normalized.length) {
+        result.push({
+          w: normalized[i].nw,
+          h: normalized[i].nh,
+          area: normalized[i].nw * normalized[i].nh,
+          count: 1,
+          label: normalized[i].label
+        });
+        i++;
+        continue;
+      }
+
       const h = normalized[i].nh;
 
-      // Tenta agrupar 3, depois 2 peças
-      let groupSize = 0;
-      let sumW = 0;
-      const candidates: number[] = [];
+      // Try group sizes from 2 up to what fits in usableW
+      let bestGroupSize = 1;
+      let bestScore = -Infinity;
 
-      for (let j = i; j < normalized.length && candidates.length < 3; j++) {
-        candidates.push(j);
-        sumW += normalized[j].nw;
-      }
+      let accumW = 0;
+      for (let gs = 1; gs <= normalized.length - i && gs <= 10; gs++) {
+        accumW += normalized[i + gs - 1].nw;
+        if (accumW > usableW) break;
+        if (gs < 2) continue;
 
-      // Aceita grupo de 3 ou 2
-      if (candidates.length >= 2) {
-        // Tenta 3 primeiro, depois 2
-        const trySize = candidates.length >= 3 ? 3 : 2;
-        let bestGroupW = 0;
-        let bestCount = 0;
+        // Calculate vertical strips possible
+        const strips = usableH > 0 ? Math.floor(usableH / h) : 1;
+        const leftoverH = usableH > 0 ? usableH - strips * h : 0;
 
-        for (let gs = trySize; gs >= 2; gs--) {
-          let gw = 0;
-          for (let k = 0; k < gs; k++) gw += normalized[candidates[k]].nw;
-          bestGroupW = gw;
-          bestCount = gs;
-          break;
-        }
+        // Base score: width utilization × strip count
+        let score = (accumW / (usableW || accumW)) * strips;
 
-        if (bestCount >= 2) {
-          // Cria peça agrupada com labels individuais preservados
-          const groupedLabels: string[] = [];
-          for (let k = 0; k < bestCount; k++) {
-            if (normalized[candidates[k]].label) {
-              groupedLabels.push(normalized[candidates[k]].label!);
+        // Bonus: leftover height can fit pieces
+        if (leftoverH > 0) {
+          for (const inv of inventory) {
+            for (const o of oris(inv)) {
+              if (o.w <= accumW && o.h <= leftoverH) {
+                score += 0.5; // significant bonus for usable leftover
+                break;
+              }
             }
+            if (score > bestScore + 1) break; // early exit if already good
           }
+        }
 
-          result.push({
-            w: bestGroupW,
-            h,
-            area: bestGroupW * h,
-            count: bestCount,
-            labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-            groupedAxis: 'w' // Agrupou larguras (somou W), mantendo altura fixa          
-          });
+        // Bonus: fills width tightly (>85%)
+        if (accumW / (usableW || accumW) > 0.85) score += 0.3;
 
-          // Remove itens agrupados (em ordem reversa para não afetar índices)
-          for (let k = bestCount - 1; k >= 1; k--) {
-            normalized.splice(candidates[k], 1);
-          }
-          normalized.splice(i, 1);
-          continue;
+        // Bonus: even sizes for symmetry
+        if (gs % 2 === 0) score += 0.05;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestGroupSize = gs;
         }
       }
 
-      // Peça individual
-      result.push({
-        w: normalized[i].nw,
-        h: normalized[i].nh,
-        area: normalized[i].nw * normalized[i].nh,
-        count: 1,
-        label: normalized[i].label
-      });
-      i++;
+      if (bestGroupSize >= 2) {
+        let sumW = 0;
+        const groupedLabels: string[] = [];
+        for (let k = 0; k < bestGroupSize; k++) {
+          sumW += normalized[i + k].nw;
+          if (normalized[i + k].label) groupedLabels.push(normalized[i + k].label!);
+        }
+
+        result.push({
+          w: sumW,
+          h,
+          area: sumW * h,
+          count: bestGroupSize,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: 'w'
+        });
+        i += bestGroupSize;
+      } else {
+        result.push({
+          w: normalized[i].nw,
+          h: normalized[i].nh,
+          area: normalized[i].nw * normalized[i].nh,
+          count: 1,
+          label: normalized[i].label
+        });
+        i++;
+      }
+    }
+  });
+
+  return result;
+}
+
+/**
+ * Greedy Row Grouping — preenche cada linha até usableW
+ * 
+ * Diferente do agrupamento por altura (que tenta tamanhos ótimos),
+ * este empacota greedily peças lado a lado até encher a largura,
+ * maximizando o número de peças por fita Y.
+ */
+function greedyRowGrouping(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number = 0
+): Piece[] {
+  const heightGroups = new Map<number, { nw: number; nh: number; piece: Piece }[]>();
+
+  pieces.forEach(p => {
+    const h = Math.min(p.w, p.h);
+    if (!heightGroups.has(h)) heightGroups.set(h, []);
+    heightGroups.get(h)!.push({
+      nw: Math.max(p.w, p.h),
+      nh: Math.min(p.w, p.h),
+      piece: p
+    });
+  });
+
+  const result: Piece[] = [];
+
+  heightGroups.forEach(group => {
+    // Sort by width descending for better first-fit
+    group.sort((a, b) => b.nw - a.nw);
+
+    let i = 0;
+    while (i < group.length) {
+      // Greedy: accumulate pieces until we can't fit more
+      let sumW = group[i].nw;
+      const batch = [group[i]];
+      let j = i + 1;
+
+      while (j < group.length) {
+        if (sumW + group[j].nw <= usableW) {
+          sumW += group[j].nw;
+          batch.push(group[j]);
+          j++;
+        } else {
+          j++;
+        }
+      }
+
+      if (batch.length >= 2) {
+        const h = batch[0].nh;
+        const groupedLabels: string[] = [];
+        batch.forEach(b => {
+          if (b.piece.label) groupedLabels.push(b.piece.label!);
+        });
+
+        result.push({
+          w: sumW,
+          h,
+          area: sumW * h,
+          count: batch.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: 'w'
+        });
+
+        // Remove used items from group
+        const usedSet = new Set(batch);
+        group = group.filter(g => !usedSet.has(g));
+        // Don't increment i, re-process from same position
+      } else {
+        result.push({
+          w: group[i].nw,
+          h: group[i].nh,
+          area: group[i].nw * group[i].nh,
+          count: 1,
+          label: group[i].piece.label
+        });
+        i++;
+      }
     }
   });
 
@@ -745,18 +850,29 @@ export function optimizeV6(
   const hasLabels = pieces.some(p => p.label);
   const strategies = getSortStrategies();
 
+  const rotated = pieces.map(p => ({ ...p, w: p.h, h: p.w }));
+  const rotatedNoLabel = pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }));
+
   const pieceVariants: Piece[][] = hasLabels ? [
     pieces,
-    pieces.map(p => ({ ...p, w: p.h, h: p.w })),
+    rotated,
   ] : useGrouping === false ? [
     pieces,
-    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
+    rotatedNoLabel,
   ] : [
     pieces,
-    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
-    groupPiecesByHeight(pieces),
+    rotatedNoLabel,
+    // Height grouping with column awareness (passes usableW/usableH for smart sizing)
+    groupPiecesByHeight(pieces, usableW, usableH, pieces),
+    groupPiecesByHeight(rotatedNoLabel, usableW, usableH, pieces),
+    // Width grouping
     groupPiecesByWidth(pieces),
-    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+    groupPiecesByWidth(rotatedNoLabel),
+    // Greedy row grouping (fills rows up to usableW)
+    greedyRowGrouping(pieces, usableW, usableH),
+    greedyRowGrouping(rotatedNoLabel, usableW, usableH),
+    // Legacy height grouping (no column awareness, for diversity)
+    groupPiecesByHeight(pieces),
   ];
 
   let bestTree: TreeNode | null = null;
@@ -826,7 +942,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2;
+  groupingMode: 0 | 1 | 2 | 3 | 4;
 }
 
 /**
@@ -915,7 +1031,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2] as const)[Math.floor(Math.random() * 3)],
+      groupingMode: ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)],
     };
   }
 
@@ -936,6 +1052,10 @@ export async function optimizeGeneticAsync(
       work = groupPiecesByHeight(work);
     } else if (ind.groupingMode === 2) {
       work = groupPiecesByWidth(work);
+    } else if (ind.groupingMode === 3) {
+      work = groupPiecesByHeight(work, usableW, usableH, pieces);
+    } else if (ind.groupingMode === 4) {
+      work = greedyRowGrouping(work, usableW, usableH);
     }
 
     return work;
@@ -1019,7 +1139,7 @@ export async function optimizeGeneticAsync(
       }
     } else {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2] as const)[Math.floor(Math.random() * 3)];
+      c.groupingMode = ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)];
     }
 
     return c;
@@ -1028,20 +1148,21 @@ export async function optimizeGeneticAsync(
   // --- Seeding ---
   const initialPop: GAIndividual[] = [];
   const strategies = getSortStrategies();
+  
+  // Seed with each sort strategy × each grouping mode
+  const seedGroupModes: (0 | 1 | 2 | 3 | 4)[] = [0, 3, 4]; // none, smart height, greedy row
   strategies.forEach(sortFn => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i)
-      .sort((a, b) => {
-        // Find original pieces to compare
-        const pA = pieces[a];
-        const pB = pieces[b];
-        return sortFn(pA, pB);
-      });
+      .sort((a, b) => sortFn(pieces[a], pieces[b]));
 
-    initialPop.push({
-      genome: sortedIndices,
-      rotations: Array.from({ length: numPieces }, () => false),
-      groupingMode: 0
-    });
+    for (const gm of seedGroupModes) {
+      if (initialPop.length >= populationSize) break;
+      initialPop.push({
+        genome: [...sortedIndices],
+        rotations: Array.from({ length: numPieces }, () => false),
+        groupingMode: gm
+      });
+    }
   });
 
   // Fill rest with random
