@@ -836,6 +836,216 @@ function fillRectW(tree: TreeNode, remaining: Piece[], zNode: TreeNode, zWidth: 
   return filled;
 }
 
+// ========== STRIP-PACKING PLACEMENT ==========
+
+/**
+ * Strip-packing: creates ONE full-width X column, then fills Y-strips
+ * by packing as many pieces as possible side-by-side (Z nodes).
+ * This maximizes pieces per strip, critical when all pieces share a height.
+ *
+ * Example: pieces 734×951, usableW=5980, usableH=3190
+ *   - 1 X column = 5980
+ *   - Y strip 1: 734+734+734+734+734+734+734+734 = 5872 (8 pieces)
+ *   - Y strip 2: same
+ *   - Y strip 3: same → 24 pieces per sheet
+ */
+function runStripPlacement(
+  inventory: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number = 0
+): { tree: TreeNode; area: number; remaining: Piece[] } {
+  const tree = createRoot(usableW, usableH);
+  let placedArea = 0;
+  const remaining = [...inventory];
+
+  // Create single full-width column
+  insertNode(tree, 'root', 'X', usableW, 1);
+  const col = tree.filhos[0];
+  let usedH = 0;
+
+  while (remaining.length > 0 && usedH < usableH) {
+    const freeH = usableH - usedH;
+
+    // Find the best strip height: pick the most common height that fits
+    const heightCounts = new Map<number, number>();
+    for (const p of remaining) {
+      for (const o of oris(p)) {
+        if (o.h <= freeH) {
+          heightCounts.set(o.h, (heightCounts.get(o.h) || 0) + 1);
+        }
+      }
+    }
+
+    if (heightCounts.size === 0) break;
+
+    // Score each candidate height: prefer heights that pack more pieces in width
+    let bestStripH = 0;
+    let bestStripScore = -1;
+
+    for (const [h, count] of heightCounts) {
+      // Check minBreak against existing Y siblings
+      if (minBreak > 0) {
+        const violates = col.filhos.some(y => {
+          const diff = Math.abs(y.valor - h);
+          return diff > 0 && diff < minBreak;
+        });
+        if (violates) continue;
+      }
+
+      // How many pieces of this height can we pack in usableW?
+      const fittingPieces: { w: number; idx: number }[] = [];
+      for (let i = 0; i < remaining.length; i++) {
+        for (const o of oris(remaining[i])) {
+          if (o.h === h && o.w <= usableW) {
+            fittingPieces.push({ w: o.w, idx: i });
+            break;
+          }
+        }
+      }
+
+      // Greedy pack by width descending
+      fittingPieces.sort((a, b) => a.w - b.w); // ascending for better packing
+      let packW = 0;
+      let packCount = 0;
+      for (const fp of fittingPieces) {
+        if (packW + fp.w <= usableW) {
+          packW += fp.w;
+          packCount++;
+        }
+      }
+
+      // Score: pieces packed * height utilization ratio
+      const remainingStrips = Math.floor(freeH / h);
+      const totalPotential = packCount * remainingStrips;
+      const widthUtil = packW / usableW;
+      const score = totalPotential * 10 + widthUtil * 5 + packCount;
+
+      if (score > bestStripScore) {
+        bestStripScore = score;
+        bestStripH = h;
+      }
+    }
+
+    if (bestStripH === 0) break;
+
+    // Residual dominance for Y height
+    let effectiveH = bestStripH;
+    const residualH = freeH - bestStripH;
+    if (residualH > 0) {
+      // Check if any remaining piece can fit in the residual
+      const canFit = remaining.some(p =>
+        oris(p).some(o => o.h <= residualH && o.w <= usableW)
+      );
+      if (!canFit) effectiveH = freeH;
+    }
+
+    // Create Y strip
+    const yId = insertNode(tree, col.id, 'Y', effectiveH, 1);
+    const yNode = findNode(tree, yId)!;
+
+    // Pack pieces into this strip (Z nodes side by side)
+    let stripUsedW = 0;
+
+    // Collect candidates for this strip height
+    const candidates: { ori: { w: number; h: number }; idx: number; rotated: boolean }[] = [];
+    for (let i = 0; i < remaining.length; i++) {
+      for (const o of oris(remaining[i])) {
+        if (o.h === bestStripH) {
+          candidates.push({ ori: o, idx: i, rotated: o.w !== remaining[i].w });
+          break;
+        }
+      }
+    }
+
+    // Sort by width descending for better first-fit-decreasing
+    candidates.sort((a, b) => b.ori.w - a.ori.w);
+
+    const placedIndices = new Set<number>();
+    const allZPositions: number[][] = [];
+
+    for (const cand of candidates) {
+      if (placedIndices.has(cand.idx)) continue;
+      if (stripUsedW + cand.ori.w > usableW) continue;
+
+      // Check minBreak for Z cut positions
+      if (minBreak > 0 && allZPositions.length > 0) {
+        const newCutPos = stripUsedW + cand.ori.w;
+        const violates = allZPositions.some(positions =>
+          positions.some(pos => {
+            const diff = Math.abs(pos - newCutPos);
+            return diff > 0 && diff < minBreak;
+          })
+        );
+        if (violates) continue;
+      }
+
+      // Place piece
+      const piece = remaining[cand.idx];
+      placedArea += createPieceNodes(tree, yNode, piece, cand.ori.w, cand.ori.h, cand.rotated);
+      stripUsedW += cand.ori.w;
+      placedIndices.add(cand.idx);
+    }
+
+    // Also try to fill remaining strip width with shorter pieces (Pass 2: W subdivision)
+    if (stripUsedW < usableW) {
+      for (let i = 0; i < remaining.length; i++) {
+        if (placedIndices.has(i)) continue;
+        const freeStripW = usableW - stripUsedW;
+        if (freeStripW <= 0) break;
+
+        for (const o of oris(remaining[i])) {
+          if (o.w <= freeStripW && o.h <= bestStripH) {
+            // Place with W subdivision if shorter
+            if (o.h === bestStripH) {
+              placedArea += createPieceNodes(tree, yNode, remaining[i], o.w, o.h, o.w !== remaining[i].w);
+            } else {
+              const zId = insertNode(tree, yNode.id, 'Z', o.w, 1);
+              const zNode = findNode(tree, zId)!;
+              placedArea += createPieceNodes(tree, yNode, remaining[i], o.w, o.h, o.w !== remaining[i].w, zNode);
+
+              // Fill remaining height in this Z with more pieces
+              let freeWH = bestStripH - o.h;
+              for (let j = 0; j < remaining.length && freeWH > 0; j++) {
+                if (placedIndices.has(j) || j === i) continue;
+                for (const wo of oris(remaining[j])) {
+                  if (wo.w <= zNode.valor && wo.h <= freeWH) {
+                    createPieceNodes(tree, yNode, remaining[j], wo.w, wo.h, wo.w !== remaining[j].w, zNode);
+                    placedArea += zNode.valor * wo.h;
+                    freeWH -= wo.h;
+                    placedIndices.add(j);
+                    break;
+                  }
+                }
+              }
+            }
+            stripUsedW += o.w;
+            placedIndices.add(i);
+            break;
+          }
+        }
+      }
+    }
+
+    // Remove placed pieces (in reverse order to preserve indices)
+    const sortedIndices = [...placedIndices].sort((a, b) => b - a);
+    for (const idx of sortedIndices) {
+      remaining.splice(idx, 1);
+    }
+
+    if (placedIndices.size === 0) break; // stuck
+
+    usedH += effectiveH;
+  }
+
+  // Void filling for any remaining gaps
+  if (remaining.length > 0) {
+    placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
+  }
+
+  return { tree, area: placedArea, remaining };
+}
+
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export async function optimizeV6(
@@ -882,43 +1092,48 @@ export async function optimizeV6(
     ];
   })();
 
+  // Add strip-packing as placement modes: 0=column, 1=strip
+  const placementModes = [0, 1];
+  const placementNames = ['Colunas', 'Strip-Pack'];
+
   let bestTree: TreeNode | null = null;
   let bestRemaining: Piece[] = pieces;
   let bestSheets = Infinity;
   let bestArea = 0;
 
-  const totalCombinations = pieceVariants.length * strategies.length;
+  const totalCombinations = pieceVariants.length * strategies.length * placementModes.length;
   let combo = 0;
 
   for (let vi = 0; vi < pieceVariants.length; vi++) {
     const variant = pieceVariants[vi];
     for (let si = 0; si < strategies.length; si++) {
-      combo++;
-      const sorted = [...variant].sort(strategies[si]);
-      const sim = simulateSheets(sorted, usableW, usableH, minBreak, 100);
-      const result = runPlacement(sorted, usableW, usableH, minBreak);
+      for (const pm of placementModes) {
+        combo++;
+        const sorted = [...variant].sort(strategies[si]);
+        const placeFn = pm === 1 ? runStripPlacement : runPlacement;
+        const sim = simulateSheets(sorted, usableW, usableH, minBreak, 100, pm === 1);
+        const result = placeFn(sorted, usableW, usableH, minBreak);
 
-      if (sim.sheetsUsed < bestSheets ||
-          (sim.sheetsUsed === bestSheets && result.area > bestArea)) {
-        bestSheets = sim.sheetsUsed;
-        bestArea = result.area;
-        bestTree = result.tree;
-        bestRemaining = result.remaining;
+        if (sim.sheetsUsed < bestSheets ||
+            (sim.sheetsUsed === bestSheets && result.area > bestArea)) {
+          bestSheets = sim.sheetsUsed;
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestRemaining = result.remaining;
+        }
+
+        if (onProgress && combo % 6 === 0) {
+          onProgress({
+            phase: `V6 — ${variantNames[vi]} (${placementNames[pm]})`,
+            current: combo,
+            total: totalCombinations,
+            bestSheets,
+            bestUtil: bestSheets > 0 ? (bestArea / (usableW * usableH)) * 100 : 0,
+          });
+        }
+
+        if (combo % 12 === 0) await new Promise(r => setTimeout(r, 0));
       }
-
-      // Report progress every few combos
-      if (onProgress && combo % 3 === 0) {
-        onProgress({
-          phase: `V6 Determinístico — ${variantNames[vi]}`,
-          current: combo,
-          total: totalCombinations,
-          bestSheets,
-          bestUtil: bestSheets > 0 ? (bestArea / (usableW * usableH)) * 100 : 0,
-        });
-      }
-
-      // Yield to UI every 6 combos
-      if (combo % 6 === 0) await new Promise(r => setTimeout(r, 0));
     }
   }
 
@@ -977,6 +1192,7 @@ interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
   groupingMode: 0 | 1 | 2 | 3 | 4;
+  useStrip: boolean; // Use strip-packing vs column-based placement
 }
 
 /**
@@ -988,7 +1204,8 @@ function simulateSheets(
   usableW: number,
   usableH: number,
   minBreak: number,
-  _maxSheets: number // kept for signature compat but we simulate all
+  _maxSheets: number, // kept for signature compat but we simulate all
+  useStripPlacement: boolean = false
 ): {
   fitness: number;
   firstTree: TreeNode;
@@ -1004,10 +1221,11 @@ function simulateSheets(
   let totalUtilArea = 0;
   let stuckCount = 0;
   const maxSafety = 100; // prevent infinite loops
+  const placeFn = useStripPlacement ? runStripPlacement : runPlacement;
 
   while (currentRemaining.length > 0 && sheetsUsed < maxSafety) {
     const countBefore = currentRemaining.length;
-    const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
+    const res = placeFn(currentRemaining, usableW, usableH, minBreak);
     if (sheetsUsed === 0) firstTree = res.tree;
 
     const piecesPlaced = countBefore - res.remaining.length;
@@ -1048,7 +1266,7 @@ export async function optimizeGeneticAsync(
   minBreak: number = 0,
   onProgress?: (p: OptimizationProgress) => void
 ): Promise<TreeNode> {
-  const populationSize = 40;
+  const populationSize = 60;
   const generations = 30;
   const eliteCount = 3;
   const baseMutationRate = 0.15;
@@ -1066,6 +1284,7 @@ export async function optimizeGeneticAsync(
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
       groupingMode: ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)],
+      useStrip: Math.random() > 0.5,
     };
   }
 
@@ -1097,7 +1316,7 @@ export async function optimizeGeneticAsync(
 
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; sheetsUsed: number } {
     const work = buildPieces(ind);
-    const result = simulateSheets(work, usableW, usableH, minBreak, 100);
+    const result = simulateSheets(work, usableW, usableH, minBreak, 100, ind.useStrip);
     return { tree: result.firstTree, fitness: result.fitness, sheetsUsed: result.sheetsUsed };
   }
 
@@ -1139,6 +1358,7 @@ export async function optimizeGeneticAsync(
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
+      useStrip: Math.random() > 0.5 ? pA.useStrip : pB.useStrip,
     };
   }
 
@@ -1146,7 +1366,8 @@ export async function optimizeGeneticAsync(
     const c = {
       genome: [...ind.genome],
       rotations: [...ind.rotations],
-      groupingMode: ind.groupingMode
+      groupingMode: ind.groupingMode,
+      useStrip: ind.useStrip,
     };
 
     const r = Math.random();
@@ -1171,9 +1392,12 @@ export async function optimizeGeneticAsync(
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else {
+    } else if (r < 0.9) {
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)];
+    } else {
+      // Placement mode mutation
+      c.useStrip = !c.useStrip;
     }
 
     return c;
@@ -1190,12 +1414,15 @@ export async function optimizeGeneticAsync(
       .sort((a, b) => sortFn(pieces[a], pieces[b]));
 
     for (const gm of seedGroupModes) {
-      if (initialPop.length >= populationSize) break;
-      initialPop.push({
-        genome: [...sortedIndices],
-        rotations: Array.from({ length: numPieces }, () => false),
-        groupingMode: gm
-      });
+      for (const strip of [false, true]) {
+        if (initialPop.length >= populationSize) break;
+        initialPop.push({
+          genome: [...sortedIndices],
+          rotations: Array.from({ length: numPieces }, () => false),
+          groupingMode: gm,
+          useStrip: strip,
+        });
+      }
     }
   });
 
@@ -1222,7 +1449,7 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map(ind => {
       const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, 100);
+      const res = simulateSheets(work, usableW, usableH, minBreak, 100, ind.useStrip);
       return { ind, tree: res.firstTree, fitness: res.fitness, sheetsUsed: res.sheetsUsed };
     });
 
