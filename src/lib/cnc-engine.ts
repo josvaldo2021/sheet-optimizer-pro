@@ -836,6 +836,303 @@ function fillRectW(tree: TreeNode, remaining: Piece[], zNode: TreeNode, zWidth: 
   return filled;
 }
 
+// ========== STRIP-FIRST PACKING ==========
+
+/**
+ * Monta faixas horizontais (rows) preenchendo a largura da chapa com peças de mesma altura.
+ * Retorna as faixas ordenadas (maiores alturas primeiro) com sobras calculadas.
+ * 
+ * Estratégia do opty way: 4×734 → ocupa 2936 de 2750? Não — ele usa 3×734=2202
+ * e a sobra lateral 548 vai para peças menores. A sobra VERTICAL de 951×2202
+ * recebe peças de 684 que têm mesma altura 951. Isso é o key insight.
+ */
+interface HStrip {
+  pieces: Array<{ piece: Piece; ori: { w: number; h: number } }>;
+  stripH: number;         // altura da faixa
+  usedW: number;          // largura consumida
+  leftoverW: number;      // sobra lateral
+  leftoverH?: number;     // sobra acima (preenchida por strips menores)
+}
+
+function buildHorizontalStrips(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number
+): { strips: HStrip[]; unplaced: Piece[] } {
+  // Group pieces by height (normalized: shorter side = height)
+  const heightGroups = new Map<number, Array<{ piece: Piece; ori: { w: number; h: number } }>>();
+
+  for (const p of pieces) {
+    for (const o of oris(p)) {
+      const key = o.h;
+      if (!heightGroups.has(key)) heightGroups.set(key, []);
+      heightGroups.get(key)!.push({ piece: p, ori: o });
+      break; // take first orientation per piece for grouping phase
+    }
+  }
+
+  const strips: HStrip[] = [];
+  const usedPieces = new Set<Piece>();
+
+  // Process height groups from tallest to shortest
+  const sortedHeights = [...heightGroups.keys()].sort((a, b) => b - a);
+
+  for (const h of sortedHeights) {
+    const group = heightGroups.get(h)!.filter(g => !usedPieces.has(g.piece));
+    if (group.length === 0) continue;
+
+    // Greedily fill strips of height h
+    let i = 0;
+    while (i < group.length) {
+      const stripPieces: Array<{ piece: Piece; ori: { w: number; h: number } }> = [];
+      let sumW = 0;
+
+      // Fill one strip: add pieces until width is full
+      for (let j = i; j < group.length; j++) {
+        const item = group[j];
+        if (usedPieces.has(item.piece)) continue;
+        if (sumW + item.ori.w <= usableW) {
+          stripPieces.push(item);
+          sumW += item.ori.w;
+        }
+      }
+
+      if (stripPieces.length === 0) break;
+
+      // Mark used
+      stripPieces.forEach(sp => usedPieces.add(sp.piece));
+
+      strips.push({
+        pieces: stripPieces,
+        stripH: h,
+        usedW: sumW,
+        leftoverW: usableW - sumW
+      });
+
+      // Advance i past all pieces we consumed from group
+      i = group.findIndex(g => !usedPieces.has(g.piece));
+      if (i === -1) break;
+    }
+  }
+
+  const unplaced = pieces.filter(p => !usedPieces.has(p));
+  return { strips, unplaced };
+}
+
+/**
+ * Após montar as faixas principais, calcula a sobra vertical de cada coluna
+ * e tenta encaixar peças não alocadas, maximizando o uso da chapa.
+ * 
+ * Exemplo: 3 faixas de h=951 usam 3×951=2853mm de 2750? Não cabe.
+ * 2 faixas de h=951 = 1902mm → sobra 848mm → cabe peças de h≤848.
+ */
+function harvestLeftover(
+  strips: HStrip[],
+  unplaced: Piece[],
+  usableW: number,
+  usableH: number
+): { strips: HStrip[]; remaining: Piece[] } {
+  if (unplaced.length === 0 || strips.length === 0) {
+    return { strips, remaining: unplaced };
+  }
+
+  const remaining = [...unplaced];
+
+  // Calculate total height used by current strips
+  const totalH = strips.reduce((a, s) => a + s.stripH, 0);
+  let leftoverH = usableH - totalH;
+
+  if (leftoverH <= 0) return { strips, remaining };
+
+  // Try to fill leftover vertical space with remaining pieces
+  const leftoverStrips: HStrip[] = [];
+  const heightGroups = new Map<number, Array<{ piece: Piece; ori: { w: number; h: number } }>>();
+
+  for (const p of remaining) {
+    for (const o of oris(p)) {
+      if (o.h <= leftoverH) {
+        if (!heightGroups.has(o.h)) heightGroups.set(o.h, []);
+        heightGroups.get(o.h)!.push({ piece: p, ori: o });
+        break;
+      }
+    }
+  }
+
+  const usedInLeftover = new Set<Piece>();
+  const sortedH = [...heightGroups.keys()].sort((a, b) => b - a);
+
+  for (const h of sortedH) {
+    if (h > leftoverH) continue;
+    const group = heightGroups.get(h)!.filter(g => !usedInLeftover.has(g.piece));
+    if (group.length === 0) continue;
+
+    let i = 0;
+    while (i < group.length && leftoverH >= h) {
+      const stripPieces: Array<{ piece: Piece; ori: { w: number; h: number } }> = [];
+      let sumW = 0;
+
+      for (let j = i; j < group.length; j++) {
+        const item = group[j];
+        if (usedInLeftover.has(item.piece)) continue;
+        if (sumW + item.ori.w <= usableW) {
+          stripPieces.push(item);
+          sumW += item.ori.w;
+        }
+      }
+
+      if (stripPieces.length === 0) break;
+
+      stripPieces.forEach(sp => usedInLeftover.add(sp.piece));
+      leftoverStrips.push({
+        pieces: stripPieces,
+        stripH: h,
+        usedW: sumW,
+        leftoverW: usableW - sumW
+      });
+      leftoverH -= h;
+
+      i = group.findIndex(g => !usedInLeftover.has(g.piece));
+      if (i === -1) break;
+    }
+  }
+
+  const finalRemaining = remaining.filter(p => !usedInLeftover.has(p));
+  return {
+    strips: [...strips, ...leftoverStrips],
+    remaining: finalRemaining
+  };
+}
+
+/**
+ * Converte faixas (HStrip[]) para uma árvore de corte CNC.
+ * Cada faixa → um nó Y. Cada peça na faixa → um nó Z dentro do Y.
+ */
+function stripsToTree(
+  strips: HStrip[],
+  usableW: number,
+  usableH: number
+): { tree: TreeNode; area: number; remaining: Piece[] } {
+  const tree = createRoot(usableW, usableH);
+
+  // All strips go into a single X column of full usableW
+  const xId = insertNode(tree, 'root', 'X', usableW, 1);
+  const colX = findNode(tree, xId)!;
+
+  let totalArea = 0;
+
+  for (const strip of strips) {
+    // Residual dominance: check if leftover H after this strip can fit anything
+    const yId = insertNode(tree, colX.id, 'Y', strip.stripH, 1);
+    const yNode = findNode(tree, yId)!;
+
+    for (const { piece, ori } of strip.pieces) {
+      // Create Z node for each piece in the strip
+      const zId = insertNode(tree, yNode.id, 'Z', ori.w, 1);
+      const zNode = findNode(tree, zId)!;
+      if (piece.label) zNode.label = piece.label;
+
+      const wId = insertNode(tree, zNode.id, 'W', ori.h, 1);
+      const wNode = findNode(tree, wId)!;
+      if (piece.label) wNode.label = piece.label;
+
+      // Q cut if piece is narrower than Z
+      const actualW = ori.w === piece.w ? piece.w : piece.h;
+      if (actualW < ori.w) {
+        const qId = insertNode(tree, wId, 'Q', actualW, 1);
+        const qNode = findNode(tree, qId)!;
+        if (piece.label) qNode.label = piece.label;
+      }
+
+      totalArea += ori.w * ori.h;
+    }
+  }
+
+  return { tree, area: totalArea, remaining: [] };
+}
+
+/**
+ * Placement orientado a faixas horizontais — replica a abordagem do opty way.
+ * 
+ * 1. Agrupa peças por altura em faixas horizontais
+ * 2. Empilha faixas verticalmente dentro da chapa
+ * 3. Aproveita sobra vertical com peças menores (leftover harvest)
+ * 4. Retorna quanto coube em uma chapa e o restante
+ */
+function runStripFirstPlacement(
+  inventory: Piece[],
+  usableW: number,
+  usableH: number
+): { tree: TreeNode; area: number; remaining: Piece[] } {
+  if (inventory.length === 0) {
+    return { tree: createRoot(usableW, usableH), area: 0, remaining: [] };
+  }
+
+  // Phase 1: Build horizontal strips
+  const { strips: initialStrips, unplaced: initialUnplaced } = buildHorizontalStrips(
+    inventory, usableW, usableH
+  );
+
+  // Phase 2: Select strips that fit vertically
+  let totalH = 0;
+  const fittingStrips: HStrip[] = [];
+  const overflowPieces: Piece[] = [];
+
+  for (const strip of initialStrips.sort((a, b) => b.stripH - a.stripH)) {
+    if (totalH + strip.stripH <= usableH) {
+      fittingStrips.push(strip);
+      totalH += strip.stripH;
+    } else {
+      // Strip doesn't fit: add its pieces to overflow
+      strip.pieces.forEach(sp => overflowPieces.push(sp.piece));
+    }
+  }
+
+  // Phase 3: Harvest leftover vertical space
+  const allUnplaced = [...initialUnplaced, ...overflowPieces];
+  const { strips: finalStrips, remaining } = harvestLeftover(
+    fittingStrips, allUnplaced, usableW, usableH
+  );
+
+  // Phase 4: Convert to tree
+  const { tree, area } = stripsToTree(finalStrips, usableW, usableH);
+
+  return { tree, area, remaining };
+}
+
+/**
+ * Simula múltiplas chapas usando o strip-first placement.
+ */
+function simulateStripSheets(
+  workPieces: Piece[],
+  usableW: number,
+  usableH: number
+): { sheetsUsed: number; totalArea: number; firstTree: TreeNode } {
+  let currentRemaining = [...workPieces];
+  let sheetsUsed = 0;
+  let totalArea = 0;
+  let firstTree: TreeNode | null = null;
+  const maxSafety = 100;
+
+  while (currentRemaining.length > 0 && sheetsUsed < maxSafety) {
+    const countBefore = currentRemaining.length;
+    const res = runStripFirstPlacement(currentRemaining, usableW, usableH);
+    if (sheetsUsed === 0) firstTree = res.tree;
+
+    const placed = countBefore - res.remaining.length;
+    if (placed === 0) break;
+
+    totalArea += res.area;
+    currentRemaining = res.remaining;
+    sheetsUsed++;
+  }
+
+  return {
+    sheetsUsed,
+    totalArea,
+    firstTree: firstTree || createRoot(usableW, usableH)
+  };
+}
+
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export function optimizeV6(
@@ -862,16 +1159,16 @@ export function optimizeV6(
   ] : [
     pieces,
     rotatedNoLabel,
-    // Height grouping with column awareness (passes usableW/usableH for smart sizing)
+    // Height grouping with column awareness
     groupPiecesByHeight(pieces, usableW, usableH, pieces),
     groupPiecesByHeight(rotatedNoLabel, usableW, usableH, pieces),
     // Width grouping
     groupPiecesByWidth(pieces),
     groupPiecesByWidth(rotatedNoLabel),
-    // Greedy row grouping (fills rows up to usableW)
+    // Greedy row grouping
     greedyRowGrouping(pieces, usableW, usableH),
     greedyRowGrouping(rotatedNoLabel, usableW, usableH),
-    // Legacy height grouping (no column awareness, for diversity)
+    // Legacy height grouping
     groupPiecesByHeight(pieces),
   ];
 
@@ -880,15 +1177,39 @@ export function optimizeV6(
   let bestSheets = Infinity;
   let bestArea = 0;
 
+  // --- Column-based variants (runPlacement) ---
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
       const sorted = [...variant].sort(sortFn);
-      // Simulate ALL sheets for this strategy
       const sim = simulateSheets(sorted, usableW, usableH, minBreak, 100);
       const result = runPlacement(sorted, usableW, usableH, minBreak);
-      
-      // Compare: fewer sheets first, then higher area on first sheet
-      if (sim.sheetsUsed < bestSheets || 
+
+      if (sim.sheetsUsed < bestSheets ||
+          (sim.sheetsUsed === bestSheets && result.area > bestArea)) {
+        bestSheets = sim.sheetsUsed;
+        bestArea = result.area;
+        bestTree = result.tree;
+        bestRemaining = result.remaining;
+      }
+    }
+  }
+
+  // --- Strip-First variants (replicates opty way approach) ---
+  // Try multiple orderings for strip-first
+  const stripSortFns = [
+    (a: Piece, b: Piece) => Math.max(b.w, b.h) - Math.max(a.w, a.h), // tallest first
+    (a: Piece, b: Piece) => b.area - a.area,                           // largest area first
+    (a: Piece, b: Piece) => Math.min(b.w, b.h) - Math.min(a.w, a.h), // widest first
+    (a: Piece, b: Piece) => (b.w + b.h) - (a.w + a.h),               // largest perimeter first
+  ];
+
+  for (const sortFn of stripSortFns) {
+    for (const variant of [pieces, rotatedNoLabel]) {
+      const sorted = [...variant].sort(sortFn);
+      const sim = simulateStripSheets(sorted, usableW, usableH);
+      const result = runStripFirstPlacement(sorted, usableW, usableH);
+
+      if (sim.sheetsUsed < bestSheets ||
           (sim.sheetsUsed === bestSheets && result.area > bestArea)) {
         bestSheets = sim.sheetsUsed;
         bestArea = result.area;
@@ -1021,9 +1342,9 @@ export async function optimizeGeneticAsync(
 
   const numPieces = pieces.length;
 
+  // groupingMode: 0=none, 1=byHeight, 2=byWidth, 3=smartHeight, 4=greedyRow, 5=stripFirst
   function randomIndividual(): GAIndividual {
     const genome = Array.from({ length: numPieces }, (_, i) => i);
-    // Shuffle genome
     for (let i = genome.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [genome[i], genome[j]] = [genome[j], genome[i]];
@@ -1036,18 +1357,9 @@ export async function optimizeGeneticAsync(
   }
 
   function buildPieces(ind: GAIndividual): Piece[] {
-    // 1. Map piece sequence based on genome
     let work = ind.genome.map(idx => ({ ...pieces[idx] }));
+    work = work.map((p, i) => ind.rotations[i] ? { ...p, w: p.h, h: p.w } : p);
 
-    // 2. Apply per-piece rotation based on rotations bitmask
-    work = work.map((p, i) => {
-      if (ind.rotations[i]) {
-        return { ...p, w: p.h, h: p.w };
-      }
-      return p;
-    });
-
-    // 3. Optional Global Grouping (secondary layer)
     if (ind.groupingMode === 1) {
       work = groupPiecesByHeight(work);
     } else if (ind.groupingMode === 2) {
@@ -1057,14 +1369,24 @@ export async function optimizeGeneticAsync(
     } else if (ind.groupingMode === 4) {
       work = greedyRowGrouping(work, usableW, usableH);
     }
-
+    // mode 0 = no grouping (raw order)
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; sheetsUsed: number } {
+  function evaluateInd(ind: GAIndividual): { tree: TreeNode; fitness: number; sheetsUsed: number } {
     const work = buildPieces(ind);
-    const result = simulateSheets(work, usableW, usableH, minBreak, 100);
-    return { tree: result.firstTree, fitness: result.fitness, sheetsUsed: result.sheetsUsed };
+
+    // For mode 5 (strip-first), use strip simulator; others use column simulator
+    if (ind.groupingMode === (5 as any)) {
+      const sim = simulateStripSheets(work, usableW, usableH);
+      const sheetArea = usableW * usableH;
+      const avgUtil = sim.sheetsUsed > 0 ? sim.totalArea / (sim.sheetsUsed * sheetArea) : 0;
+      const fitness = sim.sheetsUsed > 0 ? (1.0 / sim.sheetsUsed) * 0.7 + avgUtil * 0.3 : 0;
+      return { tree: sim.firstTree, fitness: Math.max(0, fitness), sheetsUsed: sim.sheetsUsed };
+    }
+
+    const res = simulateSheets(work, usableW, usableH, minBreak, 100);
+    return { tree: res.firstTree, fitness: res.fitness, sheetsUsed: res.sheetsUsed };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
@@ -1078,15 +1400,12 @@ export async function optimizeGeneticAsync(
   }
 
   function crossover(pA: GAIndividual, pB: GAIndividual): GAIndividual {
-    // 1. Ordered Crossover (OX) for genome (permutation)
     const size = pA.genome.length;
     const start = Math.floor(Math.random() * size);
     const end = Math.floor(Math.random() * (size - start)) + start;
 
     const childGenome = new Array(size).fill(-1);
-    for (let i = start; i <= end; i++) {
-      childGenome[i] = pA.genome[i];
-    }
+    for (let i = start; i <= end; i++) childGenome[i] = pA.genome[i];
 
     let current = 0;
     for (let i = 0; i < size; i++) {
@@ -1097,32 +1416,21 @@ export async function optimizeGeneticAsync(
       }
     }
 
-    // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => Math.random() > 0.5 ? r : pB.rotations[i]);
     const childGrouping = Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode;
 
-    return {
-      genome: childGenome,
-      rotations: childRotations,
-      groupingMode: childGrouping,
-    };
+    return { genome: childGenome, rotations: childRotations, groupingMode: childGrouping };
   }
 
   function mutate(ind: GAIndividual): GAIndividual {
-    const c = {
-      genome: [...ind.genome],
-      rotations: [...ind.rotations],
-      groupingMode: ind.groupingMode
-    };
+    const c = { genome: [...ind.genome], rotations: [...ind.rotations], groupingMode: ind.groupingMode };
 
     const r = Math.random();
     if (r < 0.3) {
-      // Swap Mutation
       const a = Math.floor(Math.random() * c.genome.length);
       const b = Math.floor(Math.random() * c.genome.length);
       [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
     } else if (r < 0.6) {
-      // Block Mutation (Move a segment)
       if (c.genome.length > 3) {
         const blockSize = Math.floor(Math.random() * Math.min(5, c.genome.length / 2)) + 2;
         const start = Math.floor(Math.random() * (c.genome.length - blockSize));
@@ -1131,26 +1439,23 @@ export async function optimizeGeneticAsync(
         c.genome.splice(target, 0, ...segment);
       }
     } else if (r < 0.8) {
-      // Rotation Mutation (Flip 10% of bits)
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
     } else {
-      // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)];
     }
 
     return c;
   }
 
-  // --- Seeding ---
+  // --- Seeding: strategies × grouping modes ---
   const initialPop: GAIndividual[] = [];
   const strategies = getSortStrategies();
-  
-  // Seed with each sort strategy × each grouping mode
-  const seedGroupModes: (0 | 1 | 2 | 3 | 4)[] = [0, 3, 4]; // none, smart height, greedy row
+  const seedGroupModes: (0 | 1 | 2 | 3 | 4)[] = [0, 3, 4];
+
   strategies.forEach(sortFn => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i)
       .sort((a, b) => sortFn(pieces[a], pieces[b]));
@@ -1165,37 +1470,49 @@ export async function optimizeGeneticAsync(
     }
   });
 
-  // Fill rest with random
-  while (initialPop.length < populationSize) {
-    initialPop.push(randomIndividual());
-  }
+  while (initialPop.length < populationSize) initialPop.push(randomIndividual());
 
   let population = initialPop;
   let bestTree: TreeNode | null = null;
   let bestFitness = -1;
-
-  // Report baseline
-  if (onProgress) {
-    onProgress({ phase: 'Semeando População e V6...', current: 0, total: generations });
-  }
-
   let bestSheetsUsed = Infinity;
 
+  if (onProgress) onProgress({ phase: 'Semeando População e V6...', current: 0, total: generations });
+
+  // --- Pre-seed: evaluate strip-first with multiple sort orders ---
+  const stripSortFns: ((a: Piece, b: Piece) => number)[] = [
+    (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
+    (a, b) => b.area - a.area,
+    (a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h),
+  ];
+  for (const sortFn of stripSortFns) {
+    for (const variant of [pieces, pieces.map(p => ({ ...p, w: p.h, h: p.w }))]) {
+      const sorted = [...variant].sort(sortFn);
+      const sim = simulateStripSheets(sorted, usableW, usableH);
+      const sheetArea = usableW * usableH;
+      const avgUtil = sim.sheetsUsed > 0 ? sim.totalArea / (sim.sheetsUsed * sheetArea) : 0;
+      const fitness = sim.sheetsUsed > 0 ? (1.0 / sim.sheetsUsed) * 0.7 + avgUtil * 0.3 : 0;
+      if (fitness > bestFitness || sim.sheetsUsed < bestSheetsUsed) {
+        bestFitness = fitness;
+        bestSheetsUsed = sim.sheetsUsed;
+        bestTree = JSON.parse(JSON.stringify(sim.firstTree));
+      }
+    }
+  }
+  await new Promise(r => setTimeout(r, 0));
+
   for (let g = 0; g < generations; g++) {
-    // Adaptive mutation: increase when stuck
     const diversityRatio = new Set(population.map(i => i.genome.slice(0, 5).join(','))).size / population.length;
     const mutationRate = diversityRatio < 0.3 ? baseMutationRate * 3 : baseMutationRate;
 
     const evaluated = population.map(ind => {
-      const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, 100);
-      return { ind, tree: res.firstTree, fitness: res.fitness, sheetsUsed: res.sheetsUsed };
+      const { tree, fitness, sheetsUsed } = evaluateInd(ind);
+      return { ind, tree, fitness, sheetsUsed };
     });
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
 
-    // Elitism and Best Update
-    if (evaluated[0].fitness > bestFitness || 
+    if (evaluated[0].fitness > bestFitness ||
         (evaluated[0].fitness === bestFitness && evaluated[0].sheetsUsed < bestSheetsUsed)) {
       bestFitness = evaluated[0].fitness;
       bestSheetsUsed = evaluated[0].sheetsUsed;
@@ -1214,7 +1531,6 @@ export async function optimizeGeneticAsync(
 
     if (g % 3 === 0) await new Promise(r => setTimeout(r, 0));
 
-    // Next Gen with diversity management
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map(e => e.ind);
     const seenGenomes = new Set(nextPop.map(i => i.genome.join(',')));
 
@@ -1229,7 +1545,6 @@ export async function optimizeGeneticAsync(
         nextPop.push(child);
         seenGenomes.add(key);
       } else {
-        // Inject random individual for diversity
         nextPop.push(randomIndividual());
       }
     }
