@@ -1046,256 +1046,7 @@ function runStripPlacement(
   return { tree, area: placedArea, remaining };
 }
 
-// ========== COLUMN-COUNT PLACEMENT (OptWay Strategy) ==========
-
-/**
- * Column-Count Packing — mirrors OptWay's layout strategy.
- *
- * For each dominant piece type, calculate N = floor(usableW / pieceW),
- * create ONE X-column of width N × pieceW, and fill it vertically with
- * Y-strips of height = pieceH, each containing N pieces side-by-side (Z nodes).
- *
- * After the dominant column is filled, the remaining inventory is processed
- * recursively with the remaining sheet width as a new sub-problem.
- *
- * Example (from OptWay image, usableW=5980):
- *   734mm pieces → N=floor(5980/734)=8 → X=8×734=5872 ... but then residual
- *   Actually OptWay does: X2936 = 4×734, X951 = 1×951, X2093 = 3×684+leftover
- *   The trick is it groups by piece TYPE and fills each column completely before
- *   moving to the next type.
- */
-function runColumnCountPlacement(
-  inventory: Piece[],
-  usableW: number,
-  usableH: number,
-  minBreak: number = 0
-): { tree: TreeNode; area: number; remaining: Piece[] } {
-  const tree = createRoot(usableW, usableH);
-  let placedArea = 0;
-  const remaining = [...inventory];
-
-  // Helper: count pieces of a specific orientation (w×h) in remaining
-  function countFitting(w: number, h: number): number {
-    return remaining.filter(p => oris(p).some(o => o.w === w && o.h === h)).length;
-  }
-
-  let availW = usableW;
-
-  // Iteratively pick the most frequent piece type and create a dedicated column
-  while (remaining.length > 0 && availW > 0) {
-    // Collect all unique piece orientations
-    const candidates = new Map<string, { w: number; h: number; count: number; n: number; colW: number; score: number }>();
-
-    for (const p of remaining) {
-      for (const o of oris(p)) {
-        if (o.w > availW || o.h > usableH) continue;
-        const key = `${o.w}x${o.h}`;
-        if (candidates.has(key)) continue;
-
-        const n = Math.floor(availW / o.w); // pieces per row
-        if (n === 0) continue;
-        const colW = n * o.w;
-        const count = countFitting(o.w, o.h);
-        const rows = Math.floor(usableH / o.h);
-        const capacity = n * rows;
-        const piecesPlaced = Math.min(count, capacity);
-        // Score: maximize pieces placed per mm of column width used
-        const score = piecesPlaced / colW;
-
-        if (!candidates.has(key) || score > candidates.get(key)!.score) {
-          candidates.set(key, { w: o.w, h: o.h, count, n, colW, score });
-        }
-      }
-    }
-
-    if (candidates.size === 0) break;
-
-    // Pick the orientation with the best score
-    let best: { w: number; h: number; count: number; n: number; colW: number; score: number } | null = null;
-    for (const c of candidates.values()) {
-      if (!best || c.score > best.score || (c.score === best.score && c.count > best.count)) {
-        best = c;
-      }
-    }
-
-    if (!best) break;
-
-    const { w: pw, h: ph, n } = best;
-
-    // Check minBreak for X column width
-    if (minBreak > 0) {
-      const xSibVals = tree.filhos.map(x => x.valor);
-      const colWVal = n * pw;
-      if (xSibVals.some(sv => { const d = Math.abs(sv - colWVal); return d > 0 && d < minBreak; })) {
-        // Try n-1
-        if (n > 1) {
-          best.n = n - 1;
-          best.colW = (n - 1) * pw;
-        } else {
-          break;
-        }
-      }
-    }
-
-    const colW = best.n * pw;
-    if (colW <= 0 || colW > availW) break;
-
-    // Create the X column
-    const xId = insertNode(tree, 'root', 'X', colW, 1);
-    const colX = findNode(tree, xId)!;
-    let usedH = 0;
-
-    // Fill the column with rows of best.n pieces
-    while (usedH < usableH && remaining.length > 0) {
-      const freeH = usableH - usedH;
-      if (ph > freeH) break;
-
-      // Collect up to best.n pieces of this type for this row
-      const rowPieces: number[] = []; // indices into remaining
-      for (let i = 0; i < remaining.length && rowPieces.length < best.n; i++) {
-        const p = remaining[i];
-        if (oris(p).some(o => o.w === pw && o.h === ph)) {
-          rowPieces.push(i);
-        }
-      }
-
-      if (rowPieces.length === 0) break;
-
-      // Residual dominance for Y height
-      let effectiveH = ph;
-      const residualH = freeH - ph;
-      if (residualH > 0 && !canResidualFitAnyPiece(colW, residualH, remaining, minBreak)) {
-        effectiveH = freeH;
-      }
-
-      const yId = insertNode(tree, colX.id, 'Y', effectiveH, 1);
-      const yNode = findNode(tree, yId)!;
-
-      // Place each piece as a Z node in this strip
-      let stripUsedW = 0;
-      for (const idx of rowPieces) {
-        const p = remaining[idx];
-        const rotated = !oris(p).some(o => o.w === pw && o.h === ph && o.w === p.w);
-        // Residual dominance for Z width (last piece in strip gets remaining width)
-        const isLast = stripUsedW + pw * 2 > colW; // next piece won't fit
-        const zW = isLast ? colW - stripUsedW : pw;
-        if (zW <= 0) break;
-
-        placedArea += createPieceNodes(tree, yNode, p, zW, ph, rotated);
-        stripUsedW += zW;
-      }
-
-      // Remove placed pieces (reverse order to preserve indices)
-      [...rowPieces].sort((a, b) => b - a).forEach(idx => remaining.splice(idx, 1));
-
-      usedH += effectiveH;
-
-      // Try to fill remainder of strip with other pieces if strip isn't full
-      const remainingStripW = colW - stripUsedW;
-      if (remainingStripW > 0 && remaining.length > 0) {
-        let freeZW2 = remainingStripW;
-        for (let i = 0; i < remaining.length && freeZW2 > 0; i++) {
-          const pc = remaining[i];
-          for (const o of oris(pc)) {
-            if (o.w <= freeZW2 && o.h <= effectiveH) {
-              if (o.h === ph) {
-                placedArea += createPieceNodes(tree, yNode, pc, o.w, o.h, o.w !== pc.w);
-              } else {
-                const zId2 = insertNode(tree, yNode.id, 'Z', o.w, 1);
-                const zN = findNode(tree, zId2)!;
-                placedArea += createPieceNodes(tree, yNode, pc, o.w, o.h, o.w !== pc.w, zN);
-              }
-              freeZW2 -= o.w;
-              remaining.splice(i, 1);
-              i--;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Vertical continuation: fill remaining height of this column with anything that fits
-    {
-      let freeHRemain = usableH - usedH;
-      while (freeHRemain > 0 && remaining.length > 0) {
-        let bestCandIdx = -1;
-        let bestCandOri: { w: number; h: number } | null = null;
-        let bestCandScore = Infinity;
-
-        for (let i = 0; i < remaining.length; i++) {
-          for (const o of oris(remaining[i])) {
-            if (o.w > colW || o.h > freeHRemain) continue;
-            const score = (colW - o.w) + (freeHRemain - o.h) * 0.5;
-            if (score < bestCandScore) {
-              bestCandScore = score;
-              bestCandIdx = i;
-              bestCandOri = o;
-            }
-          }
-        }
-
-        if (bestCandIdx === -1 || !bestCandOri) break;
-
-        let effectiveH2 = bestCandOri.h;
-        const residualH2 = freeHRemain - bestCandOri.h;
-        if (residualH2 > 0 && !canResidualFitAnyPiece(colW, residualH2, remaining, minBreak)) {
-          effectiveH2 = freeHRemain;
-        }
-
-        const yId2 = insertNode(tree, colX.id, 'Y', effectiveH2, 1);
-        const yNode2 = findNode(tree, yId2)!;
-        const pc = remaining[bestCandIdx];
-        placedArea += createPieceNodes(tree, yNode2, pc, bestCandOri.w, bestCandOri.h, bestCandOri.w !== pc.w);
-        remaining.splice(bestCandIdx, 1);
-
-        // Lateral fill pass 1: same height
-        let freeZW3 = colW - bestCandOri.w;
-        for (let i = 0; i < remaining.length && freeZW3 > 0; i++) {
-          for (const o of oris(remaining[i])) {
-            if (o.h !== bestCandOri.h || o.w > freeZW3) continue;
-            placedArea += createPieceNodes(tree, yNode2, remaining[i], o.w, o.h, o.w !== remaining[i].w);
-            freeZW3 -= o.w;
-            remaining.splice(i, 1);
-            i--;
-            break;
-          }
-        }
-
-        // Lateral fill pass 2: shorter pieces with W subdivision
-        for (let i = 0; i < remaining.length && freeZW3 > 0; i++) {
-          for (const o of oris(remaining[i])) {
-            if (o.w > freeZW3 || o.h > effectiveH2) continue;
-            const zId3 = insertNode(tree, yNode2.id, 'Z', o.w, 1);
-            const zN3 = findNode(tree, zId3)!;
-            placedArea += createPieceNodes(tree, yNode2, remaining[i], o.w, o.h, o.w !== remaining[i].w, zN3);
-            freeZW3 -= o.w;
-            remaining.splice(i, 1);
-            i--;
-            break;
-          }
-        }
-
-        freeHRemain -= effectiveH2;
-      }
-    }
-
-    availW -= colW;
-
-    // If there's still available width but it's now less than the current piece, continue loop
-    // to pick a different piece type for the remaining width sub-problem
-  }
-
-  // Final void filling for any remaining gaps
-  if (remaining.length > 0) {
-    placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
-  }
-
-  return { tree, area: placedArea, remaining };
-}
-
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
-
 
 export async function optimizeV6(
   pieces: Piece[],
@@ -1341,9 +1092,9 @@ export async function optimizeV6(
     ];
   })();
 
-  // Placement modes: 0=column, 1=strip, 2=column-count (OptWay strategy)
-  const placementModes = [0, 1, 2];
-  const placementNames = ['Colunas', 'Strip-Pack', 'Col-Count'];
+  // Add strip-packing as placement modes: 0=column, 1=strip
+  const placementModes = [0, 1];
+  const placementNames = ['Colunas', 'Strip-Pack'];
 
   let bestTree: TreeNode | null = null;
   let bestRemaining: Piece[] = pieces;
@@ -1359,12 +1110,8 @@ export async function optimizeV6(
       for (const pm of placementModes) {
         combo++;
         const sorted = [...variant].sort(strategies[si]);
-        let placeFn: (inv: Piece[], w: number, h: number, mb: number) => { tree: TreeNode; area: number; remaining: Piece[] };
-        if (pm === 1) placeFn = runStripPlacement;
-        else if (pm === 2) placeFn = runColumnCountPlacement;
-        else placeFn = runPlacement;
-        const useStrip = pm === 1;
-        const sim = simulateSheets(sorted, usableW, usableH, minBreak, 100, useStrip, pm === 2);
+        const placeFn = pm === 1 ? runStripPlacement : runPlacement;
+        const sim = simulateSheets(sorted, usableW, usableH, minBreak, 100, pm === 1);
         const result = placeFn(sorted, usableW, usableH, minBreak);
 
         if (sim.sheetsUsed < bestSheets ||
@@ -1445,7 +1192,7 @@ interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
   groupingMode: 0 | 1 | 2 | 3 | 4;
-  placementMode: 0 | 1 | 2; // 0=column, 1=strip, 2=column-count (OptWay)
+  useStrip: boolean; // Use strip-packing vs column-based placement
 }
 
 /**
@@ -1458,8 +1205,7 @@ function simulateSheets(
   usableH: number,
   minBreak: number,
   _maxSheets: number, // kept for signature compat but we simulate all
-  useStripPlacement: boolean = false,
-  useColumnCount: boolean = false
+  useStripPlacement: boolean = false
 ): {
   fitness: number;
   firstTree: TreeNode;
@@ -1475,7 +1221,7 @@ function simulateSheets(
   let totalUtilArea = 0;
   let stuckCount = 0;
   const maxSafety = 100; // prevent infinite loops
-  const placeFn = useColumnCount ? runColumnCountPlacement : useStripPlacement ? runStripPlacement : runPlacement;
+  const placeFn = useStripPlacement ? runStripPlacement : runPlacement;
 
   while (currentRemaining.length > 0 && sheetsUsed < maxSafety) {
     const countBefore = currentRemaining.length;
@@ -1538,7 +1284,7 @@ export async function optimizeGeneticAsync(
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
       groupingMode: ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)],
-      placementMode: ([0, 1, 2] as const)[Math.floor(Math.random() * 3)],
+      useStrip: Math.random() > 0.5,
     };
   }
 
@@ -1570,9 +1316,7 @@ export async function optimizeGeneticAsync(
 
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; sheetsUsed: number } {
     const work = buildPieces(ind);
-    const useStrip = ind.placementMode === 1;
-    const useCC = ind.placementMode === 2;
-    const result = simulateSheets(work, usableW, usableH, minBreak, 100, useStrip, useCC);
+    const result = simulateSheets(work, usableW, usableH, minBreak, 100, ind.useStrip);
     return { tree: result.firstTree, fitness: result.fitness, sheetsUsed: result.sheetsUsed };
   }
 
@@ -1609,22 +1353,21 @@ export async function optimizeGeneticAsync(
     // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => Math.random() > 0.5 ? r : pB.rotations[i]);
     const childGrouping = Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode;
-    const childPlacement = Math.random() > 0.5 ? pA.placementMode : pB.placementMode;
 
     return {
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
-      placementMode: childPlacement,
+      useStrip: Math.random() > 0.5 ? pA.useStrip : pB.useStrip,
     };
   }
 
   function mutate(ind: GAIndividual): GAIndividual {
-    const c: GAIndividual = {
+    const c = {
       genome: [...ind.genome],
       rotations: [...ind.rotations],
       groupingMode: ind.groupingMode,
-      placementMode: ind.placementMode,
+      useStrip: ind.useStrip,
     };
 
     const r = Math.random();
@@ -1653,8 +1396,8 @@ export async function optimizeGeneticAsync(
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4] as const)[Math.floor(Math.random() * 5)];
     } else {
-      // Placement mode mutation (cycle: column → strip → column-count → column)
-      c.placementMode = (([0, 1, 2] as const)[(ind.placementMode + 1) % 3]);
+      // Placement mode mutation
+      c.useStrip = !c.useStrip;
     }
 
     return c;
@@ -1671,13 +1414,13 @@ export async function optimizeGeneticAsync(
       .sort((a, b) => sortFn(pieces[a], pieces[b]));
 
     for (const gm of seedGroupModes) {
-      for (const pm of [0, 1, 2] as const) {
+      for (const strip of [false, true]) {
         if (initialPop.length >= populationSize) break;
         initialPop.push({
           genome: [...sortedIndices],
           rotations: Array.from({ length: numPieces }, () => false),
           groupingMode: gm,
-          placementMode: pm,
+          useStrip: strip,
         });
       }
     }
@@ -1706,9 +1449,7 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map(ind => {
       const work = buildPieces(ind);
-      const useStrip2 = ind.placementMode === 1;
-      const useCC2 = ind.placementMode === 2;
-      const res = simulateSheets(work, usableW, usableH, minBreak, 100, useStrip2, useCC2);
+      const res = simulateSheets(work, usableW, usableH, minBreak, 100, ind.useStrip);
       return { ind, tree: res.firstTree, fitness: res.fitness, sheetsUsed: res.sheetsUsed };
     });
 
