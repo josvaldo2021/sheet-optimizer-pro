@@ -19,8 +19,6 @@ export interface Piece {
   label?: string;
   /** Individual labels when grouping multiple pieces */
   labels?: string[];
-  /** Individual dimensions within a group (widths if groupedAxis='w', heights if groupedAxis='h') */
-  individualDims?: number[];
   /** Axis along which pieces were grouped */
   groupedAxis?: 'w' | 'h';
 }
@@ -268,338 +266,165 @@ export function calcPlacedArea(tree: TreeNode): number {
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
 /**
- * Groups pieces by similar height (min dimension), with fuzzy tolerance.
- * Pieces within `tolerance` mm are grouped. Groups respect maxWidth constraint.
+ * NOVA IMPLEMENTAÇÃO: Agrupamento por Altura
+ * 
+ * Detecta peças com a mesma altura e as agrupa em pares ou trios,
+ * somando as larguras. Isso reduz o número de cortes em X e melhora
+ * o aproveitamento da chapa.
+ * 
+ * Exemplo:
+ * Input:  [600×1296, 610×1296, 610×1296]
+ * Output: [1210×1296 (count=2), 610×1296 (count=1)]
+ * 
+ * Na árvore de corte:
+ * X(1210) -> Y(1296) -> Z(600) + Z(610)
  */
-function groupPiecesByHeightFuzzy(pieces: Piece[], tolerance: number, maxWidth: number): Piece[] {
-  if (pieces.length === 0) return [];
-
-  const items = pieces.map((p, idx) => ({
-    idx,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
-    label: p.label,
-  })).sort((a, b) => a.nh - b.nh);
-
-  const used = new Set<number>();
-  const result: Piece[] = [];
-
-  for (let i = 0; i < items.length; i++) {
-    if (used.has(i)) continue;
-
-    const baseH = items[i].nh;
-    const compatible: number[] = [];
-    for (let j = i; j < items.length; j++) {
-      if (used.has(j)) continue;
-      if (items[j].nh - baseH <= tolerance) {
-        compatible.push(j);
-      } else {
-        break;
-      }
-    }
-
-    if (compatible.length < 2) {
-      used.add(i);
-      result.push({ w: items[i].nw, h: items[i].nh, area: items[i].nw * items[i].nh, count: 1, label: items[i].label });
-      continue;
-    }
-
-    // Sort compatible by width descending for greedy packing
-    const sorted = [...compatible].sort((a, b) => items[b].nw - items[a].nw);
-
-    // Greedily fill groups respecting maxWidth
-    while (sorted.length >= 2) {
-      const group: number[] = [];
-      let totalW = 0;
-
-      for (let k = 0; k < sorted.length; k++) {
-        const idx = sorted[k];
-        if (totalW + items[idx].nw <= maxWidth) {
-          group.push(idx);
-          totalW += items[idx].nw;
-        }
-      }
-
-      if (group.length >= 2) {
-        const maxH = Math.max(...group.map(idx => items[idx].nh));
-        const individualDims = group.map(idx => items[idx].nw);
-        const groupedLabels = group.map(idx => items[idx].label).filter(Boolean) as string[];
-
-        group.forEach(idx => {
-          used.add(idx);
-          const si = sorted.indexOf(idx);
-          if (si >= 0) sorted.splice(si, 1);
-        });
-
-        result.push({
-          w: totalW, h: maxH, area: totalW * maxH, count: group.length,
-          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: 'w', individualDims,
-        });
-      } else {
-        break;
-      }
-    }
-
-    for (const idx of sorted) {
-      if (!used.has(idx)) {
-        used.add(idx);
-        result.push({ w: items[idx].nw, h: items[idx].nh, area: items[idx].nw * items[idx].nh, count: 1, label: items[idx].label });
-      }
-    }
-  }
-
-  return result;
-}
-
-/**
- * Groups pieces by similar width (max dimension), with fuzzy tolerance.
- */
-function groupPiecesByWidthFuzzy(pieces: Piece[], tolerance: number, maxHeight: number): Piece[] {
-  if (pieces.length === 0) return [];
-
-  const items = pieces.map((p, idx) => ({
-    idx,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
-    label: p.label,
-  })).sort((a, b) => a.nw - b.nw);
-
-  const used = new Set<number>();
-  const result: Piece[] = [];
-
-  for (let i = 0; i < items.length; i++) {
-    if (used.has(i)) continue;
-
-    const baseW = items[i].nw;
-    const compatible: number[] = [];
-    for (let j = i; j < items.length; j++) {
-      if (used.has(j)) continue;
-      if (items[j].nw - baseW <= tolerance) {
-        compatible.push(j);
-      } else {
-        break;
-      }
-    }
-
-    if (compatible.length < 2) {
-      used.add(i);
-      result.push({ w: items[i].nw, h: items[i].nh, area: items[i].nw * items[i].nh, count: 1, label: items[i].label });
-      continue;
-    }
-
-    const sorted = [...compatible].sort((a, b) => items[b].nh - items[a].nh);
-
-    while (sorted.length >= 2) {
-      const group: number[] = [];
-      let totalH = 0;
-
-      for (let k = 0; k < sorted.length; k++) {
-        const idx = sorted[k];
-        if (totalH + items[idx].nh <= maxHeight) {
-          group.push(idx);
-          totalH += items[idx].nh;
-        }
-      }
-
-      if (group.length >= 2) {
-        const maxW = Math.max(...group.map(idx => items[idx].nw));
-        const individualDims = group.map(idx => items[idx].nh);
-        const groupedLabels = group.map(idx => items[idx].label).filter(Boolean) as string[];
-
-        group.forEach(idx => {
-          used.add(idx);
-          const si = sorted.indexOf(idx);
-          if (si >= 0) sorted.splice(si, 1);
-        });
-
-        result.push({
-          w: maxW, h: totalH, area: maxW * totalH, count: group.length,
-          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: 'h', individualDims,
-        });
-      } else {
-        break;
-      }
-    }
-
-    for (const idx of sorted) {
-      if (!used.has(idx)) {
-        used.add(idx);
-        result.push({ w: items[idx].nw, h: items[idx].nh, area: items[idx].nw * items[idx].nh, count: 1, label: items[idx].label });
-      }
-    }
-  }
-
-  return result;
-}
-
-// Backward-compatible wrappers
 function groupPiecesByHeight(pieces: Piece[]): Piece[] {
-  return groupPiecesByHeightFuzzy(pieces, 0, Infinity);
-}
+  // Mapeia peças por altura (usando a menor dimensão como altura)
+  const heightGroups = new Map<number, Piece[]>();
 
-function groupPiecesByWidth(pieces: Piece[]): Piece[] {
-  return groupPiecesByWidthFuzzy(pieces, 0, Infinity);
-}
+  pieces.forEach(p => {
+    const h = Math.min(p.w, p.h);
+    if (!heightGroups.has(h)) heightGroups.set(h, []);
+    heightGroups.get(h)!.push(p);
+  });
 
-/**
- * Fill-Row Grouping: combines pieces whose widths sum to near targetWidth.
- * Groups pieces by similar height first, then packs widths to fill rows.
- */
-function groupFillRow(pieces: Piece[], targetWidth: number, tolerance: number = 30): Piece[] {
-  if (pieces.length === 0) return [];
-
-  const items = pieces.map((p, idx) => ({
-    idx,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
-    label: p.label,
-  })).sort((a, b) => a.nh - b.nh);
-
-  const used = new Set<number>();
   const result: Piece[] = [];
 
-  for (let i = 0; i < items.length; i++) {
-    if (used.has(i)) continue;
+  heightGroups.forEach(group => {
+    // Normaliza peças: largura = max, altura = min
+    const normalized = group.map(p => ({
+      ...p,
+      nw: Math.max(p.w, p.h),
+      nh: Math.min(p.w, p.h)
+    })).sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
 
-    const baseH = items[i].nh;
-    const compatible: number[] = [];
-    for (let j = i; j < items.length; j++) {
-      if (used.has(j)) continue;
-      if (items[j].nh - baseH <= tolerance) {
-        compatible.push(j);
+    let i = 0;
+    while (i < normalized.length) {
+      const h = normalized[i].nh;
+
+      // Tenta agrupar 3, depois 2 peças
+      let groupSize = 0;
+      let sumW = 0;
+      const candidates: number[] = [];
+
+      for (let j = i; j < normalized.length && candidates.length < 3; j++) {
+        candidates.push(j);
+        sumW += normalized[j].nw;
       }
-    }
 
-    if (compatible.length < 2) {
-      used.add(i);
-      result.push({ w: items[i].nw, h: items[i].nh, area: items[i].nw * items[i].nh, count: 1, label: items[i].label });
-      continue;
-    }
+      // Aceita grupo de 3 ou 2
+      if (candidates.length >= 2) {
+        // Tenta 3 primeiro, depois 2
+        const trySize = candidates.length >= 3 ? 3 : 2;
+        let bestGroupW = 0;
+        let bestCount = 0;
 
-    const byWidth = [...compatible].sort((a, b) => items[b].nw - items[a].nw);
+        for (let gs = trySize; gs >= 2; gs--) {
+          let gw = 0;
+          for (let k = 0; k < gs; k++) gw += normalized[candidates[k]].nw;
+          bestGroupW = gw;
+          bestCount = gs;
+          break;
+        }
 
-    while (byWidth.length >= 2) {
-      const row: number[] = [];
-      let rowW = 0;
+        if (bestCount >= 2) {
+          // Cria peça agrupada com labels individuais preservados
+          const groupedLabels: string[] = [];
+          for (let k = 0; k < bestCount; k++) {
+            if (normalized[candidates[k]].label) {
+              groupedLabels.push(normalized[candidates[k]].label!);
+            }
+          }
 
-      for (let k = 0; k < byWidth.length; k++) {
-        const idx = byWidth[k];
-        if (rowW + items[idx].nw <= targetWidth) {
-          row.push(idx);
-          rowW += items[idx].nw;
+          result.push({
+            w: bestGroupW,
+            h,
+            area: bestGroupW * h,
+            count: bestCount,
+            labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+            groupedAxis: 'w' // Agrupou larguras (somou W), mantendo altura fixa          
+          });
+
+          // Remove itens agrupados (em ordem reversa para não afetar índices)
+          for (let k = bestCount - 1; k >= 1; k--) {
+            normalized.splice(candidates[k], 1);
+          }
+          normalized.splice(i, 1);
+          continue;
         }
       }
 
-      if (row.length >= 2) {
-        const maxH = Math.max(...row.map(idx => items[idx].nh));
-        const individualDims = row.map(idx => items[idx].nw);
-        const groupedLabels = row.map(idx => items[idx].label).filter(Boolean) as string[];
-
-        row.forEach(idx => {
-          used.add(idx);
-          const si = byWidth.indexOf(idx);
-          if (si >= 0) byWidth.splice(si, 1);
-        });
-
-        result.push({
-          w: rowW, h: maxH, area: rowW * maxH, count: row.length,
-          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: 'w', individualDims,
-        });
-      } else {
-        break;
-      }
+      // Peça individual
+      result.push({
+        w: normalized[i].nw,
+        h: normalized[i].nh,
+        area: normalized[i].nw * normalized[i].nh,
+        count: 1,
+        label: normalized[i].label
+      });
+      i++;
     }
-
-    for (const idx of byWidth) {
-      if (!used.has(idx)) {
-        used.add(idx);
-        result.push({ w: items[idx].nw, h: items[idx].nh, area: items[idx].nw * items[idx].nh, count: 1, label: items[idx].label });
-      }
-    }
-  }
+  });
 
   return result;
 }
 
 /**
- * Fill-Column Grouping: combines pieces whose heights sum to near targetHeight.
+ * Agrupamento por Largura (implementação original mantida)
  */
-function groupFillCol(pieces: Piece[], targetHeight: number, tolerance: number = 30): Piece[] {
-  if (pieces.length === 0) return [];
+function groupPiecesByWidth(pieces: Piece[]): Piece[] {
+  const widthGroups = new Map<number, Piece[]>();
 
-  const items = pieces.map((p, idx) => ({
-    idx,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
-    label: p.label,
-  })).sort((a, b) => a.nw - b.nw);
+  pieces.forEach(p => {
+    const w = Math.max(p.w, p.h);
+    if (!widthGroups.has(w)) widthGroups.set(w, []);
+    widthGroups.get(w)!.push(p);
+  });
 
-  const used = new Set<number>();
   const result: Piece[] = [];
 
-  for (let i = 0; i < items.length; i++) {
-    if (used.has(i)) continue;
+  widthGroups.forEach(group => {
+    const sorted = group.map(p => ({
+      ...p,
+      nw: Math.max(p.w, p.h),
+      nh: Math.min(p.w, p.h)
+    })).sort((a, b) => b.nh - a.nh);
 
-    const baseW = items[i].nw;
-    const compatible: number[] = [];
-    for (let j = i; j < items.length; j++) {
-      if (used.has(j)) continue;
-      if (items[j].nw - baseW <= tolerance) {
-        compatible.push(j);
-      }
-    }
+    let i = 0;
+    while (i < sorted.length) {
+      if (i + 1 < sorted.length) {
+        const w = sorted[i].nw;
+        const sumH = sorted[i].nh + sorted[i + 1].nh;
 
-    if (compatible.length < 2) {
-      used.add(i);
-      result.push({ w: items[i].nw, h: items[i].nh, area: items[i].nw * items[i].nh, count: 1, label: items[i].label });
-      continue;
-    }
-
-    const byHeight = [...compatible].sort((a, b) => items[b].nh - items[a].nh);
-
-    while (byHeight.length >= 2) {
-      const col: number[] = [];
-      let colH = 0;
-
-      for (let k = 0; k < byHeight.length; k++) {
-        const idx = byHeight[k];
-        if (colH + items[idx].nh <= targetHeight) {
-          col.push(idx);
-          colH += items[idx].nh;
-        }
-      }
-
-      if (col.length >= 2) {
-        const maxW = Math.max(...col.map(idx => items[idx].nw));
-        const individualDims = col.map(idx => items[idx].nh);
-        const groupedLabels = col.map(idx => items[idx].label).filter(Boolean) as string[];
-
-        col.forEach(idx => {
-          used.add(idx);
-          const si = byHeight.indexOf(idx);
-          if (si >= 0) byHeight.splice(si, 1);
-        });
+        const groupedLabels: string[] = [];
+        if (sorted[i].label) groupedLabels.push(sorted[i].label);
+        if (sorted[i + 1].label) groupedLabels.push(sorted[i + 1].label);
 
         result.push({
-          w: maxW, h: colH, area: maxW * colH, count: col.length,
+          w,
+          h: sumH,
+          area: w * sumH,
+          count: 2,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: 'h', individualDims,
+          groupedAxis: 'h' // Agrupou alturas (somou H), mantendo largura fixa
         });
-      } else {
-        break;
-      }
-    }
 
-    for (const idx of byHeight) {
-      if (!used.has(idx)) {
-        used.add(idx);
-        result.push({ w: items[idx].nw, h: items[idx].nh, area: items[idx].nw * items[idx].nh, count: 1, label: items[idx].label });
+        sorted.splice(i + 1, 1);
+        sorted.splice(i, 1);
+        continue;
       }
+
+      result.push({
+        w: sorted[i].nw,
+        h: sorted[i].nh,
+        area: sorted[i].nw * sorted[i].nh,
+        count: 1,
+        label: sorted[i].label
+      });
+      i++;
     }
-  }
+  });
 
   return result;
 }
@@ -920,33 +745,18 @@ export function optimizeV6(
   const hasLabels = pieces.some(p => p.label);
   const strategies = getSortStrategies();
 
-  const rotated = pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
-
   const pieceVariants: Piece[][] = hasLabels ? [
     pieces,
-    rotated,
+    pieces.map(p => ({ ...p, w: p.h, h: p.w })),
   ] : useGrouping === false ? [
     pieces,
-    rotated,
+    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
   ] : [
     pieces,
-    rotated,
+    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
     groupPiecesByHeight(pieces),
     groupPiecesByWidth(pieces),
-    groupPiecesByHeightFuzzy(pieces, 10, usableW),
-    groupPiecesByHeightFuzzy(pieces, 30, usableW),
-    groupPiecesByHeightFuzzy(pieces, 50, usableW),
-    groupPiecesByWidthFuzzy(pieces, 10, usableH),
-    groupPiecesByWidthFuzzy(pieces, 30, usableH),
-    groupFillRow(pieces, usableW, 10),
-    groupFillRow(pieces, usableW, 30),
-    groupFillRow(pieces, usableW, 50),
-    groupFillCol(pieces, usableH, 10),
-    groupFillCol(pieces, usableH, 30),
-    // Rotated variants
-    groupPiecesByHeightFuzzy(rotated, 30, usableW),
-    groupFillRow(rotated, usableW, 30),
-    groupFillCol(rotated, usableH, 30),
+    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
   ];
 
   let bestTree: TreeNode | null = null;
@@ -1009,7 +819,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: number; // 0-9: different grouping strategies
+  groupingMode: 0 | 1 | 2;
 }
 
 /**
@@ -1100,7 +910,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: Math.floor(Math.random() * 10),
+      groupingMode: ([0, 1, 2] as const)[Math.floor(Math.random() * 3)],
     };
   }
 
@@ -1117,16 +927,10 @@ export async function optimizeGeneticAsync(
     });
 
     // 3. Optional Global Grouping (secondary layer)
-    switch (ind.groupingMode) {
-      case 1: work = groupPiecesByHeight(work); break;
-      case 2: work = groupPiecesByWidth(work); break;
-      case 3: work = groupPiecesByHeightFuzzy(work, 10, usableW); break;
-      case 4: work = groupPiecesByHeightFuzzy(work, 30, usableW); break;
-      case 5: work = groupPiecesByHeightFuzzy(work, 50, usableW); break;
-      case 6: work = groupPiecesByWidthFuzzy(work, 30, usableH); break;
-      case 7: work = groupFillRow(work, usableW, 10); break;
-      case 8: work = groupFillRow(work, usableW, 30); break;
-      case 9: work = groupFillCol(work, usableH, 30); break;
+    if (ind.groupingMode === 1) {
+      work = groupPiecesByHeight(work);
+    } else if (ind.groupingMode === 2) {
+      work = groupPiecesByWidth(work);
     }
 
     return work;
@@ -1211,7 +1015,7 @@ export async function optimizeGeneticAsync(
       }
     } else {
       // Grouping Mutation
-      c.groupingMode = Math.floor(Math.random() * 10);
+      c.groupingMode = ([0, 1, 2] as const)[Math.floor(Math.random() * 3)];
     }
 
     return c;
@@ -1220,7 +1024,7 @@ export async function optimizeGeneticAsync(
   // --- Seeding ---
   const initialPop: GAIndividual[] = [];
   const strategies = getSortStrategies();
-  strategies.forEach((sortFn, sIdx) => {
+  strategies.forEach(sortFn => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i)
       .sort((a, b) => {
         // Find original pieces to compare
@@ -1232,7 +1036,7 @@ export async function optimizeGeneticAsync(
     initialPop.push({
       genome: sortedIndices,
       rotations: Array.from({ length: numPieces }, () => false),
-      groupingMode: sIdx % 10
+      groupingMode: 0
     });
   });
 
@@ -1355,9 +1159,9 @@ function createPieceNodes(
     if (zNodeToUse && splitAxis === 'Z') splitAxis = 'W';
 
     if (splitAxis === 'Z') {
+      const individualWidth = Math.round(placedW / piece.count!);
       for (let i = 0; i < piece.count!; i++) {
-        const iw = piece.individualDims ? piece.individualDims[i] : Math.round(placedW / piece.count!);
-        const zId = insertNode(tree, yNode.id, 'Z', iw, 1);
+        const zId = insertNode(tree, yNode.id, 'Z', individualWidth, 1);
         const zNode = findNode(tree, zId)!;
         if (piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
         const wId = insertNode(tree, zId, 'W', placedH, 1);
@@ -1365,21 +1169,21 @@ function createPieceNodes(
         if (piece.labels && piece.labels[i]) wNode.label = piece.labels[i];
       }
     } else if (splitAxis === 'W') {
+      const individualHeight = Math.round(placedH / piece.count!);
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, 'Z', placedW, 1))!;
       for (let i = 0; i < piece.count!; i++) {
-        const ih = piece.individualDims ? piece.individualDims[i] : Math.round(placedH / piece.count!);
-        const wId = insertNode(tree, zNode.id, 'W', ih, 1);
+        const wId = insertNode(tree, zNode.id, 'W', individualHeight, 1);
         const wNode_f = findNode(tree, wId)!;
         if (piece.labels && piece.labels[i]) wNode_f.label = piece.labels[i];
         if (i === 0 && piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
       }
     } else {
+      const individualWidth = Math.round(placedW / piece.count!);
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, 'Z', placedW, 1))!;
       const wId = insertNode(tree, zNode.id, 'W', placedH, 1);
       const wNode = findNode(tree, wId)!;
       for (let i = 0; i < piece.count!; i++) {
-        const iw = piece.individualDims ? piece.individualDims[i] : Math.round(placedW / piece.count!);
-        const qId = insertNode(tree, wId, 'Q', iw, 1);
+        const qId = insertNode(tree, wId, 'Q', individualWidth, 1);
         const qNode = findNode(tree, qId)!;
         if (piece.labels && piece.labels[i]) {
           qNode.label = piece.labels[i];
