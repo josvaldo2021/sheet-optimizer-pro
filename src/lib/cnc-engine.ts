@@ -279,7 +279,7 @@ export function calcPlacedArea(tree: TreeNode): number {
  * Na árvore de corte:
  * X(1210) -> Y(1296) -> Z(600) + Z(610)
  */
-function groupPiecesByHeight(pieces: Piece[]): Piece[] {
+function groupPiecesByHeight(pieces: Piece[], maxW?: number): Piece[] {
   // Mapeia peças por altura (usando a menor dimensão como altura)
   const heightGroups = new Map<number, Piece[]>();
 
@@ -303,56 +303,43 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
     while (i < normalized.length) {
       const h = normalized[i].nh;
 
-      // Tenta agrupar 3, depois 2 peças
-      let groupSize = 0;
-      let sumW = 0;
-      const candidates: number[] = [];
+      // Tenta agrupar o máximo de peças possível que caibam na largura máxima
+      let groupSize = 1;
+      let sumW = normalized[i].nw;
+      const candidates: number[] = [i];
 
-      for (let j = i; j < normalized.length && candidates.length < 3; j++) {
+      for (let j = i + 1; j < normalized.length; j++) {
+        const newSum = sumW + normalized[j].nw;
+        // If maxW is provided, don't exceed it
+        if (maxW && newSum > maxW) continue;
         candidates.push(j);
-        sumW += normalized[j].nw;
+        sumW = newSum;
+        groupSize++;
       }
 
-      // Aceita grupo de 3 ou 2
-      if (candidates.length >= 2) {
-        // Tenta 3 primeiro, depois 2
-        const trySize = candidates.length >= 3 ? 3 : 2;
-        let bestGroupW = 0;
-        let bestCount = 0;
-
-        for (let gs = trySize; gs >= 2; gs--) {
-          let gw = 0;
-          for (let k = 0; k < gs; k++) gw += normalized[candidates[k]].nw;
-          bestGroupW = gw;
-          bestCount = gs;
-          break;
+      if (groupSize >= 2) {
+        // Cria peça agrupada com labels individuais preservados
+        const groupedLabels: string[] = [];
+        for (let k = 0; k < groupSize; k++) {
+          if (normalized[candidates[k]].label) {
+            groupedLabels.push(normalized[candidates[k]].label!);
+          }
         }
 
-        if (bestCount >= 2) {
-          // Cria peça agrupada com labels individuais preservados
-          const groupedLabels: string[] = [];
-          for (let k = 0; k < bestCount; k++) {
-            if (normalized[candidates[k]].label) {
-              groupedLabels.push(normalized[candidates[k]].label!);
-            }
-          }
+        result.push({
+          w: sumW,
+          h,
+          area: sumW * h,
+          count: groupSize,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: 'w'
+        });
 
-          result.push({
-            w: bestGroupW,
-            h,
-            area: bestGroupW * h,
-            count: bestCount,
-            labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-            groupedAxis: 'w' // Agrupou larguras (somou W), mantendo altura fixa          
-          });
-
-          // Remove itens agrupados (em ordem reversa para não afetar índices)
-          for (let k = bestCount - 1; k >= 1; k--) {
-            normalized.splice(candidates[k], 1);
-          }
-          normalized.splice(i, 1);
-          continue;
+        // Remove itens agrupados (em ordem reversa para não afetar índices)
+        for (let k = candidates.length - 1; k >= 0; k--) {
+          normalized.splice(candidates[k], 1);
         }
+        continue;
       }
 
       // Peça individual
@@ -373,7 +360,7 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
 /**
  * Agrupamento por Largura (implementação original mantida)
  */
-function groupPiecesByWidth(pieces: Piece[]): Piece[] {
+function groupPiecesByWidth(pieces: Piece[], maxH?: number): Piece[] {
   const widthGroups = new Map<number, Piece[]>();
 
   pieces.forEach(p => {
@@ -397,6 +384,19 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
         const w = sorted[i].nw;
         const sumH = sorted[i].nh + sorted[i + 1].nh;
 
+        // Don't group if combined height exceeds maxH
+        if (maxH && sumH > maxH) {
+          result.push({
+            w: sorted[i].nw,
+            h: sorted[i].nh,
+            area: sorted[i].nw * sorted[i].nh,
+            count: 1,
+            label: sorted[i].label
+          });
+          i++;
+          continue;
+        }
+
         const groupedLabels: string[] = [];
         if (sorted[i].label) groupedLabels.push(sorted[i].label);
         if (sorted[i + 1].label) groupedLabels.push(sorted[i + 1].label);
@@ -407,7 +407,7 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
           area: w * sumH,
           count: 2,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: 'h' // Agrupou alturas (somou H), mantendo largura fixa
+          groupedAxis: 'h'
         });
 
         sorted.splice(i + 1, 1);
@@ -754,9 +754,9 @@ export function optimizeV6(
   ] : [
     pieces,
     pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
-    groupPiecesByHeight(pieces),
-    groupPiecesByWidth(pieces),
-    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+    groupPiecesByHeight(pieces, usableW),
+    groupPiecesByWidth(pieces, usableH),
+    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })), usableW),
   ];
 
   let bestTree: TreeNode | null = null;
@@ -933,9 +933,9 @@ export async function optimizeGeneticAsync(
 
     // 3. Optional Global Grouping (secondary layer)
     if (ind.groupingMode === 1) {
-      work = groupPiecesByHeight(work);
+      work = groupPiecesByHeight(work, usableW);
     } else if (ind.groupingMode === 2) {
-      work = groupPiecesByWidth(work);
+      work = groupPiecesByWidth(work, usableH);
     }
 
     return work;
@@ -1171,8 +1171,10 @@ function createPieceNodes(
     if (zNodeToUse && splitAxis === 'Z') splitAxis = 'W';
 
     if (splitAxis === 'Z') {
-      const individualWidth = Math.round(placedW / piece.count!);
+      // Use floor for all but last piece to avoid rounding overflow
+      const baseWidth = Math.floor(placedW / piece.count!);
       for (let i = 0; i < piece.count!; i++) {
+        const individualWidth = (i === piece.count! - 1) ? (placedW - baseWidth * (piece.count! - 1)) : baseWidth;
         const zId = insertNode(tree, yNode.id, 'Z', individualWidth, 1);
         const zNode = findNode(tree, zId)!;
         if (piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
@@ -1226,6 +1228,63 @@ function createPieceNodes(
 
   addedArea = placedW * placedH;
   return addedArea;
+}
+
+/**
+ * Validates tree constraints: no child sum exceeds parent capacity.
+ * Logs warnings and clamps values to prevent visual overflow.
+ */
+function validateTree(tree: TreeNode, usableW: number, usableH: number): void {
+  // Check X columns don't exceed usableW
+  const totalX = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+  if (totalX > usableW + 1) {
+    console.warn(`[CNC] X overflow: ${totalX} > ${usableW}. Clamping.`);
+    // Remove excess columns from the end
+    while (tree.filhos.length > 0) {
+      const sum = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+      if (sum <= usableW + 1) break;
+      tree.filhos.pop();
+    }
+  }
+
+  for (const colX of tree.filhos) {
+    // Check Y strips don't exceed usableH
+    const totalY = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    if (totalY > usableH + 1) {
+      console.warn(`[CNC] Y overflow in X(${colX.valor}): ${totalY} > ${usableH}. Clamping.`);
+      while (colX.filhos.length > 0) {
+        const sum = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        if (sum <= usableH + 1) break;
+        colX.filhos.pop();
+      }
+    }
+
+    for (const yNode of colX.filhos) {
+      // Check Z nodes don't exceed column width
+      const totalZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+      if (totalZ > colX.valor + 1) {
+        console.warn(`[CNC] Z overflow in Y(${yNode.valor}): ${totalZ} > ${colX.valor}. Clamping.`);
+        while (yNode.filhos.length > 0) {
+          const sum = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+          if (sum <= colX.valor + 1) break;
+          yNode.filhos.pop();
+        }
+      }
+
+      for (const zNode of yNode.filhos) {
+        // Check W nodes don't exceed Y height
+        const totalW = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+        if (totalW > yNode.valor + 1) {
+          console.warn(`[CNC] W overflow in Z(${zNode.valor}): ${totalW} > ${yNode.valor}. Clamping.`);
+          while (zNode.filhos.length > 0) {
+            const sum = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+            if (sum <= yNode.valor + 1) break;
+            zNode.filhos.pop();
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -1560,6 +1619,9 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
     }
   }
+
+  // Validate tree to prevent dimensional overflows
+  validateTree(tree, usableW, usableH);
 
   return { tree, area: placedArea, remaining };
 }
