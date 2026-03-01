@@ -765,12 +765,14 @@ export function optimizeV6(
 
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
-      const sorted = [...variant].sort(sortFn);
-      const result = runPlacement(sorted, usableW, usableH, minBreak);
-      if (result.area > bestArea) {
-        bestArea = result.area;
-        bestTree = result.tree;
-        bestRemaining = result.remaining;
+      for (const fullWidth of [false, true]) {
+        const sorted = [...variant].sort(sortFn);
+        const result = runPlacement(sorted, usableW, usableH, minBreak, fullWidth);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestRemaining = result.remaining;
+        }
       }
     }
   }
@@ -820,6 +822,7 @@ interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
   groupingMode: 0 | 1 | 2;
+  forceFullWidth: boolean;
 }
 
 /**
@@ -830,7 +833,8 @@ function simulateSheets(
   usableW: number,
   usableH: number,
   minBreak: number,
-  maxSheets: number
+  maxSheets: number,
+  forceFullWidth: boolean = false
 ): {
   fitness: number;
   firstTree: TreeNode;
@@ -852,7 +856,7 @@ function simulateSheets(
     if (currentRemaining.length === 0) break;
 
     const countBefore = currentRemaining.length;
-    const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
+    const res = runPlacement(currentRemaining, usableW, usableH, minBreak, forceFullWidth);
     if (s === 0) firstTree = res.tree;
 
     totalUtil += (res.area / sheetArea);
@@ -911,6 +915,7 @@ export async function optimizeGeneticAsync(
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
       groupingMode: ([0, 1, 2] as const)[Math.floor(Math.random() * 3)],
+      forceFullWidth: Math.random() > 0.5,
     };
   }
 
@@ -939,7 +944,7 @@ export async function optimizeGeneticAsync(
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number } {
     const work = buildPieces(ind);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    const result = simulateSheets(work, usableW, usableH, minBreak, lookahead || 1);
+    const result = simulateSheets(work, usableW, usableH, minBreak, lookahead || 1, ind.forceFullWidth);
     return { tree: result.firstTree, fitness: result.fitness };
   }
 
@@ -976,19 +981,22 @@ export async function optimizeGeneticAsync(
     // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => Math.random() > 0.5 ? r : pB.rotations[i]);
     const childGrouping = Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode;
+    const childFullWidth = Math.random() > 0.5 ? pA.forceFullWidth : pB.forceFullWidth;
 
     return {
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
+      forceFullWidth: childFullWidth,
     };
   }
 
   function mutate(ind: GAIndividual): GAIndividual {
-    const c = {
+    const c: GAIndividual = {
       genome: [...ind.genome],
       rotations: [...ind.rotations],
-      groupingMode: ind.groupingMode
+      groupingMode: ind.groupingMode,
+      forceFullWidth: ind.forceFullWidth,
     };
 
     const r = Math.random();
@@ -1013,9 +1021,12 @@ export async function optimizeGeneticAsync(
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else {
+    } else if (r < 0.9) {
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2] as const)[Math.floor(Math.random() * 3)];
+    } else {
+      // Full-width mutation
+      c.forceFullWidth = !c.forceFullWidth;
     }
 
     return c;
@@ -1036,7 +1047,8 @@ export async function optimizeGeneticAsync(
     initialPop.push({
       genome: sortedIndices,
       rotations: Array.from({ length: numPieces }, () => false),
-      groupingMode: 0
+      groupingMode: 0,
+      forceFullWidth: false,
     });
   });
 
@@ -1060,7 +1072,7 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map(ind => {
       const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
+      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead, ind.forceFullWidth);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -1222,7 +1234,7 @@ function createPieceNodes(
  * Quando uma peça tem count > 1, significa que é resultado de agrupamento.
  * Neste caso, criamos múltiplos nós Z em vez de um único Z com largura somada.
  */
-function runPlacement(inventory: Piece[], usableW: number, usableH: number, minBreak: number = 0): { tree: TreeNode; area: number; remaining: Piece[] } {
+function runPlacement(inventory: Piece[], usableW: number, usableH: number, minBreak: number = 0, forceFullWidth: boolean = false): { tree: TreeNode; area: number; remaining: Piece[] } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
@@ -1294,22 +1306,30 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         // Check min break distance for X values
         if (minBreak > 0) {
           const violatesX = tree.filhos.some(x => {
-            const diff = Math.abs(x.valor - o.w);
+            const diff = Math.abs(x.valor - (forceFullWidth ? freeW : o.w));
             return diff > 0 && diff < minBreak;
           });
           if (violatesX) continue;
         }
         if (o.w <= freeW && o.h <= usableH) {
-          // Residual dominance: if leftover width can't fit any piece, extend to full freeW
-          let effectiveW = o.w;
-          const residualW = freeW - o.w;
-          if (residualW > 0) {
-            const xSibValues = tree.filhos.map(x => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
-              effectiveW = freeW;
+          let effectiveW: number;
+          if (forceFullWidth) {
+            // Full-width strategy: always use all remaining width
+            effectiveW = freeW;
+          } else {
+            // Tight-column strategy: use piece width, extend only if residual is useless
+            effectiveW = o.w;
+            const residualW = freeW - o.w;
+            if (residualW > 0) {
+              const xSibValues = tree.filhos.map(x => x.valor);
+              if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
+                effectiveW = freeW;
+              }
             }
           }
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          const score = forceFullWidth
+            ? -0.1  // Slight preference to try full-width when forced
+            : ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: 'NEW', w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
