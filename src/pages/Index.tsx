@@ -4,7 +4,7 @@ import {
   TreeNode, PieceItem, OptimizationProgress,
   createRoot, cloneTree, findNode, findParentOfType,
   insertNode, deleteNode, calcAllocation, calcPlacedArea,
-  optimizeV6, optimizeMultiSheet,
+  optimizeGeneticV1, optimizeGeneticAsync
 } from '@/lib/cnc-engine';
 import { groupIdenticalLayouts, LayoutGroup } from '@/lib/layout-utils';
 import { exportPdf } from '@/lib/pdf-export';
@@ -177,13 +177,13 @@ const Index = () => {
     });
     if (inv.length === 0) { setStatus({ msg: 'Inventário vazio!', type: 'error' }); return; }
     setIsOptimizing(true);
-    setProgress({ phase: 'Otimizando...', current: 0, total: 1 });
-    setStatus({ msg: 'Otimizando...', type: 'warn' });
+    setProgress({ phase: 'Iniciando...', current: 0, total: 1 });
+    setStatus({ msg: 'Otimizando com Algoritmo Genético...', type: 'warn' });
 
     await new Promise(r => setTimeout(r, 20));
-    const result = optimizeV6(inv, usableW, usableH, minBreak);
-    setTree(result.tree);
-    setChapas([{ tree: result.tree, usedArea: calcPlacedArea(result.tree) }]);
+    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress);
+    setTree(result);
+    setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
     setActiveChapa(0);
     setSelectedId('root');
     setProgress(null);
@@ -198,19 +198,74 @@ const Index = () => {
     }
     setIsOptimizing(true);
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
-    setProgress({ phase: 'Otimizando...', current: 0, total: 1 });
+
+    const runAllSheets = async (useGrouping?: boolean) => {
+      const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
+      const remaining = pieces.map(p => ({ ...p }));
+      let sheetCount = 0;
+
+      while (remaining.length > 0 && sheetCount < 100) {
+        sheetCount++;
+        const inv: { w: number; h: number; area: number; label?: string }[] = [];
+        remaining.forEach(p => {
+          for (let i = 0; i < p.qty; i++) {
+            if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
+          }
+        });
+        if (inv.length === 0) break;
+
+        setProgress({
+          phase: `Chapa ${sheetCount} (variante ${useGrouping === undefined ? 'auto' : useGrouping ? 'agrupado' : 'normal'})`,
+          current: sheetCount,
+          total: sheetCount + 1,
+        });
+
+        await new Promise(r => setTimeout(r, 0));
+        const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, (p) => {
+          setProgress({
+            phase: `Chapa ${sheetCount} - ${p.phase}`,
+            current: p.current,
+            total: p.total,
+            bestUtil: p.bestUtil,
+          });
+        });
+        const usedArea = calcPlacedArea(result);
+        chapaList.push({ tree: result, usedArea });
+
+        const usedPieces = extractUsedPiecesWithContext(result);
+        usedPieces.forEach(used => {
+          for (let i = 0; i < remaining.length; i++) {
+            const p = remaining[i];
+            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+              p.qty--;
+              if (p.qty <= 0) remaining.splice(i, 1);
+              break;
+            }
+          }
+        });
+      }
+
+      return chapaList;
+    };
 
     await new Promise(r => setTimeout(r, 20));
 
-    const inv: { w: number; h: number; area: number; label?: string }[] = [];
-    pieces.forEach(p => {
-      for (let i = 0; i < p.qty; i++) {
-        if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
-      }
+    const candidates = [];
+    for (const variant of [false, true, undefined] as const) {
+      setProgress({ phase: `Testando variante ${variant === undefined ? 'auto' : variant ? 'agrupado' : 'normal'}...`, current: 0, total: 1 });
+      const result = await runAllSheets(variant);
+      if (result.length > 0) candidates.push(result);
+    }
+
+    const sheetArea = usableW * usableH;
+    candidates.sort((a, b) => {
+      if (a.length !== b.length) return a.length - b.length;
+      const avgA = a.reduce((s, c) => s + c.usedArea / sheetArea, 0) / a.length;
+      const avgB = b.reduce((s, c) => s + c.usedArea / sheetArea, 0) / b.length;
+      return avgB - avgA;
     });
 
-    const best = optimizeMultiSheet(inv, usableW, usableH, minBreak);
-
+    const best = candidates[0] || [];
     setChapas(best);
     if (best.length > 0) {
       setTree(best[0].tree);
@@ -220,7 +275,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
-  }, [pieces, usableW, usableH, minBreak]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
