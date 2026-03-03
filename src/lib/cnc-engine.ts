@@ -1,5 +1,5 @@
 // CNC Cut Plan Engine with IMPROVED Height Grouping
-export type NodeType = 'ROOT' | 'X' | 'Y' | 'Z' | 'W' | 'Q';
+export type NodeType = "ROOT" | "X" | "Y" | "Z" | "W" | "Q";
 
 export interface TreeNode {
   id: string;
@@ -20,7 +20,7 @@ export interface Piece {
   /** Individual labels when grouping multiple pieces */
   labels?: string[];
   /** Axis along which pieces were grouped */
-  groupedAxis?: 'w' | 'h';
+  groupedAxis?: "w" | "h";
 }
 
 export interface PieceItem {
@@ -35,7 +35,7 @@ export interface PieceItem {
 export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
   // Build a pool of available labels: for each piece, qty copies
   const pool: Array<{ w: number; h: number; label: string }> = [];
-  pieces.forEach(p => {
+  pieces.forEach((p) => {
     if (p.label) {
       for (let i = 0; i < p.qty; i++) {
         pool.push({ w: p.w, h: p.h, label: p.label });
@@ -47,22 +47,23 @@ export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
 
   // Walk tree and assign labels to leaf nodes by matching dimensions
   function walk(n: TreeNode, parents: TreeNode[]) {
-    const yAncestor = [...parents].reverse().find(p => p.tipo === 'Y');
-    const zAncestor = [...parents].reverse().find(p => p.tipo === 'Z');
-    const wAncestor = [...parents].reverse().find(p => p.tipo === 'W');
+    const yAncestor = [...parents].reverse().find((p) => p.tipo === "Y");
+    const zAncestor = [...parents].reverse().find((p) => p.tipo === "Z");
+    const wAncestor = [...parents].reverse().find((p) => p.tipo === "W");
 
-    let pieceW = 0, pieceH = 0;
+    let pieceW = 0,
+      pieceH = 0;
     let isLeaf = false;
 
-    if (n.tipo === 'Z' && n.filhos.length === 0) {
+    if (n.tipo === "Z" && n.filhos.length === 0) {
       pieceW = n.valor;
       pieceH = yAncestor?.valor || 0;
       isLeaf = true;
-    } else if (n.tipo === 'W' && n.filhos.length === 0) {
+    } else if (n.tipo === "W" && n.filhos.length === 0) {
       pieceW = zAncestor?.valor || 0;
       pieceH = n.valor;
       isLeaf = true;
-    } else if (n.tipo === 'Q') {
+    } else if (n.tipo === "Q") {
       pieceW = n.valor;
       pieceH = wAncestor?.valor || 0;
       isLeaf = true;
@@ -71,8 +72,10 @@ export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
     if (isLeaf && pieceW > 0 && pieceH > 0) {
       for (let i = 0; i < pool.length; i++) {
         const p = pool[i];
-        if ((Math.round(p.w) === Math.round(pieceW) && Math.round(p.h) === Math.round(pieceH)) ||
-          (Math.round(p.w) === Math.round(pieceH) && Math.round(p.h) === Math.round(pieceW))) {
+        if (
+          (Math.round(p.w) === Math.round(pieceW) && Math.round(p.h) === Math.round(pieceH)) ||
+          (Math.round(p.w) === Math.round(pieceH) && Math.round(p.h) === Math.round(pieceW))
+        ) {
           n.label = p.label;
           pool.splice(i, 1);
           break;
@@ -80,7 +83,7 @@ export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
       }
     }
 
-    n.filhos.forEach(f => walk(f, [...parents, n]));
+    n.filhos.forEach((f) => walk(f, [...parents, n]));
   }
 
   walk(tree, []);
@@ -92,7 +95,7 @@ function gid(): string {
 }
 
 export function createRoot(w: number, h: number): TreeNode {
-  return { id: 'root', tipo: 'ROOT', valor: w, multi: 1, filhos: [] };
+  return { id: "root", tipo: "ROOT", valor: w, multi: 1, filhos: [] };
 }
 
 export function cloneTree(t: TreeNode): TreeNode {
@@ -127,19 +130,19 @@ export function insertNode(tree: TreeNode, selectedId: string, tipo: NodeType, v
   const node: TreeNode = { id: gid(), tipo, valor, multi, filhos: [] };
   const target = findNode(tree, selectedId);
 
-  if (tipo === 'X') {
+  if (tipo === "X") {
     tree.filhos.push(node);
-  } else if (tipo === 'Y') {
-    const p = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X');
+  } else if (tipo === "Y") {
+    const p = target?.tipo === "X" ? target : findParentOfType(tree, selectedId, "X");
     if (p) p.filhos.push(node);
-  } else if (tipo === 'Z') {
-    const p = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y');
+  } else if (tipo === "Z") {
+    const p = target?.tipo === "Y" ? target : findParentOfType(tree, selectedId, "Y");
     if (p) p.filhos.push(node);
-  } else if (tipo === 'W') {
-    const p = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z');
+  } else if (tipo === "W") {
+    const p = target?.tipo === "Z" ? target : findParentOfType(tree, selectedId, "Z");
     if (p) p.filhos.push(node);
-  } else if (tipo === 'Q') {
-    const p = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
+  } else if (tipo === "Q") {
+    const p = target?.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
     if (p) p.filhos.push(node);
   }
 
@@ -148,7 +151,7 @@ export function insertNode(tree: TreeNode, selectedId: string, tipo: NodeType, v
 
 export function deleteNode(tree: TreeNode, id: string): void {
   const rm = (n: TreeNode) => {
-    n.filhos = n.filhos.filter(f => f.id !== id);
+    n.filhos = n.filhos.filter((f) => f.id !== id);
     n.filhos.forEach(rm);
   };
   rm(tree);
@@ -162,57 +165,57 @@ export function calcAllocation(
   multi: number,
   usableW: number,
   usableH: number,
-  minBreak: number = 0
+  minBreak: number = 0,
 ): { allocated: number; error?: string } {
   const target = findNode(tree, selectedId);
   let free = 0;
 
-  if (tipo === 'X') {
+  if (tipo === "X") {
     free = usableW - tree.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
-  } else if (tipo === 'Y') {
-    const xP = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X');
-    if (!xP) return { allocated: 0, error: 'Selecione X' };
+  } else if (tipo === "Y") {
+    const xP = target?.tipo === "X" ? target : findParentOfType(tree, selectedId, "X");
+    if (!xP) return { allocated: 0, error: "Selecione X" };
     free = usableH - xP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
-  } else if (tipo === 'Z') {
-    const yP = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y');
-    if (!yP) return { allocated: 0, error: 'Selecione Y' };
-    const xP = findParentOfType(tree, yP.id, 'X');
-    if (!xP) return { allocated: 0, error: 'Selecione Y' };
+  } else if (tipo === "Z") {
+    const yP = target?.tipo === "Y" ? target : findParentOfType(tree, selectedId, "Y");
+    if (!yP) return { allocated: 0, error: "Selecione Y" };
+    const xP = findParentOfType(tree, yP.id, "X");
+    if (!xP) return { allocated: 0, error: "Selecione Y" };
     free = xP.valor - yP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
-  } else if (tipo === 'W') {
-    const zP = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z');
-    if (!zP) return { allocated: 0, error: 'Selecione Z' };
-    const yP = findParentOfType(tree, zP.id, 'Y');
-    if (!yP) return { allocated: 0, error: 'Selecione Z' };
+  } else if (tipo === "W") {
+    const zP = target?.tipo === "Z" ? target : findParentOfType(tree, selectedId, "Z");
+    if (!zP) return { allocated: 0, error: "Selecione Z" };
+    const yP = findParentOfType(tree, zP.id, "Y");
+    if (!yP) return { allocated: 0, error: "Selecione Z" };
     free = yP.valor - zP.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
-  } else if (tipo === 'Q') {
-    const wP = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
-    if (!wP) return { allocated: 0, error: 'Selecione W' };
-    const zP = findParentOfType(tree, wP.id, 'Z');
-    if (!zP) return { allocated: 0, error: 'Selecione Z' };
+  } else if (tipo === "Q") {
+    const wP = target?.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
+    if (!wP) return { allocated: 0, error: "Selecione W" };
+    const zP = findParentOfType(tree, wP.id, "Z");
+    if (!zP) return { allocated: 0, error: "Selecione Z" };
     const occupiedQ = wP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
     free = zP.valor - occupiedQ;
   }
 
   const alloc = Math.min(multi, Math.floor(free / valor));
-  if (alloc <= 0) return { allocated: 0, error: 'Sem espaço' };
+  if (alloc <= 0) return { allocated: 0, error: "Sem espaço" };
 
   // Check minimum break distance constraint
   if (minBreak > 0) {
     let siblings: TreeNode[] = [];
-    if (tipo === 'X') {
+    if (tipo === "X") {
       siblings = tree.filhos;
-    } else if (tipo === 'Y') {
-      const xP = target?.tipo === 'X' ? target : findParentOfType(tree, selectedId, 'X');
+    } else if (tipo === "Y") {
+      const xP = target?.tipo === "X" ? target : findParentOfType(tree, selectedId, "X");
       if (xP) siblings = xP.filhos;
-    } else if (tipo === 'Z') {
-      const yP = target?.tipo === 'Y' ? target : findParentOfType(tree, selectedId, 'Y');
+    } else if (tipo === "Z") {
+      const yP = target?.tipo === "Y" ? target : findParentOfType(tree, selectedId, "Y");
       if (yP) siblings = yP.filhos;
-    } else if (tipo === 'W') {
-      const zP = target?.tipo === 'Z' ? target : findParentOfType(tree, selectedId, 'Z');
+    } else if (tipo === "W") {
+      const zP = target?.tipo === "Z" ? target : findParentOfType(tree, selectedId, "Z");
       if (zP) siblings = zP.filhos;
-    } else if (tipo === 'Q') {
-      const wP = target?.tipo === 'W' ? target : findParentOfType(tree, selectedId, 'W');
+    } else if (tipo === "Q") {
+      const wP = target?.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
       if (wP) siblings = wP.filhos;
     }
     for (const sib of siblings) {
@@ -267,15 +270,15 @@ export function calcPlacedArea(tree: TreeNode): number {
 
 /**
  * NOVA IMPLEMENTAÇÃO: Agrupamento por Altura
- * 
+ *
  * Detecta peças com a mesma altura e as agrupa em pares ou trios,
  * somando as larguras. Isso reduz o número de cortes em X e melhora
  * o aproveitamento da chapa.
- * 
+ *
  * Exemplo:
  * Input:  [600×1296, 610×1296, 610×1296]
  * Output: [1210×1296 (count=2), 610×1296 (count=1)]
- * 
+ *
  * Na árvore de corte:
  * X(1210) -> Y(1296) -> Z(600) + Z(610)
  */
@@ -283,7 +286,7 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
   // Mapeia peças por altura (usando a menor dimensão como altura)
   const heightGroups = new Map<number, Piece[]>();
 
-  pieces.forEach(p => {
+  pieces.forEach((p) => {
     const h = Math.min(p.w, p.h);
     if (!heightGroups.has(h)) heightGroups.set(h, []);
     heightGroups.get(h)!.push(p);
@@ -291,13 +294,15 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
 
   const result: Piece[] = [];
 
-  heightGroups.forEach(group => {
+  heightGroups.forEach((group) => {
     // Normaliza peças: largura = max, altura = min
-    const normalized = group.map(p => ({
-      ...p,
-      nw: Math.max(p.w, p.h),
-      nh: Math.min(p.w, p.h)
-    })).sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
+    const normalized = group
+      .map((p) => ({
+        ...p,
+        nw: Math.max(p.w, p.h),
+        nh: Math.min(p.w, p.h),
+      }))
+      .sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
 
     let i = 0;
     while (i < normalized.length) {
@@ -343,7 +348,7 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
             area: bestGroupW * h,
             count: bestCount,
             labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-            groupedAxis: 'w' // Agrupou larguras (somou W), mantendo altura fixa          
+            groupedAxis: "w", // Agrupou larguras (somou W), mantendo altura fixa
           });
 
           // Remove itens agrupados (em ordem reversa para não afetar índices)
@@ -361,7 +366,7 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
         h: normalized[i].nh,
         area: normalized[i].nw * normalized[i].nh,
         count: 1,
-        label: normalized[i].label
+        label: normalized[i].label,
       });
       i++;
     }
@@ -376,7 +381,7 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
 function groupPiecesByWidth(pieces: Piece[]): Piece[] {
   const widthGroups = new Map<number, Piece[]>();
 
-  pieces.forEach(p => {
+  pieces.forEach((p) => {
     const w = Math.max(p.w, p.h);
     if (!widthGroups.has(w)) widthGroups.set(w, []);
     widthGroups.get(w)!.push(p);
@@ -384,12 +389,14 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
 
   const result: Piece[] = [];
 
-  widthGroups.forEach(group => {
-    const sorted = group.map(p => ({
-      ...p,
-      nw: Math.max(p.w, p.h),
-      nh: Math.min(p.w, p.h)
-    })).sort((a, b) => b.nh - a.nh);
+  widthGroups.forEach((group) => {
+    const sorted = group
+      .map((p) => ({
+        ...p,
+        nw: Math.max(p.w, p.h),
+        nh: Math.min(p.w, p.h),
+      }))
+      .sort((a, b) => b.nh - a.nh);
 
     let i = 0;
     while (i < sorted.length) {
@@ -407,7 +414,7 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
           area: w * sumH,
           count: 2,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: 'h' // Agrupou alturas (somou H), mantendo largura fixa
+          groupedAxis: "h", // Agrupou alturas (somou H), mantendo largura fixa
         });
 
         sorted.splice(i + 1, 1);
@@ -420,7 +427,7 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
         h: sorted[i].nh,
         area: sorted[i].nw * sorted[i].nh,
         count: 1,
-        label: sorted[i].label
+        label: sorted[i].label,
       });
       i++;
     }
@@ -431,18 +438,15 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
 
 function oris(p: Piece): { w: number; h: number }[] {
   if (p.w === p.h) return [{ w: p.w, h: p.h }];
-  return [{ w: p.w, h: p.h }, { w: p.h, h: p.w }];
+  return [
+    { w: p.w, h: p.h },
+    { w: p.h, h: p.w },
+  ];
 }
 
 // ========== SCORING WITH LOOKAHEAD ==========
 
-function scoreFit(
-  spaceW: number,
-  spaceH: number,
-  pieceW: number,
-  pieceH: number,
-  remaining: Piece[]
-): number {
+function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number, remaining: Piece[]): number {
   const wasteW = spaceW - pieceW;
   const wasteH = spaceH - pieceH;
 
@@ -486,7 +490,7 @@ function canResidualFitAnyPiece(
   remainingPieces: Piece[],
   minBreak: number = 0,
   existingSiblingValues: number[] = [],
-  axis: 'w' | 'h' = 'w'
+  axis: "w" | "h" = "w",
 ): boolean {
   if (residualW <= 0 || residualH <= 0) return false;
   for (const p of remainingPieces) {
@@ -494,8 +498,8 @@ function canResidualFitAnyPiece(
       if (o.w <= residualW && o.h <= residualH) {
         // Check minBreak against existing siblings
         if (minBreak > 0 && existingSiblingValues.length > 0) {
-          const val = axis === 'w' ? o.w : o.h;
-          const violates = existingSiblingValues.some(sv => {
+          const val = axis === "w" ? o.w : o.h;
+          const violates = existingSiblingValues.some((sv) => {
             const diff = Math.abs(sv - val);
             return diff > 0 && diff < minBreak;
           });
@@ -529,7 +533,7 @@ function getZCutPositions(yStrip: TreeNode): number[] {
  * Cada fita retorna seu próprio array de posições acumuladas.
  */
 function getAllZCutPositionsInColumn(colX: TreeNode): number[][] {
-  return colX.filhos.map(y => getZCutPositions(y));
+  return colX.filhos.map((y) => getZCutPositions(y));
 }
 
 /**
@@ -544,7 +548,7 @@ function violatesZMinBreak(
   newCutPositions: number[],
   allPositions: number[][],
   minBreak: number,
-  excludeYIndex: number = -1
+  excludeYIndex: number = -1,
 ): boolean {
   for (let i = 0; i < allPositions.length; i++) {
     if (i === excludeYIndex) continue;
@@ -568,7 +572,7 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
     const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
     const freeH = usableH - usedH;
     if (freeH > 0) {
-      filledArea += fillRect(tree, colX, remaining, colX.valor, freeH, 'Y', minBreak);
+      filledArea += fillRect(tree, colX, remaining, colX.valor, freeH, "Y", minBreak);
     }
 
     // Void in Z direction (remaining width in each Y strip)
@@ -593,7 +597,15 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
   return filledArea;
 }
 
-function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: number, maxH: number, _level: string, minBreak: number = 0): number {
+function fillRect(
+  tree: TreeNode,
+  colX: TreeNode,
+  remaining: Piece[],
+  maxW: number,
+  maxH: number,
+  _level: string,
+  minBreak: number = 0,
+): number {
   let filled = 0;
 
   for (let i = 0; i < remaining.length; i++) {
@@ -627,7 +639,7 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
       if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
         consumed = maxH;
       }
-      const yId = insertNode(tree, colX.id, 'Y', consumed, 1);
+      const yId = insertNode(tree, colX.id, "Y", consumed, 1);
       const yNode = findNode(tree, yId)!;
 
       createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
@@ -642,7 +654,14 @@ function fillRect(tree: TreeNode, colX: TreeNode, remaining: Piece[], maxW: numb
   return filled;
 }
 
-function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: number, maxH: number, minBreak: number = 0): number {
+function fillRectZ(
+  _tree: TreeNode,
+  yNode: TreeNode,
+  remaining: Piece[],
+  maxW: number,
+  maxH: number,
+  minBreak: number = 0,
+): number {
   let filled = 0;
 
   for (let i = 0; i < remaining.length; i++) {
@@ -656,7 +675,7 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
       if (o.w <= maxW && o.h <= maxH) {
         // Check minBreak for Z cut positions across all Y strips in parent column
         if (minBreak > 0) {
-          const parentX = _tree.filhos.find(x => x.filhos.some(y => y.id === yNode.id));
+          const parentX = _tree.filhos.find((x) => x.filhos.some((y) => y.id === yNode.id));
           if (parentX) {
             const yIndex = parentX.filhos.indexOf(yNode);
             const allZPositions = getAllZCutPositionsInColumn(parentX);
@@ -692,7 +711,14 @@ function fillRectZ(_tree: TreeNode, yNode: TreeNode, remaining: Piece[], maxW: n
   return filled;
 }
 
-function fillRectW(tree: TreeNode, remaining: Piece[], zNode: TreeNode, zWidth: number, maxH: number, minBreak: number = 0): number {
+function fillRectW(
+  tree: TreeNode,
+  remaining: Piece[],
+  zNode: TreeNode,
+  zWidth: number,
+  maxH: number,
+  minBreak: number = 0,
+): number {
   let filled = 0;
 
   for (let i = 0; i < remaining.length; i++) {
@@ -703,7 +729,7 @@ function fillRectW(tree: TreeNode, remaining: Piece[], zNode: TreeNode, zWidth: 
       if (o.w <= zWidth && o.h <= maxH) {
         // Check minBreak for W siblings
         if (minBreak > 0) {
-          const violates = zNode.filhos.some(w => {
+          const violates = zNode.filhos.some((w) => {
             const diff = Math.abs(w.valor - o.h);
             return diff > 0 && diff < minBreak;
           });
@@ -716,7 +742,7 @@ function fillRectW(tree: TreeNode, remaining: Piece[], zNode: TreeNode, zWidth: 
           consumed = maxH;
         }
 
-        const actualRotated = (o.w !== pc.w);
+        const actualRotated = o.w !== pc.w;
         createPieceNodes(tree, zNode, pc, o.w, o.h, actualRotated, zNode);
 
         filled += o.w * o.h;
@@ -738,26 +764,24 @@ export function optimizeV6(
   usableW: number,
   usableH: number,
   minBreak: number = 0,
-  useGrouping?: boolean
+  useGrouping?: boolean,
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
-  const hasLabels = pieces.some(p => p.label);
+  const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
-  const pieceVariants: Piece[][] = hasLabels ? [
-    pieces,
-    pieces.map(p => ({ ...p, w: p.h, h: p.w })),
-  ] : useGrouping === false ? [
-    pieces,
-    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
-  ] : [
-    pieces,
-    pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
-    groupPiecesByHeight(pieces),
-    groupPiecesByWidth(pieces),
-    groupPiecesByHeight(pieces.map(p => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
-  ];
+  const pieceVariants: Piece[][] = hasLabels
+    ? [pieces, pieces.map((p) => ({ ...p, w: p.h, h: p.w }))]
+    : useGrouping === false
+      ? [pieces, pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count }))]
+      : [
+          pieces,
+          pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
+          groupPiecesByHeight(pieces),
+          groupPiecesByWidth(pieces),
+          groupPiecesByHeight(pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+        ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
@@ -777,7 +801,7 @@ export function optimizeV6(
 
   return {
     tree: bestTree || createRoot(usableW, usableH),
-    remaining: bestRemaining
+    remaining: bestRemaining,
   };
 }
 
@@ -789,8 +813,8 @@ function getSortStrategies(): ((a: Piece, b: Piece) => number)[] {
     (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.area - a.area,
     (a, b) => b.h - a.h || b.w - a.w,
     (a, b) => b.w - a.w || b.h - a.h,
-    (a, b) => (b.w + b.h) - (a.w + a.h),
-    (a, b) => (b.w / b.h) - (a.w / a.h),
+    (a, b) => b.w + b.h - (a.w + a.h),
+    (a, b) => b.w / b.h - a.w / a.h,
     (a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h),
     (a, b) => {
       const ra = Math.max(a.w, a.h) / Math.min(a.w, a.h);
@@ -830,7 +854,7 @@ function simulateSheets(
   usableW: number,
   usableH: number,
   minBreak: number,
-  maxSheets: number
+  maxSheets: number,
 ): {
   fitness: number;
   firstTree: TreeNode;
@@ -855,12 +879,12 @@ function simulateSheets(
     const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
     if (s === 0) firstTree = res.tree;
 
-    totalUtil += (res.area / sheetArea);
+    totalUtil += res.area / sheetArea;
 
     // Continuity logic: check for large usable spaces (Look at root's children)
     const usedW = res.tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
-    if (freeW > 50) continuityScore += (freeW / usableW); // Simple bias for wider remnants
+    if (freeW > 50) continuityScore += freeW / usableW; // Simple bias for wider remnants
 
     // Penalty for small fragments left behind
     const piecesPlaced = countBefore - res.remaining.length;
@@ -871,18 +895,18 @@ function simulateSheets(
   }
 
   // Multiobjective Fitness
-  let fitness = sheetsActuallySimulated > 0 ? (totalUtil / sheetsActuallySimulated) : 0;
+  let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
 
   // Penalties and Bonuses
-  fitness -= (rejectedCount * 0.05); // Penalize "stuck" pieces
-  fitness += (continuityScore * 0.01 / (sheetsActuallySimulated || 1)); // Bonus for usable width
+  fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
+  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1); // Bonus for usable width
 
   return {
     fitness: Math.max(0, fitness),
     firstTree: firstTree || createRoot(usableW, usableH),
     stat_rejectedByMinBreak: rejectedCount,
     stat_fragmentCount: fragmentCount,
-    stat_continuity: continuityScore
+    stat_continuity: continuityScore,
   };
 }
 
@@ -891,10 +915,10 @@ export async function optimizeGeneticAsync(
   usableW: number,
   usableH: number,
   minBreak: number = 0,
-  onProgress?: (p: OptimizationProgress) => void
+  onProgress?: (p: OptimizationProgress) => void,
 ): Promise<TreeNode> {
-  const populationSize = 30; // Global GA is more expensive, using reasonable defaults
-  const generations = 20;
+  const populationSize = 20; // Global GA is more expensive, using reasonable defaults
+  const generations = 10;
   const eliteCount = 2;
   const mutationRate = 0.02;
 
@@ -916,7 +940,7 @@ export async function optimizeGeneticAsync(
 
   function buildPieces(ind: GAIndividual): Piece[] {
     // 1. Map piece sequence based on genome
-    let work = ind.genome.map(idx => ({ ...pieces[idx] }));
+    let work = ind.genome.map((idx) => ({ ...pieces[idx] }));
 
     // 2. Apply per-piece rotation based on rotations bitmask
     work = work.map((p, i) => {
@@ -974,7 +998,7 @@ export async function optimizeGeneticAsync(
     }
 
     // 2. Uniform crossover for rotations and grouping
-    const childRotations = pA.rotations.map((r, i) => Math.random() > 0.5 ? r : pB.rotations[i]);
+    const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
     const childGrouping = Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode;
 
     return {
@@ -988,7 +1012,7 @@ export async function optimizeGeneticAsync(
     const c = {
       genome: [...ind.genome],
       rotations: [...ind.rotations],
-      groupingMode: ind.groupingMode
+      groupingMode: ind.groupingMode,
     };
 
     const r = Math.random();
@@ -1024,19 +1048,18 @@ export async function optimizeGeneticAsync(
   // --- Seeding ---
   const initialPop: GAIndividual[] = [];
   const strategies = getSortStrategies();
-  strategies.forEach(sortFn => {
-    const sortedIndices = Array.from({ length: numPieces }, (_, i) => i)
-      .sort((a, b) => {
-        // Find original pieces to compare
-        const pA = pieces[a];
-        const pB = pieces[b];
-        return sortFn(pA, pB);
-      });
+  strategies.forEach((sortFn) => {
+    const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
+      // Find original pieces to compare
+      const pA = pieces[a];
+      const pB = pieces[b];
+      return sortFn(pA, pB);
+    });
 
     initialPop.push({
       genome: sortedIndices,
       rotations: Array.from({ length: numPieces }, () => false),
-      groupingMode: 0
+      groupingMode: 0,
     });
   });
 
@@ -1051,14 +1074,14 @@ export async function optimizeGeneticAsync(
 
   // Report baseline
   if (onProgress) {
-    onProgress({ phase: 'Semeando População e V6...', current: 0, total: generations });
+    onProgress({ phase: "Semeando População e V6...", current: 0, total: generations });
   }
 
   for (let g = 0; g < generations; g++) {
     // Dynamic settings
     const currentLookahead = Math.min(8, 3 + Math.floor(g / 20));
 
-    const evaluated = population.map(ind => {
+    const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
       const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
       return { ind, tree: res.firstTree, fitness: res.fitness };
@@ -1074,18 +1097,18 @@ export async function optimizeGeneticAsync(
 
     if (onProgress) {
       onProgress({
-        phase: 'Otimização Evolutiva Global',
+        phase: "Otimização Evolutiva Global",
         current: g + 1,
         total: generations,
         bestUtil: bestFitness * 100,
       });
     }
 
-    if (g % 5 === 0) await new Promise(r => setTimeout(r, 0));
+    if (g % 5 === 0) await new Promise((r) => setTimeout(r, 0));
 
     // Next Gen with basic Diversity check
-    const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map(e => e.ind);
-    const seenGenomes = new Set(nextPop.map(i => i.genome.join(',')));
+    const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
+    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",")));
 
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
@@ -1093,7 +1116,7 @@ export async function optimizeGeneticAsync(
       let child = crossover(pA, pB);
       if (Math.random() < mutationRate) child = mutate(child);
 
-      const key = child.genome.join(',');
+      const key = child.genome.join(",");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
@@ -1109,12 +1132,7 @@ export async function optimizeGeneticAsync(
 }
 
 // Synchronous wrapper for backward compatibility - Fast Mini-GA Burst
-export function optimizeGeneticV1(
-  pieces: Piece[],
-  usableW: number,
-  usableH: number,
-  minBreak: number = 0
-): TreeNode {
+export function optimizeGeneticV1(pieces: Piece[], usableW: number, usableH: number, minBreak: number = 0): TreeNode {
   // Use a tiny population/gen for sync results that beat pure V6
   const numPieces = pieces.length;
   const popSize = 20;
@@ -1137,53 +1155,53 @@ function createPieceNodes(
   placedW: number,
   placedH: number,
   rotated: boolean,
-  zNodeToUse?: TreeNode
+  zNodeToUse?: TreeNode,
 ): number {
   const isGrouped = piece.count && piece.count > 1;
   let addedArea = 0;
 
   if (isGrouped) {
-    const originalAxis = piece.groupedAxis || 'w';
-    let splitAxis: 'Z' | 'W' | 'Q';
+    const originalAxis = piece.groupedAxis || "w";
+    let splitAxis: "Z" | "W" | "Q";
 
-    if (originalAxis === 'w' && !rotated) {
-      splitAxis = 'Z';
-    } else if ((originalAxis === 'h' && !rotated) || (originalAxis === 'w' && rotated)) {
-      splitAxis = 'W';
+    if (originalAxis === "w" && !rotated) {
+      splitAxis = "Z";
+    } else if ((originalAxis === "h" && !rotated) || (originalAxis === "w" && rotated)) {
+      splitAxis = "W";
     } else {
-      splitAxis = 'Q';
+      splitAxis = "Q";
     }
 
     // Special case: if we are provided a zNodeToUse, we CANNOT splitAxis: 'Z'.
     // We must treat it as a 'W' or 'Q' split inside that Z.
-    if (zNodeToUse && splitAxis === 'Z') splitAxis = 'W';
+    if (zNodeToUse && splitAxis === "Z") splitAxis = "W";
 
-    if (splitAxis === 'Z') {
+    if (splitAxis === "Z") {
       const individualWidth = Math.round(placedW / piece.count!);
       for (let i = 0; i < piece.count!; i++) {
-        const zId = insertNode(tree, yNode.id, 'Z', individualWidth, 1);
+        const zId = insertNode(tree, yNode.id, "Z", individualWidth, 1);
         const zNode = findNode(tree, zId)!;
         if (piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
-        const wId = insertNode(tree, zId, 'W', placedH, 1);
+        const wId = insertNode(tree, zId, "W", placedH, 1);
         const wNode = findNode(tree, wId)!;
         if (piece.labels && piece.labels[i]) wNode.label = piece.labels[i];
       }
-    } else if (splitAxis === 'W') {
+    } else if (splitAxis === "W") {
       const individualHeight = Math.round(placedH / piece.count!);
-      const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, 'Z', placedW, 1))!;
+      const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       for (let i = 0; i < piece.count!; i++) {
-        const wId = insertNode(tree, zNode.id, 'W', individualHeight, 1);
+        const wId = insertNode(tree, zNode.id, "W", individualHeight, 1);
         const wNode_f = findNode(tree, wId)!;
         if (piece.labels && piece.labels[i]) wNode_f.label = piece.labels[i];
         if (i === 0 && piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
       }
     } else {
       const individualWidth = Math.round(placedW / piece.count!);
-      const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, 'Z', placedW, 1))!;
-      const wId = insertNode(tree, zNode.id, 'W', placedH, 1);
+      const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
+      const wId = insertNode(tree, zNode.id, "W", placedH, 1);
       const wNode = findNode(tree, wId)!;
       for (let i = 0; i < piece.count!; i++) {
-        const qId = insertNode(tree, wId, 'Q', individualWidth, 1);
+        const qId = insertNode(tree, wId, "Q", individualWidth, 1);
         const qNode = findNode(tree, qId)!;
         if (piece.labels && piece.labels[i]) {
           qNode.label = piece.labels[i];
@@ -1196,17 +1214,17 @@ function createPieceNodes(
     }
   } else {
     // Individual piece
-    const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, 'Z', placedW, 1))!;
+    const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
     if (piece.label) zNode.label = piece.label;
 
-    const wId = insertNode(tree, zNode.id, 'W', placedH, 1);
+    const wId = insertNode(tree, zNode.id, "W", placedH, 1);
     const wNode = findNode(tree, wId)!;
     if (piece.label) wNode.label = piece.label;
 
     // Narrowing Q cut if piece is narrower than its assigned Z width
     const actualPieceW = rotated ? piece.h : piece.w;
     if (actualPieceW < placedW) {
-      const qId = insertNode(tree, wId, 'Q', actualPieceW, 1);
+      const qId = insertNode(tree, wId, "Q", actualPieceW, 1);
       const qNode = findNode(tree, qId)!;
       if (piece.label) qNode.label = piece.label;
     }
@@ -1218,18 +1236,32 @@ function createPieceNodes(
 
 /**
  * MODIFICAÇÃO: Detecção de peças agrupadas
- * 
+ *
  * Quando uma peça tem count > 1, significa que é resultado de agrupamento.
  * Neste caso, criamos múltiplos nós Z em vez de um único Z com largura somada.
  */
-function runPlacement(inventory: Piece[], usableW: number, usableH: number, minBreak: number = 0): { tree: TreeNode; area: number; remaining: Piece[] } {
+function runPlacement(
+  inventory: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number = 0,
+): { tree: TreeNode; area: number; remaining: Piece[] } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
 
   while (remaining.length > 0) {
     const piece = remaining[0];
-    let bestFit: { type: 'EXISTING' | 'NEW'; col?: TreeNode; w: number; h: number; pieceW: number; pieceH: number; score: number; rotated: boolean } | null = null;
+    let bestFit: {
+      type: "EXISTING" | "NEW";
+      col?: TreeNode;
+      w: number;
+      h: number;
+      pieceW: number;
+      pieceH: number;
+      score: number;
+      rotated: boolean;
+    } | null = null;
 
     // 1. Try existing columns
     for (const colX of tree.filhos) {
@@ -1250,8 +1282,8 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           let effectiveH = o.h;
           const residualH = freeH - o.h;
           if (residualH > 0) {
-            const ySibValues = colX.filhos.map(y => y.valor);
-            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, 'h')) {
+            const ySibValues = colX.filhos.map((y) => y.valor);
+            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h")) {
               effectiveH = freeH;
             }
           }
@@ -1279,7 +1311,16 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
           const score = baseScore + lookBonus;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'EXISTING', col: colX, w: o.w, h: effectiveH, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
+            bestFit = {
+              type: "EXISTING",
+              col: colX,
+              w: o.w,
+              h: effectiveH,
+              pieceW: o.w,
+              pieceH: o.h,
+              score,
+              rotated: o.w !== piece.w,
+            };
           }
         }
       }
@@ -1293,7 +1334,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
       for (const o of oris(piece)) {
         // Check min break distance for X values
         if (minBreak > 0) {
-          const violatesX = tree.filhos.some(x => {
+          const violatesX = tree.filhos.some((x) => {
             const diff = Math.abs(x.valor - o.w);
             return diff > 0 && diff < minBreak;
           });
@@ -1304,14 +1345,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           let effectiveW = o.w;
           const residualW = freeW - o.w;
           if (residualW > 0) {
-            const xSibValues = tree.filhos.map(x => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, 'w')) {
+            const xSibValues = tree.filhos.map((x) => x.valor);
+            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
               effectiveW = freeW;
             }
           }
           const score = ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: 'NEW', w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
+            bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
         }
       }
@@ -1323,14 +1364,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
     }
 
     let col: TreeNode;
-    if (bestFit.type === 'NEW') {
-      insertNode(tree, 'root', 'X', bestFit.w, 1);
+    if (bestFit.type === "NEW") {
+      insertNode(tree, "root", "X", bestFit.w, 1);
       col = tree.filhos[tree.filhos.length - 1];
     } else {
       col = bestFit.col!;
     }
 
-    const yId = insertNode(tree, col.id, 'Y', bestFit.h, 1);
+    const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
     placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);
@@ -1399,7 +1440,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
       if (bestOri) {
         // Create the container Z for this lateral piece
-        const zId = insertNode(tree, yNode.id, 'Z', bestOri.w, 1);
+        const zId = insertNode(tree, yNode.id, "Z", bestOri.w, 1);
         const zNode2 = findNode(tree, zId)!;
 
         // Sub-fill vertically within this Z width
@@ -1407,7 +1448,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
         // This is a nested loop to fill vertically inside the Z strip and we should use createPieceNodes inside it.
         // But first, we need a way to pass a Z node to createPieceNodes as a parent or refactor createPieceNodes to handle Z parents.
-        // Actually, createPieceNodes creates the Z if we pass it a Y. 
+        // Actually, createPieceNodes creates the Z if we pass it a Y.
         // If we have a Z, we might need a variant.
         // Looking at createPieceNodes: it creates Z then W.
         // For Pass 2, we want to stack multiple pieces vertically in the SAME Z.
@@ -1416,12 +1457,12 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         // Actually, let's refactor createPieceNodes to take a generic parent and a target type?
         // No, let's keep it simple: createPieceNodes handles the "create a piece at this location" logic.
 
-        // Refactoring createPieceNodes to take parent and optionally skip Z creation? 
+        // Refactoring createPieceNodes to take parent and optionally skip Z creation?
         // Or just use it as is for the FIRST piece and then manually for subsequent?
 
         // Let's use it as is for the Pass 2 main piece:
         placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-        // Wait, Pass 2 needs to fill the FULL height bestFit.h. 
+        // Wait, Pass 2 needs to fill the FULL height bestFit.h.
         // createPieceNodes will create a Z of bestOri.w and a W of bestOri.h.
         // The remaining height is bestFit.h - bestOri.h.
 
@@ -1433,14 +1474,14 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
           const pw = remaining[j];
           for (const wo of oris(pw)) {
             if (minBreak > 0) {
-              const violatesW = zNodeCurrent.filhos.some(w => {
+              const violatesW = zNodeCurrent.filhos.some((w) => {
                 const diff = Math.abs(w.valor - wo.h);
                 return diff > 0 && diff < minBreak;
               });
               if (violatesW) continue;
             }
             if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
-              const actualRotated = (wo.w !== pw.w);
+              const actualRotated = wo.w !== pw.w;
               createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
 
               placedArea += zNodeCurrent.valor * wo.h;
@@ -1470,9 +1511,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         const candidates: number[] = [];
         for (let i = 0; i < remaining.length; i++) {
           const pc = remaining[i];
-          const matchesOriginal = oris(pc).some(o =>
-            o.w === bestFit.pieceW && o.h === bestFit.pieceH
-          );
+          const matchesOriginal = oris(pc).some((o) => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
           if (matchesOriginal) candidates.push(i);
         }
 
@@ -1480,8 +1519,8 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
 
         // Check minBreak for new Y strip
         if (minBreak > 0) {
-          const ySibValues = col.filhos.map(y => y.valor);
-          const violatesY = ySibValues.some(yv => {
+          const ySibValues = col.filhos.map((y) => y.valor);
+          const violatesY = ySibValues.some((yv) => {
             const diff = Math.abs(yv - bestFit.pieceH);
             return diff > 0 && diff < minBreak;
           });
@@ -1493,14 +1532,21 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
         }
 
         // Create new Y strip
-        const newYId = insertNode(tree, col.id, 'Y', bestFit.pieceH, 1);
+        const newYId = insertNode(tree, col.id, "Y", bestFit.pieceH, 1);
         const newYNode = findNode(tree, newYId)!;
 
         // Place first piece and stack vertically (W multi)
         const firstIdx = candidates[0];
         const firstPc = remaining[firstIdx];
 
-        placedArea += createPieceNodes(tree, newYNode, firstPc, bestFit.pieceW, bestFit.pieceH, bestFit.pieceW !== firstPc.w);
+        placedArea += createPieceNodes(
+          tree,
+          newYNode,
+          firstPc,
+          bestFit.pieceW,
+          bestFit.pieceH,
+          bestFit.pieceW !== firstPc.w,
+        );
         remaining.splice(firstIdx, 1);
 
         // Lateral fill with same-height pieces (like Pass 1)
@@ -1518,7 +1564,7 @@ function runPlacement(inventory: Piece[], usableW: number, usableH: number, minB
               const curOff = newYNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
               if (violatesZMinBreak([curOff + o.w], allZPos, minBreak, yIdx)) continue;
             }
-            if (!matchOri || (newFreeZW - o.w) < (newFreeZW - matchOri.w)) {
+            if (!matchOri || newFreeZW - o.w < newFreeZW - matchOri.w) {
               matchOri = o;
             }
           }
