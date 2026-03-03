@@ -1,4 +1,4 @@
-// CNC Cut Plan Engine v3 — Pure Heuristic Guillotine Bin-Packing
+// CNC Cut Plan Engine v3 — Pure Heuristic Guillotine Bin-Packing (build trigger)
 // No genetic algorithm. Deterministic: tries N sort orders × 2 rotations × 2 column modes.
 // Architecture: Free-rectangle guillotine. Pieces placed into best-fit free rect, then
 // rect is split (guillotine) into residuals. Final free-rect list converted to tree.
