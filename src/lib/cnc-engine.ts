@@ -918,16 +918,26 @@ export function optimizeV6(
   const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
+  const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
+
   const pieceVariants: Piece[][] = hasLabels
-    ? [pieces, pieces.map((p) => ({ ...p, w: p.h, h: p.w }))]
+    ? [pieces, rotatedPieces]
     : useGrouping === false
-      ? [pieces, pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count }))]
+      ? [pieces, rotatedPieces]
       : [
           pieces,
-          pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count })),
+          rotatedPieces,
           groupPiecesByHeight(pieces),
           groupPiecesByWidth(pieces),
-          groupPiecesByHeight(pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count }))),
+          groupPiecesByHeight(rotatedPieces),
+          // Fill-row strategies (pack multiple same-height pieces to fill sheet width)
+          groupPiecesFillRow(pieces, usableW),
+          groupPiecesFillRow(rotatedPieces, usableW),
+          // Fill-col strategies (pack multiple same-width pieces to fill sheet height)
+          groupPiecesFillCol(pieces, usableH),
+          groupPiecesFillCol(rotatedPieces, usableH),
+          // Combined: fill-row on height-grouped pieces
+          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
         ];
 
   let bestTree: TreeNode | null = null;
