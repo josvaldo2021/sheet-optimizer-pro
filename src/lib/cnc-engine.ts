@@ -414,7 +414,7 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
           area: w * sumH,
           count: 2,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: "h", // Agrupou alturas (somou H), mantendo largura fixa
+          groupedAxis: "h",
         });
 
         sorted.splice(i + 1, 1);
@@ -430,6 +430,153 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
         label: sorted[i].label,
       });
       i++;
+    }
+  });
+
+  return result;
+}
+
+/**
+ * FILL-ROW: Agrupa peças de mesma altura para preencher a largura total da chapa.
+ * Sem limite de quantidade — empacota o máximo possível em cada "fila".
+ *
+ * Exemplo com usableW = 2750:
+ * Input:  7x [898×1296]
+ * Output: [2694×1296 (count=3), 2694×1296 (count=3), 898×1296 (count=1)]
+ *   (3 peças de 898 cabem em 2694 ≤ 2750)
+ */
+function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
+  // Normaliza: w = max, h = min (largura sempre ≥ altura)
+  const normalized = pieces.map((p) => ({
+    ...p,
+    nw: Math.max(p.w, p.h),
+    nh: Math.min(p.w, p.h),
+  }));
+
+  // Agrupa por altura (nh)
+  const heightGroups = new Map<number, typeof normalized>();
+  normalized.forEach((p) => {
+    if (!heightGroups.has(p.nh)) heightGroups.set(p.nh, []);
+    heightGroups.get(p.nh)!.push(p);
+  });
+
+  const result: Piece[] = [];
+
+  heightGroups.forEach((group, h) => {
+    // Ordena por largura decrescente para bin-packing first-fit-decreasing
+    const sorted = [...group].sort((a, b) => b.nw - a.nw);
+    let remaining = [...sorted];
+
+    while (remaining.length > 0) {
+      // Tenta empacotar o máximo de peças possível na largura usableW
+      const row: typeof remaining = [];
+      let rowWidth = 0;
+
+      for (let i = 0; i < remaining.length; i++) {
+        if (rowWidth + remaining[i].nw <= usableW) {
+          row.push(remaining[i]);
+          rowWidth += remaining[i].nw;
+        }
+      }
+
+      if (row.length >= 2) {
+        // Cria grupo
+        const groupedLabels: string[] = [];
+        row.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
+
+        result.push({
+          w: rowWidth,
+          h,
+          area: rowWidth * h,
+          count: row.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: "w",
+        });
+
+        // Remove peças usadas
+        for (const used of row) {
+          const idx = remaining.indexOf(used);
+          if (idx >= 0) remaining.splice(idx, 1);
+        }
+      } else {
+        // Peça individual — não agrupa
+        const p = remaining.shift()!;
+        result.push({
+          w: p.nw,
+          h: p.nh,
+          area: p.nw * p.nh,
+          count: 1,
+          label: p.label,
+        });
+      }
+    }
+  });
+
+  return result;
+}
+
+/**
+ * FILL-COL: Agrupa peças de mesma largura para preencher a altura total da chapa.
+ * Sem limite de quantidade.
+ */
+function groupPiecesFillCol(pieces: Piece[], usableH: number): Piece[] {
+  const normalized = pieces.map((p) => ({
+    ...p,
+    nw: Math.max(p.w, p.h),
+    nh: Math.min(p.w, p.h),
+  }));
+
+  // Agrupa por largura (nw)
+  const widthGroups = new Map<number, typeof normalized>();
+  normalized.forEach((p) => {
+    if (!widthGroups.has(p.nw)) widthGroups.set(p.nw, []);
+    widthGroups.get(p.nw)!.push(p);
+  });
+
+  const result: Piece[] = [];
+
+  widthGroups.forEach((group, w) => {
+    const sorted = [...group].sort((a, b) => b.nh - a.nh);
+    let remaining = [...sorted];
+
+    while (remaining.length > 0) {
+      const col: typeof remaining = [];
+      let colHeight = 0;
+
+      for (let i = 0; i < remaining.length; i++) {
+        if (colHeight + remaining[i].nh <= usableH) {
+          col.push(remaining[i]);
+          colHeight += remaining[i].nh;
+        }
+      }
+
+      if (col.length >= 2) {
+        const groupedLabels: string[] = [];
+        col.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
+
+        result.push({
+          w,
+          h: colHeight,
+          area: w * colHeight,
+          count: col.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: "h",
+        });
+
+        for (const used of col) {
+          const idx = remaining.indexOf(used);
+          if (idx >= 0) remaining.splice(idx, 1);
+        }
+      } else {
+        const p = remaining.shift()!;
+        result.push({
+          w: p.nw,
+          h: p.nh,
+          area: p.nw * p.nh,
+          count: 1,
+          label: p.label,
+        });
+      }
     }
   });
 
