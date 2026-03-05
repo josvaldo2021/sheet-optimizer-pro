@@ -484,10 +484,12 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
         const groupedLabels: string[] = [];
         row.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
 
+        // area = área da peça INDIVIDUAL (não do grupo) para ordenação correta
+        const individualArea = row[0].nw * h;
         result.push({
           w: rowWidth,
           h,
-          area: rowWidth * h,
+          area: individualArea,
           count: row.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "w",
