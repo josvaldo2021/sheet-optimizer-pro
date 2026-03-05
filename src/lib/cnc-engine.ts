@@ -512,6 +512,14 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
     }
   });
 
+  // Ordena resultado: grupos com peças de maior altura individual primeiro
+  result.sort((a, b) => {
+    const hA = a.count && a.count > 1 ? a.h : Math.min(a.w, a.h);
+    const hB = b.count && b.count > 1 ? b.h : Math.min(b.w, b.h);
+    if (hB !== hA) return hB - hA;
+    return b.area - a.area;
+  });
+
   return result;
 }
 
