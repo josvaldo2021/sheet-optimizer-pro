@@ -564,10 +564,11 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number): Piece[] {
         const groupedLabels: string[] = [];
         col.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
 
+        const individualArea = w * col[0].nh;
         result.push({
           w,
           h: colHeight,
-          area: w * colHeight,
+          area: individualArea,
           count: col.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "h",
