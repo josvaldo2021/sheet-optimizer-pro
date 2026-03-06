@@ -1279,6 +1279,7 @@ export async function optimizeGeneticAsync(
       genome: sortedIndices,
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
+      transposed: false,
     });
   });
 
