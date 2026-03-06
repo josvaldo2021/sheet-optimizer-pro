@@ -942,48 +942,51 @@ export function optimizeV6(
   const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
-  const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
-
-  const pieceVariants: Piece[][] = hasLabels
-    ? [pieces, rotatedPieces]
-    : useGrouping === false
-      ? [pieces, rotatedPieces]
-      : [
-          pieces,
-          rotatedPieces,
-          groupPiecesByHeight(pieces),
-          groupPiecesByWidth(pieces),
-          groupPiecesByHeight(rotatedPieces),
-          // Fill-row strategies (normalized: pack by min dimension as height)
-          groupPiecesFillRow(pieces, usableW),
-          groupPiecesFillRow(rotatedPieces, usableW),
-          // Fill-row RAW (non-normalized: pack by actual h, discovers layouts where larger dim is height)
-          groupPiecesFillRow(pieces, usableW, true),
-          groupPiecesFillRow(rotatedPieces, usableW, true),
-          // Fill-col strategies (normalized)
-          groupPiecesFillCol(pieces, usableH),
-          groupPiecesFillCol(rotatedPieces, usableH),
-          // Fill-col RAW (non-normalized)
-          groupPiecesFillCol(pieces, usableH, true),
-          groupPiecesFillCol(rotatedPieces, usableH, true),
-          // Combined: fill-row on height-grouped pieces
-          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
-          // Combined RAW
-          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
-        ];
-
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
 
-  for (const variant of pieceVariants) {
-    for (const sortFn of strategies) {
-      const sorted = [...variant].sort(sortFn);
-      const result = runPlacement(sorted, usableW, usableH, minBreak);
-      if (result.area > bestArea) {
-        bestArea = result.area;
-        bestTree = result.tree;
-        bestRemaining = result.remaining;
+  // Try both normal (vertical main cuts) and transposed (horizontal main cuts)
+  for (const transposed of [false, true]) {
+    const effW = transposed ? usableH : usableW;
+    const effH = transposed ? usableW : usableH;
+    const basePieces = transposed
+      ? pieces.map((p) => ({ ...p, w: p.h, h: p.w }))
+      : pieces;
+    const rotatedPieces = basePieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
+
+    const pieceVariants: Piece[][] = hasLabels
+      ? [basePieces, rotatedPieces]
+      : useGrouping === false
+        ? [basePieces, rotatedPieces]
+        : [
+            basePieces,
+            rotatedPieces,
+            groupPiecesByHeight(basePieces),
+            groupPiecesByWidth(basePieces),
+            groupPiecesByHeight(rotatedPieces),
+            groupPiecesFillRow(basePieces, effW),
+            groupPiecesFillRow(rotatedPieces, effW),
+            groupPiecesFillRow(basePieces, effW, true),
+            groupPiecesFillRow(rotatedPieces, effW, true),
+            groupPiecesFillCol(basePieces, effH),
+            groupPiecesFillCol(rotatedPieces, effH),
+            groupPiecesFillCol(basePieces, effH, true),
+            groupPiecesFillCol(rotatedPieces, effH, true),
+            groupPiecesFillRow(groupPiecesByHeight(basePieces), effW),
+            groupPiecesFillRow(groupPiecesByHeight(basePieces), effW, true),
+          ];
+
+    for (const variant of pieceVariants) {
+      for (const sortFn of strategies) {
+        const sorted = [...variant].sort(sortFn);
+        const result = runPlacement(sorted, effW, effH, minBreak);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestTree.transposed = transposed;
+          bestRemaining = result.remaining;
+        }
       }
     }
   }
