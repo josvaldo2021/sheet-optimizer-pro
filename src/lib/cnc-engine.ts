@@ -1315,6 +1315,7 @@ export async function optimizeGeneticAsync(
     if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
+      bestTree!.transposed = evaluated[0].transposed;
     }
 
     if (onProgress) {
