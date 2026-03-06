@@ -944,20 +944,20 @@ export function optimizeV6(
     : useGrouping === false
       ? [pieces, rotatedPieces]
       : [
-          pieces,
-          rotatedPieces,
-          groupPiecesByHeight(pieces),
-          groupPiecesByWidth(pieces),
-          groupPiecesByHeight(rotatedPieces),
-          // Fill-row strategies (pack multiple same-height pieces to fill sheet width)
-          groupPiecesFillRow(pieces, usableW),
-          groupPiecesFillRow(rotatedPieces, usableW),
-          // Fill-col strategies (pack multiple same-width pieces to fill sheet height)
-          groupPiecesFillCol(pieces, usableH),
-          groupPiecesFillCol(rotatedPieces, usableH),
-          // Combined: fill-row on height-grouped pieces
-          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
-        ];
+        pieces,
+        rotatedPieces,
+        groupPiecesByHeight(pieces),
+        groupPiecesByWidth(pieces),
+        groupPiecesByHeight(rotatedPieces),
+        // Fill-row strategies (pack multiple same-height pieces to fill sheet width)
+        groupPiecesFillRow(pieces, usableW),
+        groupPiecesFillRow(rotatedPieces, usableW),
+        // Fill-col strategies (pack multiple same-width pieces to fill sheet height)
+        groupPiecesFillCol(pieces, usableH),
+        groupPiecesFillCol(rotatedPieces, usableH),
+        // Combined: fill-row on height-grouped pieces
+        groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
+      ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
