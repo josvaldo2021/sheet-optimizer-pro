@@ -33,6 +33,7 @@ const Index = () => {
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [priorityIds, setPriorityIds] = useState('');
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
