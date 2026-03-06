@@ -1138,6 +1138,14 @@ export async function optimizeGeneticAsync(
       work = groupPiecesByHeight(work);
     } else if (ind.groupingMode === 2) {
       work = groupPiecesByWidth(work);
+    } else if (ind.groupingMode === 3) {
+      work = groupPiecesFillRow(work, usableW);
+    } else if (ind.groupingMode === 4) {
+      work = groupPiecesFillRow(work, usableW, true);
+    } else if (ind.groupingMode === 5) {
+      work = groupPiecesFillCol(work, usableH);
+    } else if (ind.groupingMode === 6) {
+      work = groupPiecesFillCol(work, usableH, true);
     }
 
     return work;
