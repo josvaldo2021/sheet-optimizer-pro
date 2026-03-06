@@ -8,6 +8,8 @@ export interface TreeNode {
   multi: number;
   filhos: TreeNode[];
   label?: string;
+  /** When true, the tree was built with horizontal main cuts (swapped axes). */
+  transposed?: boolean;
 }
 
 export interface Piece {
