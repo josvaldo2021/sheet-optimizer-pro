@@ -1303,8 +1303,10 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
-      return { ind, tree: res.firstTree, fitness: res.fitness };
+      const effW = ind.transposed ? usableH : usableW;
+      const effH = ind.transposed ? usableW : usableH;
+      const res = simulateSheets(work, effW, effH, minBreak, currentLookahead);
+      return { ind, tree: res.firstTree, fitness: res.fitness, transposed: ind.transposed };
     });
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
