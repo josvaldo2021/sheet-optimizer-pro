@@ -1137,12 +1137,18 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
+  // Count waste fragments in first sheet for penalty
+  if (firstTree) {
+    fragmentCount = countWasteFragments(firstTree, usableW, usableH);
+  }
+
   // Multiobjective Fitness
   let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
 
   // Penalties and Bonuses
   fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
   fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1); // Bonus for usable width
+  fitness -= fragmentCount * 0.005; // Penalize layouts with many waste fragments
 
   return {
     fitness: Math.max(0, fitness),
