@@ -1133,9 +1133,24 @@ export async function optimizeGeneticAsync(
     };
   }
 
+  // Set of priority labels (normalized to lowercase)
+  const prioritySet = new Set((priorityLabels || []).map(l => l.trim().toLowerCase()).filter(Boolean));
+
   function buildPieces(ind: GAIndividual): Piece[] {
     // 1. Map piece sequence based on genome
     let work = ind.genome.map((idx) => ({ ...pieces[idx] }));
+
+    // 1.5. Move priority pieces to the front (preserving relative order)
+    if (prioritySet.size > 0) {
+      const priority: Piece[] = [];
+      const rest: Piece[] = [];
+      work.forEach(p => {
+        const isPriority = p.label && prioritySet.has(p.label.trim().toLowerCase());
+        if (isPriority) priority.push(p);
+        else rest.push(p);
+      });
+      work = [...priority, ...rest];
+    }
 
     // 2. If transposed, swap each piece's w/h at the base level
     if (ind.transposed) {
