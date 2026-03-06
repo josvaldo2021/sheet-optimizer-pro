@@ -278,7 +278,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
