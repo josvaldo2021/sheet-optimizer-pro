@@ -1230,7 +1230,7 @@ export async function optimizeGeneticAsync(
       }
     } else {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2] as const)[Math.floor(Math.random() * 3)];
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
     }
 
     return c;
