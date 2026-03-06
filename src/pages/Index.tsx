@@ -448,6 +448,22 @@ const Index = () => {
         {/* ─── SECTION 3: Execução ─── */}
         <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
           <div className="p-3" style={{ background: 'hsl(0 0% 10%)' }}>
+          <div className="mb-3">
+              <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                IDs Prioritários
+              </label>
+              <input
+                type="text"
+                value={priorityIds}
+                onChange={e => setPriorityIds(e.target.value)}
+                className="cnc-input w-full"
+                placeholder="Ex: A1, A2, B3"
+                style={{ fontSize: '10px' }}
+              />
+              <div style={{ fontSize: '8px', color: 'hsl(0 0% 45%)', marginTop: '3px' }}>
+                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas.
+              </div>
+            </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
               ⚡ OTIMIZAR (1 CHAPA)
             </button>
