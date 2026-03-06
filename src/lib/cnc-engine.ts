@@ -525,12 +525,14 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
 /**
  * FILL-COL: Agrupa peças de mesma largura para preencher a altura total da chapa.
  * Sem limite de quantidade.
+ *
+ * @param raw - Se true, usa as dimensões originais (w,h) sem normalizar.
  */
-function groupPiecesFillCol(pieces: Piece[], usableH: number): Piece[] {
+function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = false): Piece[] {
   const normalized = pieces.map((p) => ({
     ...p,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
+    nw: raw ? p.w : Math.max(p.w, p.h),
+    nh: raw ? p.h : Math.min(p.w, p.h),
   }));
 
   // Agrupa por largura (nw)
