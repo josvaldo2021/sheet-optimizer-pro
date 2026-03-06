@@ -1285,7 +1285,13 @@ export async function optimizeGeneticAsync(
   const strategies = getSortStrategies();
   strategies.forEach((sortFn) => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
-      // Find original pieces to compare
+      // Priority pieces always come first in seeded genomes
+      if (prioritySet.size > 0) {
+        const aIsPriority = pieces[a].label ? prioritySet.has(pieces[a].label!.trim().toLowerCase()) : false;
+        const bIsPriority = pieces[b].label ? prioritySet.has(pieces[b].label!.trim().toLowerCase()) : false;
+        if (aIsPriority && !bIsPriority) return -1;
+        if (!aIsPriority && bIsPriority) return 1;
+      }
       const pA = pieces[a];
       const pB = pieces[b];
       return sortFn(pA, pB);
