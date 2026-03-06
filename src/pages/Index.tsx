@@ -223,6 +223,7 @@ const Index = () => {
         });
 
         await new Promise(r => setTimeout(r, 0));
+        const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
         const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, (p) => {
           setProgress({
             phase: `Chapa ${sheetCount} - ${p.phase}`,
@@ -230,7 +231,7 @@ const Index = () => {
             total: p.total,
             bestUtil: p.bestUtil,
           });
-        });
+        }, priorityLabels.length > 0 ? priorityLabels : undefined);
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea });
 
