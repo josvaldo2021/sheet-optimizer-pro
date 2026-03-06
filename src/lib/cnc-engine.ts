@@ -1024,14 +1024,18 @@ export function optimizeV6(
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
+  let bestWasteFragments = Infinity;
   let bestRemaining: Piece[] = [];
 
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
       const sorted = [...variant].sort(sortFn);
       const result = runPlacement(sorted, usableW, usableH, minBreak);
-      if (result.area > bestArea) {
+      const fragments = countWasteFragments(result.tree, usableW, usableH);
+      // Prefer higher area; on tie, prefer fewer waste fragments
+      if (result.area > bestArea || (result.area === bestArea && fragments < bestWasteFragments)) {
         bestArea = result.area;
+        bestWasteFragments = fragments;
         bestTree = result.tree;
         bestRemaining = result.remaining;
       }
