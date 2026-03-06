@@ -479,7 +479,9 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
       if (row.length >= 2) {
         // Cria grupo
         const groupedLabels: string[] = [];
-        row.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
+        row.forEach((p) => {
+          if (p.label) groupedLabels.push(p.label);
+        });
 
         // area = área da peça INDIVIDUAL (não do grupo) para ordenação correta
         const individualArea = row[0].nw * h;
@@ -561,7 +563,9 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
 
       if (col.length >= 2) {
         const groupedLabels: string[] = [];
-        col.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
+        col.forEach((p) => {
+          if (p.label) groupedLabels.push(p.label);
+        });
 
         const individualArea = w * col[0].nh;
         result.push({
@@ -607,62 +611,6 @@ function oris(p: Piece): { w: number; h: number }[] {
     { w: p.w, h: p.h },
     { w: p.h, h: p.w },
   ];
-}
-
-// ========== WASTE FRAGMENT COUNTING ==========
-
-/**
- * Count waste fragments in a tree layout.
- * A waste fragment is any unused space (gap between pieces and sheet edges).
- * Fewer fragments = cleaner layout = better.
- */
-function countWasteFragments(tree: TreeNode, usableW: number, usableH: number): number {
-  let fragments = 0;
-
-  let xOff = 0;
-  for (const xNode of tree.filhos) {
-    for (let ix = 0; ix < xNode.multi; ix++) {
-      let yOff = 0;
-      for (const yNode of xNode.filhos) {
-        for (let iy = 0; iy < yNode.multi; iy++) {
-          let zOff = 0;
-          for (const zNode of yNode.filhos) {
-            for (let iz = 0; iz < zNode.multi; iz++) {
-              if (zNode.filhos.length > 0) {
-                let wOff = 0;
-                for (const wNode of zNode.filhos) {
-                  for (let iw = 0; iw < wNode.multi; iw++) {
-                    if (wNode.filhos.length > 0) {
-                      let qOff = 0;
-                      for (const qNode of wNode.filhos) {
-                        qOff += qNode.valor * qNode.multi;
-                      }
-                      const qWaste = zNode.valor - qOff;
-                      if (qWaste > 0) fragments++;
-                    }
-                    wOff += wNode.valor;
-                  }
-                }
-                const wWaste = yNode.valor - wOff;
-                if (wWaste > 0) fragments++;
-              }
-              zOff += zNode.valor;
-            }
-          }
-          const zWaste = xNode.valor - zOff;
-          if (zWaste > 0) fragments++;
-          yOff += yNode.valor;
-        }
-      }
-      const yWaste = usableH - yOff;
-      if (yWaste > 0) fragments++;
-      xOff += xNode.valor;
-    }
-  }
-  const xWaste = usableW - xOff;
-  if (xWaste > 0) fragments++;
-
-  return fragments;
 }
 
 // ========== SCORING WITH LOOKAHEAD ==========
@@ -1024,18 +972,14 @@ export function optimizeV6(
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
-  let bestWasteFragments = Infinity;
   let bestRemaining: Piece[] = [];
 
   for (const variant of pieceVariants) {
     for (const sortFn of strategies) {
       const sorted = [...variant].sort(sortFn);
       const result = runPlacement(sorted, usableW, usableH, minBreak);
-      const fragments = countWasteFragments(result.tree, usableW, usableH);
-      // Prefer higher area; on tie, prefer fewer waste fragments
-      if (result.area > bestArea || (result.area === bestArea && fragments < bestWasteFragments)) {
+      if (result.area > bestArea) {
         bestArea = result.area;
-        bestWasteFragments = fragments;
         bestTree = result.tree;
         bestRemaining = result.remaining;
       }
@@ -1137,18 +1081,12 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
-  // Count waste fragments in first sheet for penalty
-  if (firstTree) {
-    fragmentCount = countWasteFragments(firstTree, usableW, usableH);
-  }
-
   // Multiobjective Fitness
   let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
 
   // Penalties and Bonuses
   fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
   fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1); // Bonus for usable width
-  fitness -= fragmentCount * 0.005; // Penalize layouts with many waste fragments
 
   return {
     fitness: Math.max(0, fitness),
@@ -1166,10 +1104,10 @@ export async function optimizeGeneticAsync(
   minBreak: number = 0,
   onProgress?: (p: OptimizationProgress) => void,
 ): Promise<TreeNode> {
-  const populationSize = 5; // Global GA is more expensive, using reasonable defaults
-  const generations = 3;
-  const eliteCount = 2;
-  const mutationRate = 0.01;
+  const populationSize = 100; // Global GA is more expensive, using reasonable defaults
+  const generations = 100;
+  const eliteCount = 10;
+  const mutationRate = 0.05;
 
   const numPieces = pieces.length;
 
