@@ -1228,15 +1228,16 @@ export async function optimizeGeneticAsync(
       genome: [...ind.genome],
       rotations: [...ind.rotations],
       groupingMode: ind.groupingMode,
+      transposed: ind.transposed,
     };
 
     const r = Math.random();
-    if (r < 0.3) {
+    if (r < 0.25) {
       // Swap Mutation
       const a = Math.floor(Math.random() * c.genome.length);
       const b = Math.floor(Math.random() * c.genome.length);
       [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
-    } else if (r < 0.6) {
+    } else if (r < 0.5) {
       // Block Mutation (Move a segment)
       if (c.genome.length > 3) {
         const blockSize = Math.floor(Math.random() * Math.min(5, c.genome.length / 2)) + 2;
@@ -1245,16 +1246,19 @@ export async function optimizeGeneticAsync(
         const target = Math.floor(Math.random() * c.genome.length);
         c.genome.splice(target, 0, ...segment);
       }
-    } else if (r < 0.8) {
+    } else if (r < 0.7) {
       // Rotation Mutation (Flip 10% of bits)
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else {
+    } else if (r < 0.85) {
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    } else {
+      // Transposed Mutation (flip cut orientation)
+      c.transposed = !c.transposed;
     }
 
     return c;
