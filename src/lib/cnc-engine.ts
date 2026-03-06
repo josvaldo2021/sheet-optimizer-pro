@@ -1210,14 +1210,16 @@ export async function optimizeGeneticAsync(
       }
     }
 
-    // 2. Uniform crossover for rotations and grouping
+    // 2. Uniform crossover for rotations, grouping, and transposed
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
     const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    const childTransposed = Math.random() > 0.5 ? pA.transposed : pB.transposed;
 
     return {
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
+      transposed: childTransposed,
     };
   }
 
