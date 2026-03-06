@@ -440,17 +440,14 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
  * FILL-ROW: Agrupa peças de mesma altura para preencher a largura total da chapa.
  * Sem limite de quantidade — empacota o máximo possível em cada "fila".
  *
- * Exemplo com usableW = 2750:
- * Input:  7x [898×1296]
- * Output: [2694×1296 (count=3), 2694×1296 (count=3), 898×1296 (count=1)]
- *   (3 peças de 898 cabem em 2694 ≤ 2750)
+ * @param raw - Se true, usa as dimensões originais (w,h) sem normalizar.
+ *              Isso permite descobrir layouts onde a dimensão MAIOR é a altura da fila.
  */
-function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
-  // Normaliza: w = max, h = min (largura sempre ≥ altura)
+function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
   const normalized = pieces.map((p) => ({
     ...p,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
+    nw: raw ? p.w : Math.max(p.w, p.h),
+    nh: raw ? p.h : Math.min(p.w, p.h),
   }));
 
   // Agrupa por altura (nh)
@@ -482,7 +479,9 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
       if (row.length >= 2) {
         // Cria grupo
         const groupedLabels: string[] = [];
-        row.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
+        row.forEach((p) => {
+          if (p.label) groupedLabels.push(p.label);
+        });
 
         // area = área da peça INDIVIDUAL (não do grupo) para ordenação correta
         const individualArea = row[0].nw * h;
@@ -528,12 +527,14 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
 /**
  * FILL-COL: Agrupa peças de mesma largura para preencher a altura total da chapa.
  * Sem limite de quantidade.
+ *
+ * @param raw - Se true, usa as dimensões originais (w,h) sem normalizar.
  */
-function groupPiecesFillCol(pieces: Piece[], usableH: number): Piece[] {
+function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = false): Piece[] {
   const normalized = pieces.map((p) => ({
     ...p,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
+    nw: raw ? p.w : Math.max(p.w, p.h),
+    nh: raw ? p.h : Math.min(p.w, p.h),
   }));
 
   // Agrupa por largura (nw)
@@ -562,7 +563,9 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number): Piece[] {
 
       if (col.length >= 2) {
         const groupedLabels: string[] = [];
-        col.forEach((p) => { if (p.label) groupedLabels.push(p.label); });
+        col.forEach((p) => {
+          if (p.label) groupedLabels.push(p.label);
+        });
 
         const individualArea = w * col[0].nh;
         result.push({
@@ -1019,7 +1022,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2;
+  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw
 }
 
 /**
@@ -1110,7 +1113,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2] as const)[Math.floor(Math.random() * 3)],
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6,
     };
   }
 
@@ -1131,6 +1134,14 @@ export async function optimizeGeneticAsync(
       work = groupPiecesByHeight(work);
     } else if (ind.groupingMode === 2) {
       work = groupPiecesByWidth(work);
+    } else if (ind.groupingMode === 3) {
+      work = groupPiecesFillRow(work, usableW);
+    } else if (ind.groupingMode === 4) {
+      work = groupPiecesFillRow(work, usableW, true);
+    } else if (ind.groupingMode === 5) {
+      work = groupPiecesFillCol(work, usableH);
+    } else if (ind.groupingMode === 6) {
+      work = groupPiecesFillCol(work, usableH, true);
     }
 
     return work;
@@ -1175,7 +1186,7 @@ export async function optimizeGeneticAsync(
 
     // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
-    const childGrouping = Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode;
+    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
     return {
       genome: childGenome,
@@ -1215,7 +1226,7 @@ export async function optimizeGeneticAsync(
       }
     } else {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2] as const)[Math.floor(Math.random() * 3)];
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
     }
 
     return c;
