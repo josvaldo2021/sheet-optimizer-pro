@@ -948,14 +948,22 @@ export function optimizeV6(
           groupPiecesByHeight(pieces),
           groupPiecesByWidth(pieces),
           groupPiecesByHeight(rotatedPieces),
-          // Fill-row strategies (pack multiple same-height pieces to fill sheet width)
+          // Fill-row strategies (normalized: pack by min dimension as height)
           groupPiecesFillRow(pieces, usableW),
           groupPiecesFillRow(rotatedPieces, usableW),
-          // Fill-col strategies (pack multiple same-width pieces to fill sheet height)
+          // Fill-row RAW (non-normalized: pack by actual h, discovers layouts where larger dim is height)
+          groupPiecesFillRow(pieces, usableW, true),
+          groupPiecesFillRow(rotatedPieces, usableW, true),
+          // Fill-col strategies (normalized)
           groupPiecesFillCol(pieces, usableH),
           groupPiecesFillCol(rotatedPieces, usableH),
+          // Fill-col RAW (non-normalized)
+          groupPiecesFillCol(pieces, usableH, true),
+          groupPiecesFillCol(rotatedPieces, usableH, true),
           // Combined: fill-row on height-grouped pieces
           groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
+          // Combined RAW
+          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
         ];
 
   let bestTree: TreeNode | null = null;
