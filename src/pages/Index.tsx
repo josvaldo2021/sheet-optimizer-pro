@@ -33,6 +33,7 @@ const Index = () => {
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [priorityIds, setPriorityIds] = useState('');
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
@@ -181,7 +182,8 @@ const Index = () => {
     setStatus({ msg: 'Otimizando com Algoritmo Genético...', type: 'warn' });
 
     await new Promise(r => setTimeout(r, 20));
-    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress);
+    const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
+    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress, priorityLabels.length > 0 ? priorityLabels : undefined);
     setTree(result);
     setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
     setActiveChapa(0);
@@ -189,7 +191,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: 'Plano de Corte Otimizado!', type: 'success' });
-  }, [pieces, usableW, usableH, minBreak]);
+  }, [pieces, usableW, usableH, minBreak, priorityIds]);
 
   const optimizeAllSheets = useCallback(async () => {
     if (pieces.length === 0) {
@@ -221,6 +223,7 @@ const Index = () => {
         });
 
         await new Promise(r => setTimeout(r, 0));
+        const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
         const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, (p) => {
           setProgress({
             phase: `Chapa ${sheetCount} - ${p.phase}`,
@@ -228,7 +231,7 @@ const Index = () => {
             total: p.total,
             bestUtil: p.bestUtil,
           });
-        });
+        }, priorityLabels.length > 0 ? priorityLabels : undefined);
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea });
 
@@ -275,7 +278,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -445,6 +448,22 @@ const Index = () => {
         {/* ─── SECTION 3: Execução ─── */}
         <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
           <div className="p-3" style={{ background: 'hsl(0 0% 10%)' }}>
+          <div className="mb-3">
+              <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                IDs Prioritários
+              </label>
+              <input
+                type="text"
+                value={priorityIds}
+                onChange={e => setPriorityIds(e.target.value)}
+                className="cnc-input w-full"
+                placeholder="Ex: A1, A2, B3"
+                style={{ fontSize: '10px' }}
+              />
+              <div style={{ fontSize: '8px', color: 'hsl(0 0% 45%)', marginTop: '3px' }}>
+                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas.
+              </div>
+            </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
               ⚡ OTIMIZAR (1 CHAPA)
             </button>
