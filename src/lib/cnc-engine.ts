@@ -1104,10 +1104,10 @@ export async function optimizeGeneticAsync(
   minBreak: number = 0,
   onProgress?: (p: OptimizationProgress) => void,
 ): Promise<TreeNode> {
-  const populationSize = 10; // Global GA is more expensive, using reasonable defaults
-  const generations = 8;
-  const eliteCount = 4;
-  const mutationRate = 0.02;
+  const populationSize = 5; // Global GA is more expensive, using reasonable defaults
+  const generations = 3;
+  const eliteCount = 2;
+  const mutationRate = 0.01;
 
   const numPieces = pieces.length;
 
