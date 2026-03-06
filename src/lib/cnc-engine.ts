@@ -1136,7 +1136,12 @@ export async function optimizeGeneticAsync(
     // 1. Map piece sequence based on genome
     let work = ind.genome.map((idx) => ({ ...pieces[idx] }));
 
-    // 2. Apply per-piece rotation based on rotations bitmask
+    // 2. If transposed, swap each piece's w/h at the base level
+    if (ind.transposed) {
+      work = work.map((p) => ({ ...p, w: p.h, h: p.w }));
+    }
+
+    // 3. Apply per-piece rotation based on rotations bitmask
     work = work.map((p, i) => {
       if (ind.rotations[i]) {
         return { ...p, w: p.h, h: p.w };
@@ -1144,19 +1149,23 @@ export async function optimizeGeneticAsync(
       return p;
     });
 
-    // 3. Optional Global Grouping (secondary layer)
+    // Effective dimensions for grouping (swapped when transposed)
+    const effW = ind.transposed ? usableH : usableW;
+    const effH = ind.transposed ? usableW : usableH;
+
+    // 4. Optional Global Grouping (secondary layer)
     if (ind.groupingMode === 1) {
       work = groupPiecesByHeight(work);
     } else if (ind.groupingMode === 2) {
       work = groupPiecesByWidth(work);
     } else if (ind.groupingMode === 3) {
-      work = groupPiecesFillRow(work, usableW);
+      work = groupPiecesFillRow(work, effW);
     } else if (ind.groupingMode === 4) {
-      work = groupPiecesFillRow(work, usableW, true);
+      work = groupPiecesFillRow(work, effW, true);
     } else if (ind.groupingMode === 5) {
-      work = groupPiecesFillCol(work, usableH);
+      work = groupPiecesFillCol(work, effH);
     } else if (ind.groupingMode === 6) {
-      work = groupPiecesFillCol(work, usableH, true);
+      work = groupPiecesFillCol(work, effH, true);
     }
 
     return work;
