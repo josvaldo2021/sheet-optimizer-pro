@@ -609,6 +609,62 @@ function oris(p: Piece): { w: number; h: number }[] {
   ];
 }
 
+// ========== WASTE FRAGMENT COUNTING ==========
+
+/**
+ * Count waste fragments in a tree layout.
+ * A waste fragment is any unused space (gap between pieces and sheet edges).
+ * Fewer fragments = cleaner layout = better.
+ */
+function countWasteFragments(tree: TreeNode, usableW: number, usableH: number): number {
+  let fragments = 0;
+
+  let xOff = 0;
+  for (const xNode of tree.filhos) {
+    for (let ix = 0; ix < xNode.multi; ix++) {
+      let yOff = 0;
+      for (const yNode of xNode.filhos) {
+        for (let iy = 0; iy < yNode.multi; iy++) {
+          let zOff = 0;
+          for (const zNode of yNode.filhos) {
+            for (let iz = 0; iz < zNode.multi; iz++) {
+              if (zNode.filhos.length > 0) {
+                let wOff = 0;
+                for (const wNode of zNode.filhos) {
+                  for (let iw = 0; iw < wNode.multi; iw++) {
+                    if (wNode.filhos.length > 0) {
+                      let qOff = 0;
+                      for (const qNode of wNode.filhos) {
+                        qOff += qNode.valor * qNode.multi;
+                      }
+                      const qWaste = zNode.valor - qOff;
+                      if (qWaste > 0) fragments++;
+                    }
+                    wOff += wNode.valor;
+                  }
+                }
+                const wWaste = yNode.valor - wOff;
+                if (wWaste > 0) fragments++;
+              }
+              zOff += zNode.valor;
+            }
+          }
+          const zWaste = xNode.valor - zOff;
+          if (zWaste > 0) fragments++;
+          yOff += yNode.valor;
+        }
+      }
+      const yWaste = usableH - yOff;
+      if (yWaste > 0) fragments++;
+      xOff += xNode.valor;
+    }
+  }
+  const xWaste = usableW - xOff;
+  if (xWaste > 0) fragments++;
+
+  return fragments;
+}
+
 // ========== SCORING WITH LOOKAHEAD ==========
 
 function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number, remaining: Piece[]): number {
