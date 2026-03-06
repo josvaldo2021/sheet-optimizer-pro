@@ -440,17 +440,14 @@ function groupPiecesByWidth(pieces: Piece[]): Piece[] {
  * FILL-ROW: Agrupa peças de mesma altura para preencher a largura total da chapa.
  * Sem limite de quantidade — empacota o máximo possível em cada "fila".
  *
- * Exemplo com usableW = 2750:
- * Input:  7x [898×1296]
- * Output: [2694×1296 (count=3), 2694×1296 (count=3), 898×1296 (count=1)]
- *   (3 peças de 898 cabem em 2694 ≤ 2750)
+ * @param raw - Se true, usa as dimensões originais (w,h) sem normalizar.
+ *              Isso permite descobrir layouts onde a dimensão MAIOR é a altura da fila.
  */
-function groupPiecesFillRow(pieces: Piece[], usableW: number): Piece[] {
-  // Normaliza: w = max, h = min (largura sempre ≥ altura)
+function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
   const normalized = pieces.map((p) => ({
     ...p,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
+    nw: raw ? p.w : Math.max(p.w, p.h),
+    nh: raw ? p.h : Math.min(p.w, p.h),
   }));
 
   // Agrupa por altura (nh)
