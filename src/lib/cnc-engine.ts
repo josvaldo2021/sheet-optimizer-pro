@@ -30,6 +30,7 @@ export interface PieceItem {
   w: number;
   h: number;
   label?: string;
+  priority?: boolean;
 }
 
 // Annotate tree leaf nodes with labels from the original pieces inventory

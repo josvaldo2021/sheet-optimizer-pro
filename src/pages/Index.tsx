@@ -474,7 +474,8 @@ const Index = () => {
             <div className="max-h-[280px] overflow-y-auto p-2.5 cnc-scroll">
               {/* Header */}
               {pieces.length > 0 && (
-                <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '40px 1fr 15px 1fr 55px 20px', color: 'hsl(0 0% 45%)' }}>
+              <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '20px 40px 1fr 15px 1fr 55px 20px', color: 'hsl(0 0% 45%)' }}>
+                  <span className="text-center" title="Prioridade">🚩</span>
                   <span className="text-center">Qtd</span>
                   <span className="text-center">Larg</span>
                   <span></span>
@@ -484,7 +485,16 @@ const Index = () => {
                 </div>
               )}
               {pieces.map(p => (
-                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '40px 1fr 15px 1fr 55px 20px' }}>
+                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '20px 40px 1fr 15px 1fr 55px 20px' }}>
+                  <div className="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={!!p.priority}
+                      onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, priority: e.target.checked } : x))}
+                      title="Processar somente este pedido"
+                      style={{ accentColor: 'hsl(45 100% 50%)', cursor: 'pointer', width: '12px', height: '12px' }}
+                    />
+                  </div>
                   <input type="number" value={p.qty} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, qty: +e.target.value } : x))} className="cnc-input" />
                   <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
                   <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
