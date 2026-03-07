@@ -1258,16 +1258,23 @@ export async function optimizeGeneticAsync(
   const strategies = getSortStrategies();
   strategies.forEach((sortFn) => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
-      // Find original pieces to compare
       const pA = pieces[a];
       const pB = pieces[b];
       return sortFn(pA, pB);
     });
 
+    // Always seed BOTH normal and transposed for each strategy
     initialPop.push({
-      genome: sortedIndices,
+      genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
+      transposed: false,
+    });
+    initialPop.push({
+      genome: [...sortedIndices],
+      rotations: Array.from({ length: numPieces }, () => false),
+      groupingMode: 0,
+      transposed: true,
     });
   });
 
