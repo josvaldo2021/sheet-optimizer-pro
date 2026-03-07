@@ -172,8 +172,10 @@ const Index = () => {
   }, []);
 
   const optimize = useCallback(async () => {
+    const hasPriority = pieces.some(p => p.priority);
+    const activePieces = hasPriority ? pieces.filter(p => p.priority) : pieces;
     const inv: { w: number; h: number; area: number; label?: string }[] = [];
-    pieces.forEach(p => {
+    activePieces.forEach(p => {
       for (let i = 0; i < p.qty; i++) {
         if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
       }
