@@ -8,8 +8,6 @@ export interface TreeNode {
   multi: number;
   filhos: TreeNode[];
   label?: string;
-  /** When true, the tree was built with horizontal main cuts (swapped axes). */
-  transposed?: boolean;
 }
 
 export interface Piece {
@@ -942,51 +940,48 @@ export function optimizeV6(
   const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
+  const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
+
+  const pieceVariants: Piece[][] = hasLabels
+    ? [pieces, rotatedPieces]
+    : useGrouping === false
+      ? [pieces, rotatedPieces]
+      : [
+          pieces,
+          rotatedPieces,
+          groupPiecesByHeight(pieces),
+          groupPiecesByWidth(pieces),
+          groupPiecesByHeight(rotatedPieces),
+          // Fill-row strategies (normalized: pack by min dimension as height)
+          groupPiecesFillRow(pieces, usableW),
+          groupPiecesFillRow(rotatedPieces, usableW),
+          // Fill-row RAW (non-normalized: pack by actual h, discovers layouts where larger dim is height)
+          groupPiecesFillRow(pieces, usableW, true),
+          groupPiecesFillRow(rotatedPieces, usableW, true),
+          // Fill-col strategies (normalized)
+          groupPiecesFillCol(pieces, usableH),
+          groupPiecesFillCol(rotatedPieces, usableH),
+          // Fill-col RAW (non-normalized)
+          groupPiecesFillCol(pieces, usableH, true),
+          groupPiecesFillCol(rotatedPieces, usableH, true),
+          // Combined: fill-row on height-grouped pieces
+          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
+          // Combined RAW
+          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
+        ];
+
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
 
-  // Try both normal (vertical main cuts) and transposed (horizontal main cuts)
-  for (const transposed of [false, true]) {
-    const effW = transposed ? usableH : usableW;
-    const effH = transposed ? usableW : usableH;
-    const basePieces = transposed
-      ? pieces.map((p) => ({ ...p, w: p.h, h: p.w }))
-      : pieces;
-    const rotatedPieces = basePieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
-
-    const pieceVariants: Piece[][] = hasLabels
-      ? [basePieces, rotatedPieces]
-      : useGrouping === false
-        ? [basePieces, rotatedPieces]
-        : [
-            basePieces,
-            rotatedPieces,
-            groupPiecesByHeight(basePieces),
-            groupPiecesByWidth(basePieces),
-            groupPiecesByHeight(rotatedPieces),
-            groupPiecesFillRow(basePieces, effW),
-            groupPiecesFillRow(rotatedPieces, effW),
-            groupPiecesFillRow(basePieces, effW, true),
-            groupPiecesFillRow(rotatedPieces, effW, true),
-            groupPiecesFillCol(basePieces, effH),
-            groupPiecesFillCol(rotatedPieces, effH),
-            groupPiecesFillCol(basePieces, effH, true),
-            groupPiecesFillCol(rotatedPieces, effH, true),
-            groupPiecesFillRow(groupPiecesByHeight(basePieces), effW),
-            groupPiecesFillRow(groupPiecesByHeight(basePieces), effW, true),
-          ];
-
-    for (const variant of pieceVariants) {
-      for (const sortFn of strategies) {
-        const sorted = [...variant].sort(sortFn);
-        const result = runPlacement(sorted, effW, effH, minBreak);
-        if (result.area > bestArea) {
-          bestArea = result.area;
-          bestTree = result.tree;
-          bestTree.transposed = transposed;
-          bestRemaining = result.remaining;
-        }
+  for (const variant of pieceVariants) {
+    for (const sortFn of strategies) {
+      const sorted = [...variant].sort(sortFn);
+      const result = runPlacement(sorted, usableW, usableH, minBreak);
+      if (result.area > bestArea) {
+        bestArea = result.area;
+        bestTree = result.tree;
+        bestRemaining = result.remaining;
       }
     }
   }
@@ -1036,7 +1031,6 @@ interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
   groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw
-  transposed: boolean; // true = horizontal main cuts (swapped sheet axes)
 }
 
 /**
@@ -1109,12 +1103,11 @@ export async function optimizeGeneticAsync(
   usableH: number,
   minBreak: number = 0,
   onProgress?: (p: OptimizationProgress) => void,
-  priorityLabels?: string[],
 ): Promise<TreeNode> {
-  const populationSize = 5; // Global GA is more expensive, using reasonable defaults
-  const generations = 3;
-  const eliteCount = 2;
-  const mutationRate = 0.01;
+  const populationSize = 50; // Global GA is more expensive, using reasonable defaults
+  const generations = 50;
+  const eliteCount = 5;
+  const mutationRate = 0.03;
 
   const numPieces = pieces.length;
 
@@ -1129,35 +1122,14 @@ export async function optimizeGeneticAsync(
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
       groupingMode: ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6,
-      transposed: Math.random() > 0.5,
     };
   }
-
-  // Set of priority labels (normalized to lowercase)
-  const prioritySet = new Set((priorityLabels || []).map(l => l.trim().toLowerCase()).filter(Boolean));
 
   function buildPieces(ind: GAIndividual): Piece[] {
     // 1. Map piece sequence based on genome
     let work = ind.genome.map((idx) => ({ ...pieces[idx] }));
 
-    // 1.5. Move priority pieces to the front (preserving relative order)
-    if (prioritySet.size > 0) {
-      const priority: Piece[] = [];
-      const rest: Piece[] = [];
-      work.forEach(p => {
-        const isPriority = p.label && prioritySet.has(p.label.trim().toLowerCase());
-        if (isPriority) priority.push(p);
-        else rest.push(p);
-      });
-      work = [...priority, ...rest];
-    }
-
-    // 2. If transposed, swap each piece's w/h at the base level
-    if (ind.transposed) {
-      work = work.map((p) => ({ ...p, w: p.h, h: p.w }));
-    }
-
-    // 3. Apply per-piece rotation based on rotations bitmask
+    // 2. Apply per-piece rotation based on rotations bitmask
     work = work.map((p, i) => {
       if (ind.rotations[i]) {
         return { ...p, w: p.h, h: p.w };
@@ -1165,35 +1137,29 @@ export async function optimizeGeneticAsync(
       return p;
     });
 
-    // Effective dimensions for grouping (swapped when transposed)
-    const effW = ind.transposed ? usableH : usableW;
-    const effH = ind.transposed ? usableW : usableH;
-
-    // 4. Optional Global Grouping (secondary layer)
+    // 3. Optional Global Grouping (secondary layer)
     if (ind.groupingMode === 1) {
       work = groupPiecesByHeight(work);
     } else if (ind.groupingMode === 2) {
       work = groupPiecesByWidth(work);
     } else if (ind.groupingMode === 3) {
-      work = groupPiecesFillRow(work, effW);
+      work = groupPiecesFillRow(work, usableW);
     } else if (ind.groupingMode === 4) {
-      work = groupPiecesFillRow(work, effW, true);
+      work = groupPiecesFillRow(work, usableW, true);
     } else if (ind.groupingMode === 5) {
-      work = groupPiecesFillCol(work, effH);
+      work = groupPiecesFillCol(work, usableH);
     } else if (ind.groupingMode === 6) {
-      work = groupPiecesFillCol(work, effH, true);
+      work = groupPiecesFillCol(work, usableH, true);
     }
 
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number } {
     const work = buildPieces(ind);
-    const effW = ind.transposed ? usableH : usableW;
-    const effH = ind.transposed ? usableW : usableH;
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    const result = simulateSheets(work, effW, effH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
+    const result = simulateSheets(work, usableW, usableH, minBreak, lookahead || 1);
+    return { tree: result.firstTree, fitness: result.fitness };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
@@ -1226,16 +1192,14 @@ export async function optimizeGeneticAsync(
       }
     }
 
-    // 2. Uniform crossover for rotations, grouping, and transposed
+    // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
     const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-    const childTransposed = Math.random() > 0.5 ? pA.transposed : pB.transposed;
 
     return {
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
-      transposed: childTransposed,
     };
   }
 
@@ -1244,16 +1208,15 @@ export async function optimizeGeneticAsync(
       genome: [...ind.genome],
       rotations: [...ind.rotations],
       groupingMode: ind.groupingMode,
-      transposed: ind.transposed,
     };
 
     const r = Math.random();
-    if (r < 0.25) {
+    if (r < 0.3) {
       // Swap Mutation
       const a = Math.floor(Math.random() * c.genome.length);
       const b = Math.floor(Math.random() * c.genome.length);
       [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
-    } else if (r < 0.5) {
+    } else if (r < 0.6) {
       // Block Mutation (Move a segment)
       if (c.genome.length > 3) {
         const blockSize = Math.floor(Math.random() * Math.min(5, c.genome.length / 2)) + 2;
@@ -1262,19 +1225,16 @@ export async function optimizeGeneticAsync(
         const target = Math.floor(Math.random() * c.genome.length);
         c.genome.splice(target, 0, ...segment);
       }
-    } else if (r < 0.7) {
+    } else if (r < 0.8) {
       // Rotation Mutation (Flip 10% of bits)
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else if (r < 0.85) {
+    } else {
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-    } else {
-      // Transposed Mutation (flip cut orientation)
-      c.transposed = !c.transposed;
     }
 
     return c;
@@ -1285,13 +1245,7 @@ export async function optimizeGeneticAsync(
   const strategies = getSortStrategies();
   strategies.forEach((sortFn) => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
-      // Priority pieces always come first in seeded genomes
-      if (prioritySet.size > 0) {
-        const aIsPriority = pieces[a].label ? prioritySet.has(pieces[a].label!.trim().toLowerCase()) : false;
-        const bIsPriority = pieces[b].label ? prioritySet.has(pieces[b].label!.trim().toLowerCase()) : false;
-        if (aIsPriority && !bIsPriority) return -1;
-        if (!aIsPriority && bIsPriority) return 1;
-      }
+      // Find original pieces to compare
       const pA = pieces[a];
       const pB = pieces[b];
       return sortFn(pA, pB);
@@ -1301,7 +1255,6 @@ export async function optimizeGeneticAsync(
       genome: sortedIndices,
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
-      transposed: false,
     });
   });
 
@@ -1325,10 +1278,8 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const effW = ind.transposed ? usableH : usableW;
-      const effH = ind.transposed ? usableW : usableH;
-      const res = simulateSheets(work, effW, effH, minBreak, currentLookahead);
-      return { ind, tree: res.firstTree, fitness: res.fitness, transposed: ind.transposed };
+      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
+      return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
@@ -1337,7 +1288,6 @@ export async function optimizeGeneticAsync(
     if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
-      bestTree!.transposed = evaluated[0].transposed;
     }
 
     if (onProgress) {
