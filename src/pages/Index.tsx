@@ -238,6 +238,44 @@ const Index = () => {
         chapaList.push({ tree: result, usedArea });
 
         const usedPieces = extractUsedPiecesWithContext(result);
+
+        // --- Layout Replication Optimization ---
+        // Count how many times this exact layout can be replicated with remaining pieces
+        // Build a "bill of materials" for this layout: how many of each piece type it uses
+        const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
+        usedPieces.forEach(used => {
+          // Normalize key: smaller dimension first
+          const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
+          const existing = layoutBOM.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            layoutBOM.set(key, { w: used.w, h: used.h, count: 1 });
+          }
+        });
+
+        // Calculate how many full replications are possible
+        let maxReplications = Infinity;
+        layoutBOM.forEach(({ w, h, count }) => {
+          // Find total available qty in remaining for this piece type
+          let available = 0;
+          remaining.forEach(p => {
+            if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
+              available += p.qty;
+            }
+          });
+          // First sheet already uses 'count' pieces, so available includes those
+          // We want how many ADDITIONAL full copies we can make
+          const additionalAvailable = available - count; // subtract what the first sheet uses
+          const possibleCopies = Math.floor(additionalAvailable / count);
+          maxReplications = Math.min(maxReplications, possibleCopies);
+        });
+
+        if (!isFinite(maxReplications) || maxReplications < 0) maxReplications = 0;
+        // Cap to avoid runaway
+        maxReplications = Math.min(maxReplications, 100 - chapaList.length);
+
+        // Deduct first sheet's pieces from remaining
         usedPieces.forEach(used => {
           for (let i = 0; i < remaining.length; i++) {
             const p = remaining[i];
@@ -248,6 +286,27 @@ const Index = () => {
             }
           }
         });
+
+        // Replicate the layout for additional copies
+        if (maxReplications > 0) {
+          for (let rep = 0; rep < maxReplications; rep++) {
+            chapaList.push({ tree: cloneTree(result), usedArea });
+            // Deduct pieces for this replicated sheet
+            layoutBOM.forEach(({ w, h, count }) => {
+              let toDeduct = count;
+              for (let i = 0; i < remaining.length && toDeduct > 0; i++) {
+                const p = remaining[i];
+                if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
+                  const deducted = Math.min(toDeduct, p.qty);
+                  p.qty -= deducted;
+                  toDeduct -= deducted;
+                  if (p.qty <= 0) { remaining.splice(i, 1); i--; }
+                }
+              }
+            });
+          }
+          sheetCount += maxReplications;
+        }
       }
 
       return chapaList;
