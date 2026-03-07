@@ -1341,7 +1341,7 @@ export async function optimizeGeneticAsync(
 
     // Next Gen with basic Diversity check
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
-    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",")));
+    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + (i.transposed ? "T" : "N")));
 
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
