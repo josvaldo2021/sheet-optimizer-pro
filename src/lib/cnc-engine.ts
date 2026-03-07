@@ -1286,6 +1286,7 @@ export async function optimizeGeneticAsync(
   let population = initialPop;
   let bestTree: TreeNode | null = null;
   let bestFitness = -1;
+  let bestTransposed = false;
 
   // Report baseline
   if (onProgress) {
@@ -1298,7 +1299,9 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
+      const eW = ind.transposed ? usableH : usableW;
+      const eH = ind.transposed ? usableW : usableH;
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -1308,6 +1311,7 @@ export async function optimizeGeneticAsync(
     if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
+      bestTransposed = evaluated[0].ind.transposed;
     }
 
     if (onProgress) {
