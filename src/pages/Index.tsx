@@ -193,7 +193,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: 'Plano de Corte Otimizado!', type: 'success' });
-  }, [pieces, usableW, usableH, minBreak, priorityIds]);
+  }, [pieces, usableW, usableH, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const optimizeAllSheets = useCallback(async () => {
     if (pieces.length === 0) {
