@@ -207,7 +207,8 @@ const Index = () => {
 
     const runAllSheets = async (useGrouping?: boolean) => {
       const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
-      const remaining = pieces.map(p => ({ ...p }));
+      const hasPriority = pieces.some(p => p.priority);
+      const remaining = (hasPriority ? pieces.filter(p => p.priority) : pieces).map(p => ({ ...p }));
       let sheetCount = 0;
 
       while (remaining.length > 0 && sheetCount < 100) {
