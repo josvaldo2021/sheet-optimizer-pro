@@ -1828,7 +1828,9 @@ function runPlacement(
           }
         }
 
-        freeHRemain -= bestFit.pieceH;
+        // Recalculate freeHRemain from actual tree state (safer than decrementing)
+        const actualUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        freeHRemain = usableH - actualUsedH;
       }
     }
 
