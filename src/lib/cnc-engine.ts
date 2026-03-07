@@ -1349,7 +1349,7 @@ export async function optimizeGeneticAsync(
       let child = crossover(pA, pB);
       if (Math.random() < mutationRate) child = mutate(child);
 
-      const key = child.genome.join(",");
+      const key = child.genome.join(",") + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
