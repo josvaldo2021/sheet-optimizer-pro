@@ -974,21 +974,32 @@ export function optimizeV6(
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
+  let bestTransposed = false;
 
-  for (const variant of pieceVariants) {
-    for (const sortFn of strategies) {
-      const sorted = [...variant].sort(sortFn);
-      const result = runPlacement(sorted, usableW, usableH, minBreak);
-      if (result.area > bestArea) {
-        bestArea = result.area;
-        bestTree = result.tree;
-        bestRemaining = result.remaining;
+  // Test both normal and transposed orientations
+  for (const transposed of [false, true]) {
+    const eW = transposed ? usableH : usableW;
+    const eH = transposed ? usableW : usableH;
+
+    for (const variant of pieceVariants) {
+      for (const sortFn of strategies) {
+        const sorted = [...variant].sort(sortFn);
+        const result = runPlacement(sorted, eW, eH, minBreak);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestRemaining = result.remaining;
+          bestTransposed = transposed;
+        }
       }
     }
   }
 
+  const finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree.transposed = true;
+
   return {
-    tree: bestTree || createRoot(usableW, usableH),
+    tree: finalTree,
     remaining: bestRemaining,
   };
 }
@@ -1032,6 +1043,7 @@ interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
   groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw
+  transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
 /**
@@ -1126,6 +1138,7 @@ export async function optimizeGeneticAsync(
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
       groupingMode: ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6,
+      transposed: Math.random() > 0.5,
     };
   }
 
@@ -1159,11 +1172,13 @@ export async function optimizeGeneticAsync(
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number } {
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
     const work = buildPieces(ind);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    const result = simulateSheets(work, usableW, usableH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness };
+    const eW = ind.transposed ? usableH : usableW;
+    const eH = ind.transposed ? usableW : usableH;
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
+    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
@@ -1204,6 +1219,7 @@ export async function optimizeGeneticAsync(
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
+      transposed: Math.random() > 0.5 ? pA.transposed : pB.transposed,
     };
   }
 
@@ -1212,15 +1228,16 @@ export async function optimizeGeneticAsync(
       genome: [...ind.genome],
       rotations: [...ind.rotations],
       groupingMode: ind.groupingMode,
+      transposed: ind.transposed,
     };
 
     const r = Math.random();
-    if (r < 0.3) {
+    if (r < 0.25) {
       // Swap Mutation
       const a = Math.floor(Math.random() * c.genome.length);
       const b = Math.floor(Math.random() * c.genome.length);
       [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
-    } else if (r < 0.6) {
+    } else if (r < 0.5) {
       // Block Mutation (Move a segment)
       if (c.genome.length > 3) {
         const blockSize = Math.floor(Math.random() * Math.min(5, c.genome.length / 2)) + 2;
@@ -1229,16 +1246,19 @@ export async function optimizeGeneticAsync(
         const target = Math.floor(Math.random() * c.genome.length);
         c.genome.splice(target, 0, ...segment);
       }
-    } else if (r < 0.8) {
+    } else if (r < 0.7) {
       // Rotation Mutation (Flip 10% of bits)
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else {
+    } else if (r < 0.85) {
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    } else {
+      // Transposition Mutation
+      c.transposed = !c.transposed;
     }
 
     return c;
@@ -1249,20 +1269,30 @@ export async function optimizeGeneticAsync(
   const strategies = getSortStrategies();
   strategies.forEach((sortFn) => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
-      // Find original pieces to compare
       const pA = pieces[a];
       const pB = pieces[b];
       return sortFn(pA, pB);
     });
 
+    // Always seed BOTH normal and transposed for each strategy
     initialPop.push({
-      genome: sortedIndices,
+      genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
+      transposed: false,
+    });
+    initialPop.push({
+      genome: [...sortedIndices],
+      rotations: Array.from({ length: numPieces }, () => false),
+      groupingMode: 0,
+      transposed: true,
     });
   });
 
-  // Fill rest with random
+  // Trim if seeds exceed population size, or fill with random
+  if (initialPop.length > populationSize) {
+    initialPop.length = populationSize;
+  }
   while (initialPop.length < populationSize) {
     initialPop.push(randomIndividual());
   }
@@ -1270,6 +1300,7 @@ export async function optimizeGeneticAsync(
   let population = initialPop;
   let bestTree: TreeNode | null = null;
   let bestFitness = -1;
+  let bestTransposed = false;
 
   // Report baseline
   if (onProgress) {
@@ -1282,7 +1313,9 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
+      const eW = ind.transposed ? usableH : usableW;
+      const eH = ind.transposed ? usableW : usableH;
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -1292,6 +1325,7 @@ export async function optimizeGeneticAsync(
     if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
+      bestTransposed = evaluated[0].ind.transposed;
     }
 
     if (onProgress) {
@@ -1307,7 +1341,7 @@ export async function optimizeGeneticAsync(
 
     // Next Gen with basic Diversity check
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
-    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",")));
+    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + (i.transposed ? "T" : "N")));
 
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
@@ -1315,7 +1349,7 @@ export async function optimizeGeneticAsync(
       let child = crossover(pA, pB);
       if (Math.random() < mutationRate) child = mutate(child);
 
-      const key = child.genome.join(",");
+      const key = child.genome.join(",") + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
@@ -1327,7 +1361,9 @@ export async function optimizeGeneticAsync(
     population = nextPop;
   }
 
-  return bestTree || createRoot(usableW, usableH);
+  const finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree.transposed = true;
+  return finalTree;
 }
 
 // Synchronous wrapper for backward compatibility - Fast Mini-GA Burst
