@@ -1161,11 +1161,13 @@ export async function optimizeGeneticAsync(
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number } {
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
     const work = buildPieces(ind);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    const result = simulateSheets(work, usableW, usableH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness };
+    const eW = ind.transposed ? usableH : usableW;
+    const eH = ind.transposed ? usableW : usableH;
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
+    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
