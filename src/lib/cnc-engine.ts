@@ -1606,6 +1606,15 @@ function runPlacement(
       col = bestFit.col!;
     }
 
+    // Safety: verify column height before inserting Y strip
+    {
+      const currentUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      if (currentUsedH + bestFit.h > usableH + 0.5) {
+        console.warn(`[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`);
+        remaining.shift();
+        continue;
+      }
+    }
     const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
