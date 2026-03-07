@@ -466,6 +466,34 @@ const Index = () => {
                 Separe por vírgula. Peças priorizadas ficam nas primeiras chapas.
               </div>
             </div>
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                  População
+                </label>
+                <input
+                  type="number"
+                  value={gaPopSize}
+                  onChange={e => setGaPopSize(Math.max(10, parseInt(e.target.value) || 10))}
+                  className="cnc-input w-full"
+                  min={10}
+                  style={{ fontSize: '10px' }}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                  Gerações
+                </label>
+                <input
+                  type="number"
+                  value={gaGens}
+                  onChange={e => setGaGens(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="cnc-input w-full"
+                  min={1}
+                  style={{ fontSize: '10px' }}
+                />
+              </div>
+            </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
               ⚡ OTIMIZAR (1 CHAPA)
             </button>
