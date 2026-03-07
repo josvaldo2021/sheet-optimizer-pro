@@ -1208,6 +1208,7 @@ export async function optimizeGeneticAsync(
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
+      transposed: Math.random() > 0.5 ? pA.transposed : pB.transposed,
     };
   }
 
