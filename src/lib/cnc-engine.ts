@@ -1289,7 +1289,10 @@ export async function optimizeGeneticAsync(
     });
   });
 
-  // Fill rest with random
+  // Trim if seeds exceed population size, or fill with random
+  if (initialPop.length > populationSize) {
+    initialPop.length = populationSize;
+  }
   while (initialPop.length < populationSize) {
     initialPop.push(randomIndividual());
   }
