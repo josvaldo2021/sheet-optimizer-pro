@@ -34,6 +34,8 @@ const Index = () => {
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [priorityIds, setPriorityIds] = useState('');
+  const [gaPopSize, setGaPopSize] = useState(50);
+  const [gaGens, setGaGens] = useState(50);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
@@ -183,7 +185,7 @@ const Index = () => {
 
     await new Promise(r => setTimeout(r, 20));
     const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
-    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress, priorityLabels.length > 0 ? priorityLabels : undefined);
+    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
     setTree(result);
     setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
     setActiveChapa(0);
@@ -191,7 +193,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: 'Plano de Corte Otimizado!', type: 'success' });
-  }, [pieces, usableW, usableH, minBreak, priorityIds]);
+  }, [pieces, usableW, usableH, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const optimizeAllSheets = useCallback(async () => {
     if (pieces.length === 0) {
@@ -231,7 +233,7 @@ const Index = () => {
             total: p.total,
             bestUtil: p.bestUtil,
           });
-        }, priorityLabels.length > 0 ? priorityLabels : undefined);
+        }, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea });
 
@@ -278,7 +280,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -462,6 +464,34 @@ const Index = () => {
               />
               <div style={{ fontSize: '8px', color: 'hsl(0 0% 45%)', marginTop: '3px' }}>
                 Separe por vírgula. Peças priorizadas ficam nas primeiras chapas.
+              </div>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                  População
+                </label>
+                <input
+                  type="number"
+                  value={gaPopSize}
+                  onChange={e => setGaPopSize(Math.max(10, parseInt(e.target.value) || 10))}
+                  className="cnc-input w-full"
+                  min={10}
+                  style={{ fontSize: '10px' }}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                  Gerações
+                </label>
+                <input
+                  type="number"
+                  value={gaGens}
+                  onChange={e => setGaGens(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="cnc-input w-full"
+                  min={1}
+                  style={{ fontSize: '10px' }}
+                />
               </div>
             </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
