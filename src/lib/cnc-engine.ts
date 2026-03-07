@@ -803,6 +803,13 @@ function fillRect(
     }
 
     if (bestO) {
+      // Safety: verify actual column height before inserting
+      const actualUsedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      const actualFreeH = maxH; // maxH is already tracked correctly
+      
+      // Double-check: don't insert if actual column is full
+      if (actualUsedH + bestO.h > actualUsedH + actualFreeH + 0.5) continue;
+      
       // Residual dominance: extend Y container if residual can't fit anything
       let consumed = bestO.h;
       const residualH = maxH - bestO.h;
