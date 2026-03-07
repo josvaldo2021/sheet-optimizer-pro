@@ -974,21 +974,32 @@ export function optimizeV6(
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
+  let bestTransposed = false;
 
-  for (const variant of pieceVariants) {
-    for (const sortFn of strategies) {
-      const sorted = [...variant].sort(sortFn);
-      const result = runPlacement(sorted, usableW, usableH, minBreak);
-      if (result.area > bestArea) {
-        bestArea = result.area;
-        bestTree = result.tree;
-        bestRemaining = result.remaining;
+  // Test both normal and transposed orientations
+  for (const transposed of [false, true]) {
+    const eW = transposed ? usableH : usableW;
+    const eH = transposed ? usableW : usableH;
+
+    for (const variant of pieceVariants) {
+      for (const sortFn of strategies) {
+        const sorted = [...variant].sort(sortFn);
+        const result = runPlacement(sorted, eW, eH, minBreak);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestRemaining = result.remaining;
+          bestTransposed = transposed;
+        }
       }
     }
   }
 
+  const finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree.transposed = true;
+
   return {
-    tree: bestTree || createRoot(usableW, usableH),
+    tree: finalTree,
     remaining: bestRemaining,
   };
 }
