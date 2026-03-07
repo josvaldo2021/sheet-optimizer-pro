@@ -1347,7 +1347,9 @@ export async function optimizeGeneticAsync(
     population = nextPop;
   }
 
-  return bestTree || createRoot(usableW, usableH);
+  const finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree.transposed = true;
+  return finalTree;
 }
 
 // Synchronous wrapper for backward compatibility - Fast Mini-GA Burst
