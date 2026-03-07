@@ -233,7 +233,7 @@ const Index = () => {
             total: p.total,
             bestUtil: p.bestUtil,
           });
-        }, priorityLabels.length > 0 ? priorityLabels : undefined);
+        }, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea });
 
