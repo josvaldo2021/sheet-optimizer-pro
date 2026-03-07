@@ -8,6 +8,7 @@ export interface TreeNode {
   multi: number;
   filhos: TreeNode[];
   label?: string;
+  transposed?: boolean;
 }
 
 export interface Piece {
