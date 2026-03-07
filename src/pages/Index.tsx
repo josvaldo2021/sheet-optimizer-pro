@@ -34,6 +34,8 @@ const Index = () => {
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [priorityIds, setPriorityIds] = useState('');
+  const [gaPopSize, setGaPopSize] = useState(50);
+  const [gaGens, setGaGens] = useState(50);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
