@@ -803,6 +803,13 @@ function fillRect(
     }
 
     if (bestO) {
+      // Safety: verify actual column height before inserting
+      const actualUsedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      const actualFreeH = maxH; // maxH is already tracked correctly
+      
+      // Double-check: don't insert if actual column is full
+      if (actualUsedH + bestO.h > actualUsedH + actualFreeH + 0.5) continue;
+      
       // Residual dominance: extend Y container if residual can't fit anything
       let consumed = bestO.h;
       const residualH = maxH - bestO.h;
@@ -1606,6 +1613,15 @@ function runPlacement(
       col = bestFit.col!;
     }
 
+    // Safety: verify column height before inserting Y strip
+    {
+      const currentUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      if (currentUsedH + bestFit.h > usableH + 0.5) {
+        console.warn(`[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`);
+        remaining.shift();
+        continue;
+      }
+    }
     const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
@@ -1812,7 +1828,9 @@ function runPlacement(
           }
         }
 
-        freeHRemain -= bestFit.pieceH;
+        // Recalculate freeHRemain from actual tree state (safer than decrementing)
+        const actualUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        freeHRemain = usableH - actualUsedH;
       }
     }
 
@@ -1822,5 +1840,72 @@ function runPlacement(
     }
   }
 
+  // --- VALIDATION: clamp columns that exceed usableH ---
+  placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
+
   return { tree, area: placedArea, remaining };
+}
+
+/**
+ * Validates that no column (X node) has Y strips whose total height exceeds usableH.
+ * If overflow is detected, removes excess Y strips from the end and adjusts placedArea.
+ */
+function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, placedArea: number): number {
+  for (const colX of tree.filhos) {
+    let totalH = 0;
+    const validChildren: TreeNode[] = [];
+
+    for (const yNode of colX.filhos) {
+      const yHeight = yNode.valor * yNode.multi;
+      if (totalH + yHeight <= usableH + 0.5) { // 0.5 tolerance for rounding
+        validChildren.push(yNode);
+        totalH += yHeight;
+      } else {
+        // Check if we can partially keep this Y (reduce multi)
+        if (yNode.multi > 1) {
+          const canFit = Math.floor((usableH - totalH) / yNode.valor);
+          if (canFit > 0) {
+            yNode.multi = canFit;
+            validChildren.push(yNode);
+            totalH += yNode.valor * canFit;
+          }
+        } else if (totalH + yNode.valor <= usableH + 0.5) {
+          validChildren.push(yNode);
+          totalH += yNode.valor;
+        }
+        // Log overflow for debugging
+        if (validChildren.length < colX.filhos.length) {
+          const originalTotal = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+          console.warn(`[CNC-ENGINE] Column overflow detected: ${originalTotal.toFixed(0)}mm > ${usableH}mm usableH. Clamped to ${totalH.toFixed(0)}mm.`);
+        }
+        // Don't break - check remaining Y strips too (in case later ones are smaller)
+      }
+    }
+
+    if (validChildren.length < colX.filhos.length) {
+      // Recalculate placed area for removed Y strips
+      const removedYNodes = colX.filhos.filter(y => !validChildren.includes(y));
+      for (const ry of removedYNodes) {
+        placedArea -= calculateNodeArea(ry);
+      }
+      colX.filhos = validChildren;
+    }
+  }
+
+  return placedArea;
+}
+
+/**
+ * Recursively calculate the area of pieces in a subtree.
+ */
+function calculateNodeArea(node: TreeNode): number {
+  if (node.filhos.length === 0) {
+    // Leaf node - this is a piece
+    return node.valor * node.multi;
+  }
+  let area = 0;
+  for (const child of node.filhos) {
+    area += calculateNodeArea(child) * node.multi;
+  }
+  return area;
 }
