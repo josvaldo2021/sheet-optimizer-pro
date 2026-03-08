@@ -204,7 +204,7 @@ const Index = () => {
     const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
     const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
     setTree(result);
-    setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
+    setChapas([{ tree: result, usedArea: calcPlacedArea(result), manual: false }]);
     setActiveChapa(0);
     setSelectedId('root');
     setProgress(null);
