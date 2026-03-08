@@ -698,11 +698,11 @@ const Index = () => {
     }
 
     const count = reps && reps > 0 ? reps : 1;
-    const newChapas: Array<{ tree: TreeNode; usedArea: number }> = [];
+    const newChapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
     const usedArea = calcPlacedArea(tree);
 
     for (let i = 0; i < count; i++) {
-      newChapas.push({ tree: cloneTree(tree), usedArea });
+      newChapas.push({ tree: cloneTree(tree), usedArea, manual: true });
     }
 
     // Deduct pieces from inventory
