@@ -11,6 +11,8 @@ import { exportPdf } from '@/lib/pdf-export';
 import SheetViewer from '@/components/SheetViewer';
 import SidebarSection from '@/components/SidebarSection';
 
+type CommandSuggestion = { cmd: string; label: string; desc: string; kind?: 'direct' | 'lookahead' };
+
 const Index = () => {
   // ─── Sheet setup ───
   const [chapaW, setChapaW] = useState(6000);
@@ -406,12 +408,12 @@ const Index = () => {
   }, [tree, usableW, usableH]);
 
   // ─── Auto-suggestion logic ───
-  const commandSuggestions = useMemo(() => {
+  const commandSuggestions = useMemo<CommandSuggestion[]>(() => {
     if (pieces.length === 0) return [];
     const selected = findNode(tree, selectedId);
     if (!selected) return [];
 
-    const suggestions: Array<{ cmd: string; label: string; desc: string }> = [];
+    const suggestions: CommandSuggestion[] = [];
     const seen = new Set<string>();
 
     // Determine what the next expected node type is based on selection
@@ -422,7 +424,7 @@ const Index = () => {
       // Verify it fits
       const res = calcAllocation(tree, selectedId, tipo as any, valor, 1, usableW, usableH, minBreak);
       if (res.allocated > 0) {
-        suggestions.push({ cmd: key, label: key, desc });
+        suggestions.push({ cmd: key, label: key, desc, kind: 'direct' });
       }
     };
 
@@ -521,7 +523,7 @@ const Index = () => {
   }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
 
   // Filter suggestions based on current input + look-ahead for next coordinate
-  const filteredSuggestions = useMemo(() => {
+  const filteredSuggestions = useMemo<CommandSuggestion[]>(() => {
     if (!cmdInput) return commandSuggestions;
     const upper = cmdInput.toUpperCase();
     const directMatches = commandSuggestions.filter(s => s.cmd.startsWith(upper));
@@ -531,7 +533,7 @@ const Index = () => {
     if (m) {
       const tipo = m[1];
       const valor = Number(m[2]);
-      const lookAhead: Array<{ cmd: string; label: string; desc: string }> = [];
+      const lookAhead: CommandSuggestion[] = [];
       const seenLA = new Set<string>();
 
       // Hierarchy: X→Y, Y→Z, Z→W, W→Q
@@ -544,8 +546,6 @@ const Index = () => {
           let nextVal: number | null = null;
           let descText = '';
 
-          // For any coordinate level, match the typed value against both dimensions
-          // and suggest the complementary dimension as the next coordinate
           if (p.w === valor) {
             nextVal = p.h;
             descText = `→ próximo: ${nextTipo}${p.h} (peça ${p.w}×${p.h}${p.label ? ' - ' + p.label : ''})`;
@@ -558,7 +558,7 @@ const Index = () => {
             const key = `${nextTipo}${nextVal}`;
             if (!seenLA.has(key)) {
               seenLA.add(key);
-              lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText });
+              lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText, kind: 'lookahead' });
             }
           }
         });
@@ -572,13 +572,26 @@ const Index = () => {
     return directMatches;
   }, [commandSuggestions, cmdInput, pieces]);
 
-  const applySuggestion = useCallback((cmd: string) => {
-    processCommand(cmd);
+  const applySuggestion = useCallback((suggestion: CommandSuggestion) => {
+    const typed = cmdInput.trim().toUpperCase();
+
+    // If user clicked a look-ahead suggestion (e.g. Z after typing Y),
+    // execute current command first, then preload next command.
+    if (suggestion.kind === 'lookahead' && /^(?:M\d+)?[XYZWQ]\d+$/.test(typed) && typed !== suggestion.cmd) {
+      processCommand(typed);
+      setCmdInput(suggestion.cmd);
+      setShowSuggestions(true);
+      setSelectedSuggestionIdx(-1);
+      cmdInputRef.current?.focus();
+      return;
+    }
+
+    processCommand(suggestion.cmd);
     setCmdInput('');
     setShowSuggestions(false);
     setSelectedSuggestionIdx(-1);
     cmdInputRef.current?.focus();
-  }, [processCommand]);
+  }, [processCommand, cmdInput]);
 
   const calcReplication = useCallback(() => {
     const usedPieces = extractUsedPiecesWithContext(tree);
@@ -1004,7 +1017,7 @@ const Index = () => {
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     if (selectedSuggestionIdx >= 0 && filteredSuggestions[selectedSuggestionIdx]) {
-                      applySuggestion(filteredSuggestions[selectedSuggestionIdx].cmd);
+                      applySuggestion(filteredSuggestions[selectedSuggestionIdx]);
                     } else {
                       processCommand(cmdInput.trim().toUpperCase());
                       setCmdInput('');
@@ -1054,7 +1067,7 @@ const Index = () => {
                       onMouseEnter={() => setSelectedSuggestionIdx(i)}
                       onMouseDown={e => {
                         e.preventDefault();
-                        applySuggestion(s.cmd);
+                        applySuggestion(s);
                       }}
                     >
                       <span className="text-[12px] font-bold font-mono" style={{ color: 'hsl(120 80% 60%)' }}>
