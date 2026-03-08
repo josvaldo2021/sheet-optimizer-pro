@@ -511,12 +511,61 @@ const Index = () => {
     return suggestions;
   }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
 
-  // Filter suggestions based on current input
+  // Filter suggestions based on current input + look-ahead for next coordinate
   const filteredSuggestions = useMemo(() => {
     if (!cmdInput) return commandSuggestions;
     const upper = cmdInput.toUpperCase();
-    return commandSuggestions.filter(s => s.cmd.startsWith(upper));
-  }, [commandSuggestions, cmdInput]);
+    const directMatches = commandSuggestions.filter(s => s.cmd.startsWith(upper));
+
+    // Look-ahead: if the typed command matches an exact suggestion, show what comes NEXT
+    const exactMatch = commandSuggestions.find(s => s.cmd === upper);
+    if (exactMatch) {
+      // Parse the typed command to extract coordinate type and value
+      const m = upper.match(/^([XYZWQ])(\d+)$/);
+      if (m) {
+        const tipo = m[1];
+        const valor = Number(m[2]);
+        const lookAhead: Array<{ cmd: string; label: string; desc: string }> = [];
+        const seenLA = new Set<string>();
+
+        // Hierarchy: X→Y, Y→Z, Z→W
+        const nextTipoMap: Record<string, string> = { X: 'Y', Y: 'Z', Z: 'W', W: 'Q' };
+        const nextTipo = nextTipoMap[tipo];
+
+        if (nextTipo) {
+          pieces.forEach(p => {
+            if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
+            // Match: if the typed value equals one dimension, suggest the other as the next coordinate
+            let nextVal: number | null = null;
+            let descText = '';
+            if (tipo === 'X') {
+              // X = column width. Next = Y (strip height). Match piece width or height to X value.
+              if (p.w === valor) { nextVal = p.h; descText = `→ ${nextTipo}${p.h} (peça ${p.w}×${p.h})`; }
+              else if (p.h === valor) { nextVal = p.w; descText = `→ ${nextTipo}${p.w} (peça ${p.w}×${p.h} rot.)`; }
+            } else if (tipo === 'Y') {
+              // Y = strip height. Next = Z (subdivision width). Find pieces where height matches Y.
+              // We need the parent X value to fully match, but as a look-ahead we match on Y dimension
+              if (p.h === valor) { nextVal = p.w; descText = `→ ${nextTipo}${p.w} (peça ${p.w}×${p.h})`; }
+              else if (p.w === valor) { nextVal = p.h; descText = `→ ${nextTipo}${p.h} (peça ${p.w}×${p.h} rot.)`; }
+            } else if (tipo === 'Z') {
+              if (p.w === valor) { nextVal = p.h; descText = `→ ${nextTipo}${p.h} (peça ${p.w}×${p.h})`; }
+              else if (p.h === valor) { nextVal = p.w; descText = `→ ${nextTipo}${p.w} (peça ${p.w}×${p.h} rot.)`; }
+            }
+            if (nextVal !== null) {
+              const key = `${nextTipo}${nextVal}`;
+              if (!seenLA.has(key)) {
+                seenLA.add(key);
+                lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText });
+              }
+            }
+          });
+        }
+        return [...directMatches, ...lookAhead];
+      }
+    }
+
+    return directMatches;
+  }, [commandSuggestions, cmdInput, pieces]);
 
   const applySuggestion = useCallback((cmd: string) => {
     processCommand(cmd);
