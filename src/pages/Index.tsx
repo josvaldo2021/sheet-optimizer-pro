@@ -813,6 +813,14 @@ const Index = () => {
               }}
             />
             <button
+              onClick={() => saveLayout(replicationInfo?.count || 1)}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(120 60% 25%)', fontWeight: 'bold' }}
+              title="Salvar layout atual na lista de chapas e deduzir peças do inventário"
+            >
+              💾 SALVAR LAYOUT
+            </button>
+            <button
               onClick={calcReplication}
               className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
               style={{ background: 'hsl(270 60% 35%)', fontWeight: 'bold' }}
