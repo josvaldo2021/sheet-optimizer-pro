@@ -66,6 +66,13 @@ export default function SheetViewer({
       ? `${Math.round(d2)}×${Math.round(d1)}`
       : `${Math.round(d1)}×${Math.round(d2)}`;
 
+    // Dynamic font size based on piece pixel dimensions
+    const dynamicFontSize = (pxW: number, pxH: number) => {
+      const maxByW = pxW * 0.35;
+      const maxByH = pxH * 0.4;
+      return Math.max(7, Math.min(28, maxByW, maxByH));
+    };
+
     tree.filhos.forEach(xNode => {
       for (let ix = 0; ix < xNode.multi; ix++) {
         const cx = xOff;
@@ -87,10 +94,13 @@ export default function SheetViewer({
                   const realW = T ? yNode.valor : zNode.valor;
                   const realH = T ? zNode.valor : yNode.valor;
                   const isVertical = realH > realW;
+                  const pxW = (T ? yNode.valor : zNode.valor) * scale;
+                  const pxH = (T ? zNode.valor : yNode.valor) * scale;
+                  const fs = dynamicFontSize(pxW, pxH);
                   wEls.push(
                     <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
-                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`}>
-                        {zNode.label && <span className="sv-piece-id">{zNode.label}</span>}
+                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                        {zNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{zNode.label}</span>}
                         {dimLabel(zNode.valor, yNode.valor)}
                       </span>
                     </div>
@@ -103,6 +113,9 @@ export default function SheetViewer({
                         colorIdx++;
                         const realW = T ? wNode.valor : zNode.valor;
                         const realH = T ? zNode.valor : wNode.valor;
+                        const pxW = realW * scale;
+                        const pxH = realH * scale;
+                        const fs = dynamicFontSize(pxW, pxH);
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
@@ -115,8 +128,8 @@ export default function SheetViewer({
                             }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
-                            <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`}>
-                              {wNode.label && <span className="sv-piece-id">{wNode.label}</span>}
+                            <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                              {wNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{wNode.label}</span>}
                               {dimLabel(zNode.valor, wNode.valor)}
                             </span>
                           </div>
@@ -130,6 +143,9 @@ export default function SheetViewer({
                             colorIdx++;
                             const realW = T ? wNode.valor : qNode.valor;
                             const realH = T ? qNode.valor : wNode.valor;
+                            const pxW = realW * scale;
+                            const pxH = realH * scale;
+                            const fs = dynamicFontSize(pxW, pxH);
                             qEls.push(
                               <div
                                 key={`q-${qNode.id}-${iq}`}
@@ -148,8 +164,8 @@ export default function SheetViewer({
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
-                                <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`}>
-                                  {qNode.label && <span className="sv-piece-id">{qNode.label}</span>}
+                                <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                  {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
                                   {dimLabel(qNode.valor, wNode.valor)}
                                 </span>
                               </div>
