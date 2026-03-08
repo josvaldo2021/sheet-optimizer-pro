@@ -11,6 +11,8 @@ import { exportPdf } from '@/lib/pdf-export';
 import SheetViewer from '@/components/SheetViewer';
 import SidebarSection from '@/components/SidebarSection';
 
+type CommandSuggestion = { cmd: string; label: string; desc: string; kind?: 'direct' | 'lookahead' };
+
 const Index = () => {
   // ─── Sheet setup ───
   const [chapaW, setChapaW] = useState(6000);
