@@ -438,6 +438,51 @@ const Index = () => {
     setStatus({ msg: `Layout pode ser repetido ${maxReps}×`, type: maxReps > 0 ? 'success' : 'error' });
   }, [tree, pieces, extractUsedPiecesWithContext]);
 
+  const saveLayout = useCallback((reps?: number) => {
+    const usedPieces = extractUsedPiecesWithContext(tree);
+    if (usedPieces.length === 0) {
+      setStatus({ msg: 'Desenhe um layout primeiro!', type: 'error' });
+      return;
+    }
+
+    const count = reps && reps > 0 ? reps : 1;
+    const newChapas: Array<{ tree: TreeNode; usedArea: number }> = [];
+    const usedArea = calcPlacedArea(tree);
+
+    for (let i = 0; i < count; i++) {
+      newChapas.push({ tree: cloneTree(tree), usedArea });
+    }
+
+    // Deduct pieces from inventory
+    const updatedPieces = pieces.map(p => ({ ...p }));
+    for (let i = 0; i < count; i++) {
+      usedPieces.forEach(used => {
+        for (let j = 0; j < updatedPieces.length; j++) {
+          const p = updatedPieces[j];
+          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+            if (p.qty > 0) { p.qty--; break; }
+          }
+        }
+      });
+    }
+
+    // Remove pieces with qty <= 0
+    const filteredPieces = updatedPieces.filter(p => p.qty > 0);
+    setPieces(filteredPieces);
+
+    // Add to chapas list
+    setChapas(prev => [...prev, ...newChapas]);
+    setActiveChapa(prev => prev === 0 && chapas.length === 0 ? 0 : chapas.length);
+
+    // Reset tree for next layout
+    const freshTree = createRoot(usableW, usableH);
+    setTree(freshTree);
+    setSelectedId('root');
+    setReplicationInfo(null);
+
+    setStatus({ msg: `✅ Layout salvo (×${count})! ${filteredPieces.reduce((s, p) => s + p.qty, 0)} peças restantes.`, type: 'success' });
+  }, [tree, pieces, chapas, extractUsedPiecesWithContext, usableW, usableH]);
+
   // ─── Render helpers ───
   const renderActionTree = (node: TreeNode, depth = 0): JSX.Element[] =>
     node.filhos.map(child => (
@@ -768,6 +813,14 @@ const Index = () => {
               }}
             />
             <button
+              onClick={() => saveLayout(replicationInfo?.count || 1)}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(120 60% 25%)', fontWeight: 'bold' }}
+              title="Salvar layout atual na lista de chapas e deduzir peças do inventário"
+            >
+              💾 SALVAR LAYOUT
+            </button>
+            <button
               onClick={calcReplication}
               className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
               style={{ background: 'hsl(270 60% 35%)', fontWeight: 'bold' }}
@@ -790,6 +843,28 @@ const Index = () => {
                   className="text-[10px] cursor-pointer"
                   style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
                 >✕</button>
+              </div>
+              <div className="flex gap-2 mb-2 items-center">
+                <span style={{ color: 'hsl(0 0% 60%)' }}>Salvar</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={replicationInfo.count}
+                  defaultValue={replicationInfo.count}
+                  id="saveRepCount"
+                  className="cnc-input w-14 text-center"
+                />
+                <span style={{ color: 'hsl(0 0% 60%)' }}>cópias</span>
+                <button
+                  onClick={() => {
+                    const val = parseInt((document.getElementById('saveRepCount') as HTMLInputElement)?.value || '1');
+                    saveLayout(Math.max(1, Math.min(val, replicationInfo?.count || 1)));
+                  }}
+                  className="cnc-btn-secondary flex-1 text-[10px]"
+                  style={{ background: 'hsl(120 60% 25%)', fontWeight: 'bold' }}
+                >
+                  💾 SALVAR ×{replicationInfo.count}
+                </button>
               </div>
               <table className="w-full" style={{ borderCollapse: 'collapse' }}>
                 <thead>
