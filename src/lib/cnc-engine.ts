@@ -1156,7 +1156,10 @@ export function optimizeV6(
 
     for (const variant of pieceVariants) {
       for (const sortFn of strategies) {
-        const sorted = [...variant].sort(sortFn);
+        // Preserve placeFirst pieces at the front, sort only the rest
+        const pinned = variant.filter(p => p.placeFirst);
+        const rest = variant.filter(p => !p.placeFirst);
+        const sorted = [...pinned, ...rest.sort(sortFn)];
         const result = runPlacement(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
