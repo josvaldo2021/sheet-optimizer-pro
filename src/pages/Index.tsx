@@ -31,7 +31,7 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState('root');
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: 'Pronto', type: 'info' });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -204,7 +204,7 @@ const Index = () => {
     const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
     const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
     setTree(result);
-    setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
+    setChapas([{ tree: result, usedArea: calcPlacedArea(result), manual: false }]);
     setActiveChapa(0);
     setSelectedId('root');
     setProgress(null);
@@ -221,7 +221,7 @@ const Index = () => {
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
 
     const runAllSheets = async (useGrouping?: boolean) => {
-      const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
+      const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
       const hasPriority = pieces.some(p => p.priority);
       const remaining = (hasPriority ? pieces.filter(p => p.priority) : pieces).map(p => ({ ...p }));
       let sheetCount = 0;
@@ -255,7 +255,7 @@ const Index = () => {
           });
         }, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
         const usedArea = calcPlacedArea(result);
-        chapaList.push({ tree: result, usedArea });
+        chapaList.push({ tree: result, usedArea, manual: false });
 
         const usedPieces = extractUsedPiecesWithContext(result);
 
@@ -310,7 +310,7 @@ const Index = () => {
         // Replicate the layout for additional copies
         if (maxReplications > 0) {
           for (let rep = 0; rep < maxReplications; rep++) {
-            chapaList.push({ tree: cloneTree(result), usedArea });
+            chapaList.push({ tree: cloneTree(result), usedArea, manual: false });
             // Deduct pieces for this replicated sheet
             layoutBOM.forEach(({ w, h, count }) => {
               let toDeduct = count;
@@ -643,31 +643,35 @@ const Index = () => {
     const group = layoutGroups[groupIndex];
     if (!group) return;
 
-    // Restore pieces to inventory for all chapas in this group
-    const updatedPieces = pieces.map(p => ({ ...p }));
-    group.indices.forEach(chapaIdx => {
-      const chapa = chapas[chapaIdx];
-      if (!chapa) return;
-      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
-      usedPieces.forEach(used => {
-        const existing = updatedPieces.find(p =>
-          (p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)
-        );
-        if (existing) {
-          existing.qty++;
-        } else {
-          updatedPieces.push({
-            id: `p${Date.now()}_${Math.random().toString(36).slice(2)}`,
-            qty: 1,
-            w: used.w,
-            h: used.h,
-            label: used.label,
-          });
-        }
-      });
-    });
+    // Check if any chapa in this group is manual
+    const hasManualChapas = group.indices.some(idx => chapas[idx]?.manual === true);
 
-    setPieces(updatedPieces);
+    // Only restore pieces to inventory if chapas were manually created
+    if (hasManualChapas) {
+      const updatedPieces = pieces.map(p => ({ ...p }));
+      group.indices.forEach(chapaIdx => {
+        const chapa = chapas[chapaIdx];
+        if (!chapa || !chapa.manual) return; // only restore manual ones
+        const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+        usedPieces.forEach(used => {
+          const existing = updatedPieces.find(p =>
+            (p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)
+          );
+          if (existing) {
+            existing.qty++;
+          } else {
+            updatedPieces.push({
+              id: `p${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              qty: 1,
+              w: used.w,
+              h: used.h,
+              label: used.label,
+            });
+          }
+        });
+      });
+      setPieces(updatedPieces);
+    }
 
     // Remove chapas at group indices
     const indicesToRemove = new Set(group.indices);
@@ -687,7 +691,10 @@ const Index = () => {
       setSelectedId('root');
     }
 
-    setStatus({ msg: `🗑️ Layout excluído (×${group.count}). Peças devolvidas ao inventário.`, type: 'success' });
+    const msg = hasManualChapas
+      ? `🗑️ Layout excluído (×${group.count}). Peças manuais devolvidas ao inventário.`
+      : `🗑️ Layout excluído (×${group.count}).`;
+    setStatus({ msg, type: 'success' });
   }, [layoutGroups, chapas, pieces, extractUsedPiecesWithContext, usableW, usableH, activeChapa]);
 
   const saveLayout = useCallback((reps?: number) => {
@@ -698,11 +705,11 @@ const Index = () => {
     }
 
     const count = reps && reps > 0 ? reps : 1;
-    const newChapas: Array<{ tree: TreeNode; usedArea: number }> = [];
+    const newChapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
     const usedArea = calcPlacedArea(tree);
 
     for (let i = 0; i < count; i++) {
-      newChapas.push({ tree: cloneTree(tree), usedArea });
+      newChapas.push({ tree: cloneTree(tree), usedArea, manual: true });
     }
 
     // Deduct pieces from inventory
