@@ -639,6 +639,57 @@ const Index = () => {
     setStatus({ msg: `Layout pode ser repetido ${maxReps}×`, type: maxReps > 0 ? 'success' : 'error' });
   }, [tree, pieces, extractUsedPiecesWithContext]);
 
+  const deleteLayout = useCallback((groupIndex: number) => {
+    const group = layoutGroups[groupIndex];
+    if (!group) return;
+
+    // Restore pieces to inventory for all chapas in this group
+    const updatedPieces = pieces.map(p => ({ ...p }));
+    group.indices.forEach(chapaIdx => {
+      const chapa = chapas[chapaIdx];
+      if (!chapa) return;
+      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+      usedPieces.forEach(used => {
+        const existing = updatedPieces.find(p =>
+          (p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)
+        );
+        if (existing) {
+          existing.qty++;
+        } else {
+          updatedPieces.push({
+            id: `p${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            qty: 1,
+            w: used.w,
+            h: used.h,
+            label: used.label,
+          });
+        }
+      });
+    });
+
+    setPieces(updatedPieces);
+
+    // Remove chapas at group indices
+    const indicesToRemove = new Set(group.indices);
+    const newChapas = chapas.filter((_, i) => !indicesToRemove.has(i));
+    setChapas(newChapas);
+
+    // Adjust active chapa
+    if (newChapas.length === 0) {
+      setTree(createRoot(usableW, usableH));
+      setSelectedId('root');
+      setActiveChapa(0);
+      setEditingExistingChapa(false);
+    } else {
+      const newIdx = Math.min(activeChapa, newChapas.length - 1);
+      setActiveChapa(newIdx);
+      setTree(newChapas[newIdx].tree);
+      setSelectedId('root');
+    }
+
+    setStatus({ msg: `🗑️ Layout excluído (×${group.count}). Peças devolvidas ao inventário.`, type: 'success' });
+  }, [layoutGroups, chapas, pieces, extractUsedPiecesWithContext, usableW, usableH, activeChapa]);
+
   const saveLayout = useCallback((reps?: number) => {
     const usedPieces = extractUsedPiecesWithContext(tree);
     if (usedPieces.length === 0) {
@@ -918,37 +969,52 @@ const Index = () => {
                 {layoutGroups.map((group, gIdx) => {
                   const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
                   return (
-                    <button
+                    <div
                       key={gIdx}
-                      className="w-full flex items-center justify-between p-2 mb-1 rounded cursor-pointer transition-all text-left"
-                      style={{
-                        background: group.indices.includes(activeChapa) ? 'hsl(211 60% 25%)' : 'hsl(0 0% 12%)',
-                        border: `1px solid ${group.indices.includes(activeChapa) ? 'hsl(211 60% 40%)' : 'hsl(0 0% 20%)'}`,
-                      }}
-                      onClick={() => {
-                        const idx = group.indices[0];
-                        setActiveChapa(idx);
-                        setTree(chapas[idx].tree);
-                        setSelectedId('root');
-                      }}
+                      className="flex items-center gap-1 mb-1"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold" style={{ color: 'white' }}>
-                          Layout {gIdx + 1}
-                        </span>
-                        {group.count > 1 && (
-                          <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                            style={{ background: 'hsl(30 100% 45%)', color: 'white' }}
-                          >
-                            ×{group.count}
+                      <button
+                        className="flex-1 flex items-center justify-between p-2 rounded cursor-pointer transition-all text-left"
+                        style={{
+                          background: group.indices.includes(activeChapa) ? 'hsl(211 60% 25%)' : 'hsl(0 0% 12%)',
+                          border: `1px solid ${group.indices.includes(activeChapa) ? 'hsl(211 60% 40%)' : 'hsl(0 0% 20%)'}`,
+                        }}
+                        onClick={() => {
+                          const idx = group.indices[0];
+                          setActiveChapa(idx);
+                          setTree(chapas[idx].tree);
+                          setSelectedId('root');
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold" style={{ color: 'white' }}>
+                            Layout {gIdx + 1}
                           </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] font-semibold" style={{ color: util > 80 ? 'hsl(120 70% 55%)' : util > 50 ? 'hsl(45 80% 55%)' : 'hsl(0 60% 55%)' }}>
-                        {util.toFixed(1)}%
-                      </span>
-                    </button>
+                          {group.count > 1 && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                              style={{ background: 'hsl(30 100% 45%)', color: 'white' }}
+                            >
+                              ×{group.count}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-semibold" style={{ color: util > 80 ? 'hsl(120 70% 55%)' : util > 50 ? 'hsl(45 80% 55%)' : 'hsl(0 60% 55%)' }}>
+                          {util.toFixed(1)}%
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteLayout(gIdx);
+                        }}
+                        className="p-1.5 rounded transition-colors cursor-pointer"
+                        style={{ background: 'hsl(0 50% 25%)', border: '1px solid hsl(0 40% 35%)' }}
+                        title={`Excluir layout ${gIdx + 1} (×${group.count}) e devolver peças ao inventário`}
+                      >
+                        <span className="text-[10px]">🗑️</span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
