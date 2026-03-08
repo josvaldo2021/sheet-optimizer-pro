@@ -827,6 +827,19 @@ const Index = () => {
               💾 SALVAR LAYOUT
             </button>
             <button
+              onClick={() => {
+                setTree(createRoot(usableW, usableH));
+                setSelectedId('root');
+                setEditingExistingChapa(false);
+                setReplicationInfo(null);
+              }}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(0 50% 30%)', fontWeight: 'bold' }}
+              title="Limpar a chapa atual e começar um novo layout do zero"
+            >
+              🧹 LIMPAR
+            </button>
+            <button
               onClick={calcReplication}
               className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
               style={{ background: 'hsl(270 60% 35%)', fontWeight: 'bold' }}
