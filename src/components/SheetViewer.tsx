@@ -59,6 +59,43 @@ export default function SheetViewer({
     const els: JSX.Element[] = [];
     let xOff = 0;
     let colorIdx = 0;
+    const T = tree.transposed || false;
+
+    // Helper: get real-space piece label (width × height)
+    const dimLabel = (d1: number, d2: number) => T
+      ? `${Math.round(d2)}×${Math.round(d1)}`
+      : `${Math.round(d1)}×${Math.round(d2)}`;
+
+    // Dynamic font sizing that adapts to piece box + text length
+    const dynamicFontSize = (
+      pxW: number,
+      pxH: number,
+      dimText: string,
+      idText?: string,
+      vertical = false,
+    ) => {
+      const lines = idText ? 2 : 1;
+      const availW = Math.max(4, pxW - 6);
+      const availH = Math.max(4, pxH - 6);
+      const shortSide = Math.min(availW, availH);
+      const longSide = Math.max(availW, availH);
+
+      const byBox = Math.min(availW * 0.32, availH * 0.36);
+
+      const fs = vertical
+        ? Math.min(
+            byBox,
+            (longSide * 0.92) / Math.max(dimText.length, idText?.length || 1),
+            (shortSide * 0.9) / (lines * 1.1),
+          )
+        : Math.min(
+            byBox,
+            availW / (Math.max(dimText.length, idText?.length || 0) * 0.58),
+            availH / (lines * 1.2),
+          );
+
+      return Math.max(6, Math.min(26, fs));
+    };
 
     tree.filhos.forEach(xNode => {
       for (let ix = 0; ix < xNode.multi; ix++) {
@@ -78,12 +115,18 @@ export default function SheetViewer({
 
                 if (zNode.filhos.length === 0) {
                   colorIdx++;
-                  const isVertical = yNode.valor > zNode.valor;
+                  const realW = T ? yNode.valor : zNode.valor;
+                  const realH = T ? zNode.valor : yNode.valor;
+                  const isVertical = realH > realW;
+                  const pxW = (T ? yNode.valor : zNode.valor) * scale;
+                  const pxH = (T ? zNode.valor : yNode.valor) * scale;
+                  const dim = dimLabel(zNode.valor, yNode.valor);
+                  const fs = dynamicFontSize(pxW, pxH, dim, zNode.label, isVertical);
                   wEls.push(
                     <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
-                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`}>
-                        {zNode.label && <span className="sv-piece-id">{zNode.label}</span>}
-                        {Math.round(zNode.valor)}×{Math.round(yNode.valor)}
+                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                        {zNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{zNode.label}</span>}
+                        {dim}
                       </span>
                     </div>
                   );
@@ -93,16 +136,28 @@ export default function SheetViewer({
                     for (let iw = 0; iw < wNode.multi; iw++) {
                       if (wNode.filhos.length === 0) {
                         colorIdx++;
+                        const realW = T ? wNode.valor : zNode.valor;
+                        const realH = T ? zNode.valor : wNode.valor;
+                        const pxW = realW * scale;
+                        const pxH = realH * scale;
+                        const isVertical = realH > realW;
+                        const dim = dimLabel(zNode.valor, wNode.valor);
+                        const fs = dynamicFontSize(pxW, pxH, dim, wNode.label, isVertical);
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
-                            className={`sv-piece-w ${selectedId === wNode.id ? 'sv-selected' : ''}`}
-                            style={{ height: wNode.valor * scale, background: PIECE_BG, borderColor: PIECE_BORDER }}
+                            className={`${selectedId === wNode.id ? 'sv-selected' : ''}`}
+                            style={{
+                              ...(T
+                                ? { width: wNode.valor * scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid hsl(0 0% 75%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                                : { width: '100%', height: wNode.valor * scale, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid hsl(0 0% 75%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                              ),
+                            }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
-                            <span className={`sv-piece-label ${wNode.valor > zNode.valor ? 'sv-label-vertical' : ''}`}>
-                              {wNode.label && <span className="sv-piece-id">{wNode.label}</span>}
-                              {Math.round(zNode.valor)}×{Math.round(wNode.valor)}
+                            <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                              {wNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{wNode.label}</span>}
+                              {dim}
                             </span>
                           </div>
                         );
@@ -113,23 +168,34 @@ export default function SheetViewer({
                         wNode.filhos.forEach(qNode => {
                           for (let iq = 0; iq < qNode.multi; iq++) {
                             colorIdx++;
+                            const realW = T ? wNode.valor : qNode.valor;
+                            const realH = T ? qNode.valor : wNode.valor;
+                            const pxW = realW * scale;
+                            const pxH = realH * scale;
+                            const isVertical = realH > realW;
+                            const dim = dimLabel(qNode.valor, wNode.valor);
+                            const fs = dynamicFontSize(pxW, pxH, dim, qNode.label, isVertical);
                             qEls.push(
                               <div
                                 key={`q-${qNode.id}-${iq}`}
-                                className={`sv-piece-q ${selectedId === qNode.id ? 'sv-selected' : ''}`}
+                                className={`${selectedId === qNode.id ? 'sv-selected' : ''}`}
                                 style={{
                                   position: 'absolute',
-                                  left: qOff * scale,
-                                  bottom: 0,
-                                  width: qNode.valor * scale,
-                                  height: wNode.valor * scale,
+                                  ...(T
+                                    ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qNode.valor * scale }
+                                    : { left: qOff * scale, bottom: 0, width: qNode.valor * scale, height: wNode.valor * scale }
+                                  ),
                                   background: PIECE_BG,
+                                  border: '1px solid hsl(0 0% 75%)',
+                                  boxSizing: 'border-box' as const,
+                                  cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
-                                <span className={`sv-piece-label ${wNode.valor > qNode.valor ? 'sv-label-vertical' : ''}`}>
-                                  {qNode.label && <span className="sv-piece-id">{qNode.label}</span>}
-                                  {Math.round(qNode.valor)}×{Math.round(wNode.valor)}
+                                <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                  {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
+                                  {dim}
                                 </span>
                               </div>
                             );
@@ -138,14 +204,18 @@ export default function SheetViewer({
                         });
 
                         // Q waste
-                        const qWaste = zNode.valor - qOff;
+                        const qParentDim = T ? zNode.valor : zNode.valor;
+                        const qWaste = qParentDim - qOff;
                         if (qWaste > 0 && qWaste * scale >= 4) {
                           qEls.push(
                             <div key="sq" className="sv-waste" style={{
-                              position: 'absolute', left: qOff * scale, bottom: 0,
-                              width: qWaste * scale, height: wNode.valor * scale,
+                              position: 'absolute',
+                              ...(T
+                                ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qWaste * scale }
+                                : { left: qOff * scale, bottom: 0, width: qWaste * scale, height: wNode.valor * scale }
+                              ),
                             }}>
-                              <span className="sv-waste-label">{Math.round(qWaste)}×{Math.round(wNode.valor)}</span>
+                              <span className="sv-waste-label">{dimLabel(qWaste, wNode.valor)}</span>
                             </div>
                           );
                         }
@@ -153,8 +223,15 @@ export default function SheetViewer({
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
-                            className={`sv-piece-w-container ${selectedId === wNode.id ? 'sv-selected' : ''}`}
-                            style={{ height: wNode.valor * scale, position: 'relative', overflow: 'hidden' }}
+                            className={`${selectedId === wNode.id ? 'sv-selected' : ''}`}
+                            style={{
+                              position: 'relative', overflow: 'hidden',
+                              ...(T
+                                ? { width: wNode.valor * scale, height: '100%', borderRight: '1px solid hsl(0 0% 75%)' }
+                                : { width: '100%', height: wNode.valor * scale, borderTop: '1px solid hsl(0 0% 75%)' }
+                              ),
+                              background: PIECE_BG, boxSizing: 'border-box' as const,
+                            }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
                             {qEls}
@@ -165,14 +242,17 @@ export default function SheetViewer({
                     }
                   });
 
-                  // W waste (remaining height in strip)
+                  // W waste (remaining dimension in strip)
                   const wWaste = yNode.valor - wOff;
                   if (wWaste > 0 && wWaste * scale >= 4) {
                     wEls.push(
                       <div key="sw" className="sv-waste" style={{
-                        width: '100%', height: wWaste * scale,
+                        ...(T
+                          ? { width: wWaste * scale, height: '100%' }
+                          : { width: '100%', height: wWaste * scale }
+                        ),
                       }}>
-                        <span className="sv-waste-label">{Math.round(zNode.valor)}×{Math.round(wWaste)}</span>
+                        <span className="sv-waste-label">{dimLabel(zNode.valor, wWaste)}</span>
                       </div>
                     );
                   }
@@ -181,8 +261,14 @@ export default function SheetViewer({
                 zEls.push(
                   <div
                     key={`z-${zNode.id}-${iz}`}
-                    className={`sv-col-z ${selectedId === zNode.id ? 'sv-selected' : ''}`}
-                    style={{ width: zNode.valor * scale }}
+                    className={`${selectedId === zNode.id ? 'sv-selected' : ''}`}
+                    style={{
+                      position: 'relative', boxSizing: 'border-box' as const,
+                      ...(T
+                        ? { width: '100%', height: zNode.valor * scale, display: 'flex', flexDirection: 'row' as const, borderTop: '1px solid hsla(0 0% 100% / 0.12)' }
+                        : { height: '100%', width: zNode.valor * scale, display: 'flex', flexDirection: 'column-reverse' as const, borderRight: '1px solid hsla(0 0% 100% / 0.12)' }
+                      ),
+                    }}
                     onClick={e => { e.stopPropagation(); onSelectNode(zNode.id); }}
                   >
                     {wEls}
@@ -192,14 +278,17 @@ export default function SheetViewer({
               }
             });
 
-            // Z waste (remaining width in strip)
+            // Z waste (remaining dimension in strip)
             const zWaste = xNode.valor - zOff;
             if (zWaste > 0 && zWaste * scale >= 4) {
               zEls.push(
                 <div key="sz" className="sv-waste" style={{
-                  width: zWaste * scale, height: '100%',
+                  ...(T
+                    ? { width: '100%', height: zWaste * scale }
+                    : { width: zWaste * scale, height: '100%' }
+                  ),
                 }}>
-                  <span className="sv-waste-label">{Math.round(zWaste)}×{Math.round(yNode.valor)}</span>
+                  <span className="sv-waste-label">{dimLabel(zWaste, yNode.valor)}</span>
                 </div>
               );
             }
@@ -207,8 +296,14 @@ export default function SheetViewer({
             strips.push(
               <div
                 key={`y-${yNode.id}-${iy}`}
-                className={`sv-strip ${selectedId === yNode.id ? 'sv-selected' : ''}`}
-                style={{ bottom: cy * scale, height: yNode.valor * scale }}
+                className={`${selectedId === yNode.id ? 'sv-selected' : ''}`}
+                style={{
+                  position: 'absolute', boxSizing: 'border-box' as const,
+                  ...(T
+                    ? { bottom: 0, left: cy * scale, width: yNode.valor * scale, height: '100%', display: 'flex', flexDirection: 'column-reverse' as const }
+                    : { left: 0, bottom: cy * scale, width: '100%', height: yNode.valor * scale, display: 'flex' }
+                  ),
+                }}
                 onClick={e => { e.stopPropagation(); onSelectNode(yNode.id); }}
               >
                 {zEls}
@@ -218,15 +313,19 @@ export default function SheetViewer({
           }
         });
 
-        // Y waste (remaining height in column)
-        const yWaste = usableH - yOff;
+        // Y waste (remaining dimension in column/strip)
+        const yDimTotal = T ? usableW : usableH;
+        const yWaste = yDimTotal - yOff;
         if (yWaste > 0 && yWaste * scale >= 4) {
           strips.push(
             <div key="sy" className="sv-waste sv-waste-large" style={{
-              position: 'absolute', left: 0, bottom: yOff * scale,
-              width: xNode.valor * scale, height: yWaste * scale,
+              position: 'absolute',
+              ...(T
+                ? { bottom: 0, left: yOff * scale, width: yWaste * scale, height: xNode.valor * scale }
+                : { left: 0, bottom: yOff * scale, width: xNode.valor * scale, height: yWaste * scale }
+              ),
             }}>
-              <span className="sv-waste-label">{Math.round(xNode.valor)}×{Math.round(yWaste)}</span>
+              <span className="sv-waste-label">{dimLabel(xNode.valor, yWaste)}</span>
             </div>
           );
         }
@@ -234,8 +333,14 @@ export default function SheetViewer({
         els.push(
           <div
             key={`x-${xNode.id}-${ix}`}
-            className={`sv-col ${selectedId === xNode.id ? 'sv-selected' : ''}`}
-            style={{ left: cx * scale, width: xNode.valor * scale }}
+            className={`${selectedId === xNode.id ? 'sv-selected' : ''}`}
+            style={{
+              position: 'absolute', boxSizing: 'border-box' as const,
+              ...(T
+                ? { left: 0, bottom: cx * scale, width: usableW * scale, height: xNode.valor * scale }
+                : { bottom: 0, left: cx * scale, width: xNode.valor * scale, height: usableH * scale }
+              ),
+            }}
             onClick={e => { e.stopPropagation(); onSelectNode(xNode.id); }}
           >
             {strips}
@@ -245,15 +350,19 @@ export default function SheetViewer({
       }
     });
 
-    // X waste (remaining width)
-    const xWaste = usableW - xOff;
+    // X waste (remaining dimension)
+    const xDimTotal = T ? usableH : usableW;
+    const xWaste = xDimTotal - xOff;
     if (xWaste > 0 && xWaste * scale >= 4) {
       els.push(
         <div key="sx" className="sv-waste sv-waste-large" style={{
-          position: 'absolute', left: xOff * scale, bottom: 0,
-          width: xWaste * scale, height: usableH * scale,
+          position: 'absolute',
+          ...(T
+            ? { left: 0, bottom: xOff * scale, width: usableW * scale, height: xWaste * scale }
+            : { left: xOff * scale, bottom: 0, width: xWaste * scale, height: usableH * scale }
+          ),
         }}>
-          <span className="sv-waste-label">SOBRA<br />{Math.round(xWaste)}×{Math.round(usableH)}</span>
+          <span className="sv-waste-label">SOBRA<br />{T ? `${Math.round(usableW)}×${Math.round(xWaste)}` : `${Math.round(xWaste)}×${Math.round(usableH)}`}</span>
         </div>
       );
     }

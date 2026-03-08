@@ -11,6 +11,8 @@ import { exportPdf } from '@/lib/pdf-export';
 import SheetViewer from '@/components/SheetViewer';
 import SidebarSection from '@/components/SidebarSection';
 
+type CommandSuggestion = { cmd: string; label: string; desc: string; kind?: 'direct' | 'lookahead' };
+
 const Index = () => {
   // ─── Sheet setup ───
   const [chapaW, setChapaW] = useState(6000);
@@ -29,10 +31,18 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState('root');
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: 'Pronto', type: 'info' });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [priorityIds, setPriorityIds] = useState('');
+  const [replicationInfo, setReplicationInfo] = useState<{ count: number; bom: Array<{ w: number; h: number; need: number; available: number }> } | null>(null);
+  const [gaPopSize, setGaPopSize] = useState(50);
+  const [gaGens, setGaGens] = useState(50);
+  const [cmdInput, setCmdInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
+  const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
@@ -68,16 +78,21 @@ const Index = () => {
     setStatus({ msg: 'Setup aplicado', type: 'success' });
   }, [usableW, usableH]);
 
-  // Helper to sync tree changes to chapas after manual edits
+  // Track whether we're editing a saved chapa or drawing a fresh layout
+  const [editingExistingChapa, setEditingExistingChapa] = useState(false);
+
+  // Helper to sync tree changes to chapas after manual edits (only when editing an existing chapa)
   const updateTreeAndChapas = useCallback((newTree: TreeNode) => {
     setTree(newTree);
-    setChapas(prev => {
-      if (prev.length === 0) return prev;
-      const updated = [...prev];
-      updated[activeChapa] = { tree: newTree, usedArea: calcPlacedArea(newTree) };
-      return updated;
-    });
-  }, [activeChapa]);
+    if (editingExistingChapa) {
+      setChapas(prev => {
+        if (prev.length === 0) return prev;
+        const updated = [...prev];
+        updated[activeChapa] = { tree: newTree, usedArea: calcPlacedArea(newTree) };
+        return updated;
+      });
+    }
+  }, [activeChapa, editingExistingChapa]);
 
   const processCommand = useCallback((text: string) => {
     if (text === 'U') {
@@ -143,11 +158,14 @@ const Index = () => {
 
   const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
     const used: Array<{ w: number; h: number; label?: string }> = [];
-    const traverse = (n: TreeNode, parents: TreeNode[]) => {
+    const traverse = (n: TreeNode, parents: TreeNode[], parentMultiplier: number) => {
       const yAncestor = parents.find(p => p.tipo === 'Y');
       const zAncestor = parents.find(p => p.tipo === 'Z');
       const wAncestor = parents.find(p => p.tipo === 'W');
       let pieceW = 0, pieceH = 0, isLeaf = false;
+
+      // Cumulative multiplier: parent chain × this node's own multi
+      const totalMulti = parentMultiplier * n.multi;
 
       if (n.tipo === 'Z' && n.filhos.length === 0) {
         pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
@@ -158,19 +176,21 @@ const Index = () => {
       }
 
       if (isLeaf && pieceW > 0 && pieceH > 0) {
-        for (let m = 0; m < n.multi; m++) {
+        for (let m = 0; m < totalMulti; m++) {
           used.push({ w: pieceW, h: pieceH, label: n.label });
         }
       }
-      n.filhos.forEach(f => traverse(f, [...parents, n]));
+      n.filhos.forEach(f => traverse(f, [...parents, n], totalMulti));
     };
-    traverse(node, []);
+    traverse(node, [], 1);
     return used;
   }, []);
 
   const optimize = useCallback(async () => {
+    const hasPriority = pieces.some(p => p.priority);
+    const activePieces = hasPriority ? pieces.filter(p => p.priority) : pieces;
     const inv: { w: number; h: number; area: number; label?: string }[] = [];
-    pieces.forEach(p => {
+    activePieces.forEach(p => {
       for (let i = 0; i < p.qty; i++) {
         if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
       }
@@ -181,15 +201,16 @@ const Index = () => {
     setStatus({ msg: 'Otimizando com Algoritmo Genético...', type: 'warn' });
 
     await new Promise(r => setTimeout(r, 20));
-    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress);
+    const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
+    const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, setProgress, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
     setTree(result);
-    setChapas([{ tree: result, usedArea: calcPlacedArea(result) }]);
+    setChapas([{ tree: result, usedArea: calcPlacedArea(result), manual: false }]);
     setActiveChapa(0);
     setSelectedId('root');
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: 'Plano de Corte Otimizado!', type: 'success' });
-  }, [pieces, usableW, usableH, minBreak]);
+  }, [pieces, usableW, usableH, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const optimizeAllSheets = useCallback(async () => {
     if (pieces.length === 0) {
@@ -200,11 +221,14 @@ const Index = () => {
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
 
     const runAllSheets = async (useGrouping?: boolean) => {
-      const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
-      const remaining = pieces.map(p => ({ ...p }));
+      const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
+      const hasPriority = pieces.some(p => p.priority);
+      const remaining = (hasPriority ? pieces.filter(p => p.priority) : pieces).map(p => ({ ...p }));
       let sheetCount = 0;
+      const totalPieces = remaining.reduce((sum, p) => sum + Math.max(p.qty, 1), 0);
+      const maxSheets = Math.max(100, totalPieces * 2);
 
-      while (remaining.length > 0 && sheetCount < 100) {
+      while (remaining.length > 0 && sheetCount < maxSheets) {
         sheetCount++;
         const inv: { w: number; h: number; area: number; label?: string }[] = [];
         remaining.forEach(p => {
@@ -221,6 +245,7 @@ const Index = () => {
         });
 
         await new Promise(r => setTimeout(r, 0));
+        const priorityLabels = priorityIds.split(',').map(s => s.trim()).filter(Boolean);
         const result = await optimizeGeneticAsync(inv, usableW, usableH, minBreak, (p) => {
           setProgress({
             phase: `Chapa ${sheetCount} - ${p.phase}`,
@@ -228,11 +253,49 @@ const Index = () => {
             total: p.total,
             bestUtil: p.bestUtil,
           });
-        });
+        }, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
         const usedArea = calcPlacedArea(result);
-        chapaList.push({ tree: result, usedArea });
+        chapaList.push({ tree: result, usedArea, manual: false });
 
         const usedPieces = extractUsedPiecesWithContext(result);
+
+        // --- Layout Replication Optimization ---
+        // Count how many times this exact layout can be replicated with remaining pieces
+        // Build a "bill of materials" for this layout: how many of each piece type it uses
+        const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
+        usedPieces.forEach(used => {
+          // Normalize key: smaller dimension first
+          const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
+          const existing = layoutBOM.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            layoutBOM.set(key, { w: used.w, h: used.h, count: 1 });
+          }
+        });
+
+        // Calculate how many full replications are possible
+        let maxReplications = Infinity;
+        layoutBOM.forEach(({ w, h, count }) => {
+          // Find total available qty in remaining for this piece type
+          let available = 0;
+          remaining.forEach(p => {
+            if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
+              available += p.qty;
+            }
+          });
+          // First sheet already uses 'count' pieces, so available includes those
+          // We want how many ADDITIONAL full copies we can make
+          const additionalAvailable = available - count; // subtract what the first sheet uses
+          const possibleCopies = Math.floor(additionalAvailable / count);
+          maxReplications = Math.min(maxReplications, possibleCopies);
+        });
+
+        if (!isFinite(maxReplications) || maxReplications < 0) maxReplications = 0;
+        // Cap to avoid runaway
+        maxReplications = Math.min(maxReplications, maxSheets - chapaList.length);
+
+        // Deduct first sheet's pieces from remaining
         usedPieces.forEach(used => {
           for (let i = 0; i < remaining.length; i++) {
             const p = remaining[i];
@@ -243,6 +306,27 @@ const Index = () => {
             }
           }
         });
+
+        // Replicate the layout for additional copies
+        if (maxReplications > 0) {
+          for (let rep = 0; rep < maxReplications; rep++) {
+            chapaList.push({ tree: cloneTree(result), usedArea, manual: false });
+            // Deduct pieces for this replicated sheet
+            layoutBOM.forEach(({ w, h, count }) => {
+              let toDeduct = count;
+              for (let i = 0; i < remaining.length && toDeduct > 0; i++) {
+                const p = remaining[i];
+                if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
+                  const deducted = Math.min(toDeduct, p.qty);
+                  p.qty -= deducted;
+                  toDeduct -= deducted;
+                  if (p.qty <= 0) { remaining.splice(i, 1); i--; }
+                }
+              }
+            });
+          }
+          sheetCount += maxReplications;
+        }
       }
 
       return chapaList;
@@ -275,7 +359,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: 'success' });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -326,6 +410,370 @@ const Index = () => {
     return usableW > 0 && usableH > 0 ? (area / (usableW * usableH)) * 100 : 0;
   }, [tree, usableW, usableH]);
 
+  // ─── Auto-suggestion logic ───
+  const commandSuggestions = useMemo<CommandSuggestion[]>(() => {
+    if (pieces.length === 0) return [];
+    const selected = findNode(tree, selectedId);
+    if (!selected) return [];
+
+    const suggestions: CommandSuggestion[] = [];
+    const seen = new Set<string>();
+
+    // Determine what the next expected node type is based on selection
+    const addSuggestion = (tipo: string, valor: number, desc: string) => {
+      const key = `${tipo}${valor}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      // Verify it fits
+      const res = calcAllocation(tree, selectedId, tipo as any, valor, 1, usableW, usableH, minBreak);
+      if (res.allocated > 0) {
+        suggestions.push({ cmd: key, label: key, desc, kind: 'direct' });
+      }
+    };
+
+    // Get unique piece dimensions from inventory
+    const uniquePieces = new Map<string, { w: number; h: number; qty: number; label?: string }>();
+    pieces.forEach(p => {
+      if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
+      const k1 = `${p.w}x${p.h}`;
+      if (!uniquePieces.has(k1)) uniquePieces.set(k1, { w: p.w, h: p.h, qty: p.qty, label: p.label });
+      else uniquePieces.get(k1)!.qty += p.qty;
+    });
+
+    if (selectedId === 'root') {
+      // Suggest X values = piece widths and heights (could be rotated)
+      uniquePieces.forEach(({ w, h, label }) => {
+        addSuggestion('X', w, `Coluna ${w}mm${label ? ` (${label})` : ''}`);
+        addSuggestion('X', h, `Coluna ${h}mm (rotacionado)${label ? ` (${label})` : ''}`);
+      });
+    }
+
+    if (selected.tipo === 'X' || findParentOfType(tree, selectedId, 'X')) {
+      const xNode = selected.tipo === 'X' ? selected : findParentOfType(tree, selectedId, 'X');
+      if (xNode) {
+        // Suggest Y values = piece heights where piece width matches X value
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === xNode.valor) {
+            addSuggestion('Y', h, `Fita ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === xNode.valor) {
+            addSuggestion('Y', w, `Fita ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+        // Also suggest new X for another column
+        if (selected.tipo !== 'X') {
+          uniquePieces.forEach(({ w, h, label }) => {
+            addSuggestion('X', w, `Nova coluna ${w}mm${label ? ` (${label})` : ''}`);
+            addSuggestion('X', h, `Nova coluna ${h}mm (rot.)${label ? ` (${label})` : ''}`);
+          });
+        }
+      }
+    }
+
+    if (selected.tipo === 'Y' || selected.tipo === 'Z') {
+      // If at Z level (auto-created), suggest another Y for the same X
+      const xNode = findParentOfType(tree, selectedId, 'X');
+      if (xNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === xNode.valor) {
+            addSuggestion('Y', h, `Fita ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === xNode.valor) {
+            addSuggestion('Y', w, `Fita ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+      // Suggest Z subdivisions
+      const yNode = selected.tipo === 'Y' ? selected : findParentOfType(tree, selectedId, 'Y');
+      if (yNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (h === yNode.valor) {
+            addSuggestion('Z', w, `Subdivisão ${w}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (w === yNode.valor) {
+            addSuggestion('Z', h, `Subdivisão ${h}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+      // Suggest W subdivisions when Z is selected
+      if (selected.tipo === 'Z') {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === selected.valor) {
+            addSuggestion('W', h, `Sub-H ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === selected.valor) {
+            addSuggestion('W', w, `Sub-H ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+    }
+
+    if (selected.tipo === 'W' || findParentOfType(tree, selectedId, 'W')) {
+      const zNode = findParentOfType(tree, selectedId, 'Z');
+      if (zNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === zNode.valor) {
+            addSuggestion('W', h, `Sub-H ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === zNode.valor) {
+            addSuggestion('W', w, `Sub-H ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+    }
+
+    return suggestions;
+  }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
+
+  // Filter suggestions based on current input + look-ahead for next coordinate
+  const filteredSuggestions = useMemo<CommandSuggestion[]>(() => {
+    if (!cmdInput) return commandSuggestions;
+    const upper = cmdInput.toUpperCase();
+    const directMatches = commandSuggestions.filter(s => s.cmd.startsWith(upper));
+
+    // Look-ahead: parse ANY typed command (doesn't need to be in suggestion list)
+    const m = upper.match(/^(?:M\d+)?([XYZWQ])(\d+)$/);
+    if (m) {
+      const tipo = m[1];
+      const valor = Number(m[2]);
+      const lookAhead: CommandSuggestion[] = [];
+      const seenLA = new Set<string>();
+
+      // Hierarchy: X→Y, Y→Z, Z→W, W→Q
+      const nextTipoMap: Record<string, string> = { X: 'Y', Y: 'Z', Z: 'W', W: 'Q' };
+      const nextTipo = nextTipoMap[tipo];
+
+      if (nextTipo) {
+        pieces.forEach(p => {
+          if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
+          let nextVal: number | null = null;
+          let descText = '';
+
+          if (p.w === valor) {
+            nextVal = p.h;
+            descText = `→ próximo: ${nextTipo}${p.h} (peça ${p.w}×${p.h}${p.label ? ' - ' + p.label : ''})`;
+          } else if (p.h === valor) {
+            nextVal = p.w;
+            descText = `→ próximo: ${nextTipo}${p.w} (peça ${p.w}×${p.h} rot.${p.label ? ' - ' + p.label : ''})`;
+          }
+
+          if (nextVal !== null) {
+            const key = `${nextTipo}${nextVal}`;
+            if (!seenLA.has(key)) {
+              seenLA.add(key);
+              lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText, kind: 'lookahead' });
+            }
+          }
+        });
+      }
+
+      if (lookAhead.length > 0) {
+        return [...directMatches, ...lookAhead];
+      }
+    }
+
+    return directMatches;
+  }, [commandSuggestions, cmdInput, pieces]);
+
+  const applySuggestion = useCallback((suggestion: CommandSuggestion) => {
+    const typed = cmdInput.trim().toUpperCase();
+
+    // If user clicked a look-ahead suggestion (e.g. Z after typing Y),
+    // execute current command first, then preload next command.
+    if (suggestion.kind === 'lookahead' && /^(?:M\d+)?[XYZWQ]\d+$/.test(typed) && typed !== suggestion.cmd) {
+      processCommand(typed);
+      setCmdInput(suggestion.cmd);
+      setShowSuggestions(true);
+      setSelectedSuggestionIdx(-1);
+      cmdInputRef.current?.focus();
+      return;
+    }
+
+    processCommand(suggestion.cmd);
+    setCmdInput('');
+    // Keep open to immediately suggest the next level after insertion
+    setShowSuggestions(true);
+    setSelectedSuggestionIdx(-1);
+    cmdInputRef.current?.focus();
+  }, [processCommand, cmdInput]);
+
+  const calcReplication = useCallback(() => {
+    const usedPieces = extractUsedPiecesWithContext(tree);
+    if (usedPieces.length === 0) {
+      setStatus({ msg: 'Desenhe um layout primeiro!', type: 'error' });
+      return;
+    }
+    if (pieces.length === 0) {
+      setStatus({ msg: 'Adicione peças na lista primeiro!', type: 'error' });
+      return;
+    }
+
+    // Build BOM from the current layout
+    const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
+    usedPieces.forEach(used => {
+      const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
+      const existing = layoutBOM.get(key);
+      if (existing) existing.count++;
+      else layoutBOM.set(key, { w: used.w, h: used.h, count: 1 });
+    });
+
+    // Check inventory availability
+    const bomDetails: Array<{ w: number; h: number; need: number; available: number }> = [];
+    let maxReps = Infinity;
+
+    layoutBOM.forEach(({ w, h, count }) => {
+      let available = 0;
+      pieces.forEach(p => {
+        if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
+          available += p.qty;
+        }
+      });
+      const reps = Math.floor(available / count);
+      maxReps = Math.min(maxReps, reps);
+      bomDetails.push({ w, h, need: count, available });
+    });
+
+    if (!isFinite(maxReps)) maxReps = 0;
+
+    setReplicationInfo({ count: maxReps, bom: bomDetails });
+    setStatus({ msg: `Layout pode ser repetido ${maxReps}×`, type: maxReps > 0 ? 'success' : 'error' });
+  }, [tree, pieces, extractUsedPiecesWithContext]);
+
+  const deleteLayout = useCallback((groupIndex: number) => {
+    const group = layoutGroups[groupIndex];
+    if (!group) return;
+
+    // Check if any chapa in this group is manual
+    const hasManualChapas = group.indices.some(idx => chapas[idx]?.manual === true);
+
+    // Only restore pieces to inventory if chapas were manually created
+    if (hasManualChapas) {
+      const updatedPieces = pieces.map(p => ({ ...p }));
+      group.indices.forEach(chapaIdx => {
+        const chapa = chapas[chapaIdx];
+        if (!chapa || !chapa.manual) return; // only restore manual ones
+        const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+        usedPieces.forEach(used => {
+          const existing = updatedPieces.find(p =>
+            (p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)
+          );
+          if (existing) {
+            existing.qty++;
+          } else {
+            updatedPieces.push({
+              id: `p${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              qty: 1,
+              w: used.w,
+              h: used.h,
+              label: used.label,
+            });
+          }
+        });
+      });
+      setPieces(updatedPieces);
+    }
+
+    // Remove chapas at group indices
+    const indicesToRemove = new Set(group.indices);
+    const newChapas = chapas.filter((_, i) => !indicesToRemove.has(i));
+    setChapas(newChapas);
+
+    // Adjust active chapa
+    if (newChapas.length === 0) {
+      setTree(createRoot(usableW, usableH));
+      setSelectedId('root');
+      setActiveChapa(0);
+      setEditingExistingChapa(false);
+    } else {
+      const newIdx = Math.min(activeChapa, newChapas.length - 1);
+      setActiveChapa(newIdx);
+      setTree(newChapas[newIdx].tree);
+      setSelectedId('root');
+    }
+
+    const msg = hasManualChapas
+      ? `🗑️ Layout excluído (×${group.count}). Peças manuais devolvidas ao inventário.`
+      : `🗑️ Layout excluído (×${group.count}).`;
+    setStatus({ msg, type: 'success' });
+  }, [layoutGroups, chapas, pieces, extractUsedPiecesWithContext, usableW, usableH, activeChapa]);
+
+  // Confirm auto plan: deduct pieces from inventory and mark chapas as confirmed
+  const confirmAutoPlan = useCallback(() => {
+    const autoChapas = chapas.filter(c => !c.manual);
+    if (autoChapas.length === 0) {
+      setStatus({ msg: 'Nenhuma chapa automática para confirmar.', type: 'error' });
+      return;
+    }
+
+    const updatedPieces = pieces.map(p => ({ ...p }));
+    autoChapas.forEach(chapa => {
+      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+      usedPieces.forEach(used => {
+        for (let j = 0; j < updatedPieces.length; j++) {
+          const p = updatedPieces[j];
+          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+            if (p.qty > 0) { p.qty--; break; }
+          }
+        }
+      });
+    });
+
+    const filteredPieces = updatedPieces.filter(p => p.qty > 0);
+    setPieces(filteredPieces);
+
+    // Mark all auto chapas as confirmed (manual) so they won't be confirmed again
+    setChapas(prev => prev.map(c => c.manual ? c : { ...c, manual: true }));
+
+    const remaining = filteredPieces.reduce((s, p) => s + p.qty, 0);
+    setStatus({ msg: `✅ Plano confirmado! ${autoChapas.length} chapa(s) aplicadas ao inventário. ${remaining} peça(s) restante(s).`, type: 'success' });
+  }, [chapas, pieces, extractUsedPiecesWithContext]);
+
+  const saveLayout = useCallback((reps?: number) => {
+    const usedPieces = extractUsedPiecesWithContext(tree);
+    if (usedPieces.length === 0) {
+      setStatus({ msg: 'Desenhe um layout primeiro!', type: 'error' });
+      return;
+    }
+
+    const count = reps && reps > 0 ? reps : 1;
+    const newChapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
+    const usedArea = calcPlacedArea(tree);
+
+    for (let i = 0; i < count; i++) {
+      newChapas.push({ tree: cloneTree(tree), usedArea, manual: true });
+    }
+
+    // Deduct pieces from inventory
+    const updatedPieces = pieces.map(p => ({ ...p }));
+    for (let i = 0; i < count; i++) {
+      usedPieces.forEach(used => {
+        for (let j = 0; j < updatedPieces.length; j++) {
+          const p = updatedPieces[j];
+          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+            if (p.qty > 0) { p.qty--; break; }
+          }
+        }
+      });
+    }
+
+    // Remove pieces with qty <= 0
+    const filteredPieces = updatedPieces.filter(p => p.qty > 0);
+    setPieces(filteredPieces);
+
+    // Add to chapas list
+    setChapas(prev => [...prev, ...newChapas]);
+    setActiveChapa(prev => prev === 0 && chapas.length === 0 ? 0 : chapas.length);
+
+    // Reset tree for next layout
+    const freshTree = createRoot(usableW, usableH);
+    setTree(freshTree);
+    setSelectedId('root');
+    setEditingExistingChapa(false);
+    setReplicationInfo(null);
+
+    setStatus({ msg: `✅ Layout salvo (×${count})! ${filteredPieces.reduce((s, p) => s + p.qty, 0)} peças restantes.`, type: 'success' });
+  }, [tree, pieces, chapas, extractUsedPiecesWithContext, usableW, usableH]);
+
   // ─── Render helpers ───
   const renderActionTree = (node: TreeNode, depth = 0): JSX.Element[] =>
     node.filhos.map(child => (
@@ -346,7 +794,7 @@ const Index = () => {
   return (
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }}>
       {/* SIDEBAR */}
-      <div className="w-80 min-w-[320px] flex flex-col h-screen overflow-y-auto cnc-scroll" style={{ background: 'hsl(0 0% 10%)', borderRight: '2px solid hsl(0 0% 20%)' }}>
+      <div className="w-[420px] min-w-[420px] flex flex-col h-screen overflow-y-auto cnc-scroll" style={{ background: 'hsl(0 0% 10%)', borderRight: '2px solid hsl(0 0% 20%)' }}>
 
         {/* ─── SECTION 1: Setup da Chapa ─── */}
         <SidebarSection title="Setup da Chapa" icon="📐" defaultOpen={true}>
@@ -407,7 +855,8 @@ const Index = () => {
             <div className="max-h-[280px] overflow-y-auto p-2.5 cnc-scroll">
               {/* Header */}
               {pieces.length > 0 && (
-                <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '40px 1fr 15px 1fr 55px 20px', color: 'hsl(0 0% 45%)' }}>
+                <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '20px 70px 70px 15px 70px 70px 20px', color: 'hsl(0 0% 45%)' }}>
+                  <span className="text-center" title="Prioridade">🚩</span>
                   <span className="text-center">Qtd</span>
                   <span className="text-center">Larg</span>
                   <span></span>
@@ -417,16 +866,25 @@ const Index = () => {
                 </div>
               )}
               {pieces.map(p => (
-                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '40px 1fr 15px 1fr 55px 20px' }}>
+                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '20px 70px 70px 15px 70px 70px 20px' }}>
+                  <div className="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={!!p.priority}
+                      onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, priority: e.target.checked } : x))}
+                      title="Processar somente este pedido"
+                      style={{ accentColor: 'hsl(45 100% 50%)', cursor: 'pointer', width: '12px', height: '12px' }}
+                    />
+                  </div>
                   <input type="number" value={p.qty} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, qty: +e.target.value } : x))} className="cnc-input" />
                   <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
-                  <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
+                  <span className="text-center text-[8px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
                   <input type="number" value={p.h} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, h: +e.target.value } : x))} className="cnc-input" />
-                  <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" style={{ fontSize: '10px' }} />
+                  <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" />
                   <button
                     onClick={() => setPieces(ps => ps.filter(x => x.id !== p.id))}
-                    className="text-[14px] cursor-pointer hover:text-red-400 transition-colors"
-                    style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
+                    className="text-[12px] cursor-pointer hover:text-red-400 transition-colors"
+                    style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none', padding: 0 }}
                     title="Remover peça"
                   >
                     ×
@@ -445,6 +903,50 @@ const Index = () => {
         {/* ─── SECTION 3: Execução ─── */}
         <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
           <div className="p-3" style={{ background: 'hsl(0 0% 10%)' }}>
+          <div className="mb-3">
+              <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                IDs Prioritários
+              </label>
+              <input
+                type="text"
+                value={priorityIds}
+                onChange={e => setPriorityIds(e.target.value)}
+                className="cnc-input w-full"
+                placeholder="Ex: A1, A2, B3"
+                style={{ fontSize: '10px' }}
+              />
+              <div style={{ fontSize: '8px', color: 'hsl(0 0% 45%)', marginTop: '3px' }}>
+                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas.
+              </div>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                  População
+                </label>
+                <input
+                  type="number"
+                  value={gaPopSize}
+                  onChange={e => setGaPopSize(Math.max(10, parseInt(e.target.value) || 10))}
+                  className="cnc-input w-full"
+                  min={10}
+                  style={{ fontSize: '10px' }}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
+                  Gerações
+                </label>
+                <input
+                  type="number"
+                  value={gaGens}
+                  onChange={e => setGaGens(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="cnc-input w-full"
+                  min={0}
+                  style={{ fontSize: '10px' }}
+                />
+              </div>
+            </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
               ⚡ OTIMIZAR (1 CHAPA)
             </button>
@@ -480,6 +982,16 @@ const Index = () => {
               </div>
             )}
 
+            {layoutGroups.length > 0 && chapas.some(c => !c.manual) && (
+              <button
+                className="cnc-btn-success w-full mt-2"
+                style={{ padding: '10px', fontSize: '12px', fontWeight: 'bold' }}
+                onClick={confirmAutoPlan}
+              >
+                ✅ CONFIRMAR PLANO (ATUALIZAR INVENTÁRIO)
+              </button>
+            )}
+
             {layoutGroups.length > 0 && (
               <button
                 className="cnc-btn-secondary w-full mt-2"
@@ -505,37 +1017,52 @@ const Index = () => {
                 {layoutGroups.map((group, gIdx) => {
                   const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
                   return (
-                    <button
+                    <div
                       key={gIdx}
-                      className="w-full flex items-center justify-between p-2 mb-1 rounded cursor-pointer transition-all text-left"
-                      style={{
-                        background: group.indices.includes(activeChapa) ? 'hsl(211 60% 25%)' : 'hsl(0 0% 12%)',
-                        border: `1px solid ${group.indices.includes(activeChapa) ? 'hsl(211 60% 40%)' : 'hsl(0 0% 20%)'}`,
-                      }}
-                      onClick={() => {
-                        const idx = group.indices[0];
-                        setActiveChapa(idx);
-                        setTree(chapas[idx].tree);
-                        setSelectedId('root');
-                      }}
+                      className="flex items-center gap-1 mb-1"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold" style={{ color: 'white' }}>
-                          Layout {gIdx + 1}
-                        </span>
-                        {group.count > 1 && (
-                          <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                            style={{ background: 'hsl(30 100% 45%)', color: 'white' }}
-                          >
-                            ×{group.count}
+                      <button
+                        className="flex-1 flex items-center justify-between p-2 rounded cursor-pointer transition-all text-left"
+                        style={{
+                          background: group.indices.includes(activeChapa) ? 'hsl(211 60% 25%)' : 'hsl(0 0% 12%)',
+                          border: `1px solid ${group.indices.includes(activeChapa) ? 'hsl(211 60% 40%)' : 'hsl(0 0% 20%)'}`,
+                        }}
+                        onClick={() => {
+                          const idx = group.indices[0];
+                          setActiveChapa(idx);
+                          setTree(chapas[idx].tree);
+                          setSelectedId('root');
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold" style={{ color: 'white' }}>
+                            Layout {gIdx + 1}
                           </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] font-semibold" style={{ color: util > 80 ? 'hsl(120 70% 55%)' : util > 50 ? 'hsl(45 80% 55%)' : 'hsl(0 60% 55%)' }}>
-                        {util.toFixed(1)}%
-                      </span>
-                    </button>
+                          {group.count > 1 && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                              style={{ background: 'hsl(30 100% 45%)', color: 'white' }}
+                            >
+                              ×{group.count}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-semibold" style={{ color: util > 80 ? 'hsl(120 70% 55%)' : util > 50 ? 'hsl(45 80% 55%)' : 'hsl(0 60% 55%)' }}>
+                          {util.toFixed(1)}%
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteLayout(gIdx);
+                        }}
+                        className="p-1.5 rounded transition-colors cursor-pointer"
+                        style={{ background: 'hsl(0 50% 25%)', border: '1px solid hsl(0 40% 35%)' }}
+                        title={`Excluir layout ${gIdx + 1} (×${group.count}) e devolver peças ao inventário`}
+                      >
+                        <span className="text-[10px]">🗑️</span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -559,13 +1086,14 @@ const Index = () => {
       {/* MAIN */}
       <div className="flex-1 flex flex-col" style={{ background: 'hsl(0 0% 0%)' }}>
         <SheetViewer
-          chapas={chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
-          activeIndex={chapas.length > 0 ? activeChapa : 0}
+          chapas={editingExistingChapa && chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
+          activeIndex={editingExistingChapa && chapas.length > 0 ? activeChapa : 0}
           onSelectSheet={(idx) => {
             setActiveChapa(idx);
             if (chapas[idx]) {
               setTree(chapas[idx].tree);
               setSelectedId('root');
+              setEditingExistingChapa(true);
             }
           }}
           selectedId={selectedId}
@@ -580,26 +1108,195 @@ const Index = () => {
           layoutGroups={layoutGroups}
         />
 
-        <div className="flex flex-col p-2 px-4" style={{ height: 80, background: 'hsl(0 0% 13%)', borderTop: '4px solid hsl(0 0% 20%)' }}>
+        <div className="flex flex-col p-2 px-4" style={{ height: 'auto', minHeight: 80, background: 'hsl(0 0% 13%)', borderTop: '4px solid hsl(0 0% 20%)' }}>
           <div
             className="text-xs font-bold h-5 mb-1"
             style={{ color: status.type === 'error' ? 'hsl(0 73% 63%)' : status.type === 'success' ? 'hsl(134 53% 40%)' : 'hsl(40 100% 50%)' }}
           >
             Status: {status.msg}
           </div>
-          <input
-            type="text"
-            autoFocus
-            autoComplete="off"
-            placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
-            className="cnc-command-input flex-1"
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                processCommand(e.currentTarget.value.trim().toUpperCase());
-                e.currentTarget.value = '';
-              }
-            }}
-          />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                ref={cmdInputRef}
+                type="text"
+                autoFocus
+                autoComplete="off"
+                value={cmdInput}
+                onChange={e => {
+                  setCmdInput(e.target.value);
+                  setShowSuggestions(true);
+                  setSelectedSuggestionIdx(-1);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
+                className="cnc-command-input w-full"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (selectedSuggestionIdx >= 0 && filteredSuggestions[selectedSuggestionIdx]) {
+                      applySuggestion(filteredSuggestions[selectedSuggestionIdx]);
+                    } else {
+                      const typed = cmdInput.trim().toUpperCase();
+                      const lookAhead = filteredSuggestions.find(s => s.kind === 'lookahead');
+                      processCommand(typed);
+                      setCmdInput(lookAhead?.cmd || '');
+                      // Keep suggestions open so next-level suggestions appear after command executes
+                      setShowSuggestions(true);
+                    }
+                    setSelectedSuggestionIdx(-1);
+                    e.preventDefault();
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setSelectedSuggestionIdx(i => Math.min(i + 1, filteredSuggestions.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setSelectedSuggestionIdx(i => Math.max(i - 1, -1));
+                  } else if (e.key === 'Escape') {
+                    setShowSuggestions(false);
+                  } else if (e.key === 'Tab' && filteredSuggestions.length > 0) {
+                    e.preventDefault();
+                    const idx = selectedSuggestionIdx >= 0 ? selectedSuggestionIdx : 0;
+                    if (filteredSuggestions[idx]) {
+                      setCmdInput(filteredSuggestions[idx].cmd);
+                      setSelectedSuggestionIdx(idx);
+                    }
+                  }
+                }}
+              />
+              {/* Suggestions dropdown */}
+              {showSuggestions && filteredSuggestions.length > 0 && (
+                <div
+                  className="absolute bottom-full left-0 right-0 mb-1 max-h-[240px] overflow-y-auto rounded cnc-scroll"
+                  style={{
+                    background: 'hsl(0 0% 8%)',
+                    border: '1px solid hsl(0 0% 25%)',
+                    boxShadow: '0 -4px 20px hsla(0 0% 0% / 0.5)',
+                    zIndex: 1000,
+                  }}
+                >
+                  <div className="px-2 py-1 text-[8px] uppercase tracking-wider font-bold" style={{ color: 'hsl(0 0% 40%)', borderBottom: '1px solid hsl(0 0% 18%)' }}>
+                    Sugestões do inventário ({filteredSuggestions.length})
+                  </div>
+                  {filteredSuggestions.map((s, i) => (
+                    <div
+                      key={s.cmd + i}
+                      className="flex items-center justify-between px-2 py-1.5 cursor-pointer transition-colors"
+                      style={{
+                        background: i === selectedSuggestionIdx ? 'hsl(211 60% 25%)' : 'transparent',
+                        borderBottom: '1px solid hsl(0 0% 12%)',
+                      }}
+                      onMouseEnter={() => setSelectedSuggestionIdx(i)}
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        applySuggestion(s);
+                      }}
+                    >
+                      <span className="text-[12px] font-bold font-mono" style={{ color: 'hsl(120 80% 60%)' }}>
+                        {s.cmd}
+                      </span>
+                      <span className="text-[10px] ml-2" style={{ color: 'hsl(0 0% 55%)' }}>
+                        {s.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => saveLayout(replicationInfo?.count || 1)}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(120 60% 25%)', fontWeight: 'bold' }}
+              title="Salvar layout atual na lista de chapas e deduzir peças do inventário"
+            >
+              💾 SALVAR LAYOUT
+            </button>
+            <button
+              onClick={() => {
+                setTree(createRoot(usableW, usableH));
+                setSelectedId('root');
+                setEditingExistingChapa(false);
+                setReplicationInfo(null);
+              }}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(0 50% 30%)', fontWeight: 'bold' }}
+              title="Limpar a chapa atual e começar um novo layout do zero"
+            >
+              🧹 LIMPAR
+            </button>
+            <button
+              onClick={calcReplication}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(270 60% 35%)', fontWeight: 'bold' }}
+              title="Calcular quantas vezes o layout atual pode ser repetido com o inventário disponível"
+            >
+              🔄 REPETIÇÕES
+            </button>
+          </div>
+
+          {/* Replication info */}
+          {replicationInfo && (
+            <div className="mt-2 p-2 rounded text-[10px]" style={{ background: 'hsl(0 0% 6%)', border: '1px solid hsl(0 0% 25%)' }}>
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-bold uppercase tracking-wider" style={{ color: 'hsl(0 0% 50%)' }}>Repetições possíveis</span>
+                <span className="text-[14px] font-bold" style={{ color: replicationInfo.count > 0 ? 'hsl(120 70% 55%)' : 'hsl(0 70% 55%)' }}>
+                  ×{replicationInfo.count}
+                </span>
+                <button
+                  onClick={() => setReplicationInfo(null)}
+                  className="text-[10px] cursor-pointer"
+                  style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
+                >✕</button>
+              </div>
+              <div className="flex gap-2 mb-2 items-center">
+                <span style={{ color: 'hsl(0 0% 60%)' }}>Salvar</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={replicationInfo.count}
+                  defaultValue={replicationInfo.count}
+                  id="saveRepCount"
+                  className="cnc-input w-14 text-center"
+                />
+                <span style={{ color: 'hsl(0 0% 60%)' }}>cópias</span>
+                <button
+                  onClick={() => {
+                    const val = parseInt((document.getElementById('saveRepCount') as HTMLInputElement)?.value || '1');
+                    saveLayout(Math.max(1, Math.min(val, replicationInfo?.count || 1)));
+                  }}
+                  className="cnc-btn-secondary flex-1 text-[10px]"
+                  style={{ background: 'hsl(120 60% 25%)', fontWeight: 'bold' }}
+                >
+                  💾 SALVAR ×{replicationInfo.count}
+                </button>
+              </div>
+              <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: 'hsl(0 0% 45%)', fontSize: '8px' }}>
+                    <th className="text-left py-0.5">Peça</th>
+                    <th className="text-center py-0.5">Precisa</th>
+                    <th className="text-center py-0.5">Disponível</th>
+                    <th className="text-center py-0.5">Máx Rep.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {replicationInfo.bom.map((item, i) => {
+                    const maxRep = Math.floor(item.available / item.need);
+                    return (
+                      <tr key={i} style={{ color: 'hsl(0 0% 70%)', borderTop: '1px solid hsl(0 0% 15%)' }}>
+                        <td className="py-0.5">{item.w}×{item.h}</td>
+                        <td className="text-center py-0.5">{item.need}</td>
+                        <td className="text-center py-0.5">{item.available}</td>
+                        <td className="text-center py-0.5 font-bold" style={{ color: maxRep > 0 ? 'hsl(120 60% 50%)' : 'hsl(0 60% 50%)' }}>
+                          {maxRep}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

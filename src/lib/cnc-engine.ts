@@ -8,6 +8,7 @@ export interface TreeNode {
   multi: number;
   filhos: TreeNode[];
   label?: string;
+  transposed?: boolean;
 }
 
 export interface Piece {
@@ -29,6 +30,7 @@ export interface PieceItem {
   w: number;
   h: number;
   label?: string;
+  priority?: boolean;
 }
 
 // Annotate tree leaf nodes with labels from the original pieces inventory
@@ -304,60 +306,43 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
       }))
       .sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
 
+    // Agrupa o máximo de peças possível (sem limite fixo)
     let i = 0;
     while (i < normalized.length) {
       const h = normalized[i].nh;
 
-      // Tenta agrupar 3, depois 2 peças
-      let groupSize = 0;
-      let sumW = 0;
-      const candidates: number[] = [];
+      // Coleta todas as peças consecutivas com mesma altura
+      const candidates: number[] = [i];
+      let sumW = normalized[i].nw;
 
-      for (let j = i; j < normalized.length && candidates.length < 3; j++) {
+      for (let j = i + 1; j < normalized.length; j++) {
         candidates.push(j);
         sumW += normalized[j].nw;
       }
 
-      // Aceita grupo de 3 ou 2
+      // Agrupa se há 2+ peças
       if (candidates.length >= 2) {
-        // Tenta 3 primeiro, depois 2
-        const trySize = candidates.length >= 3 ? 3 : 2;
-        let bestGroupW = 0;
-        let bestCount = 0;
-
-        for (let gs = trySize; gs >= 2; gs--) {
-          let gw = 0;
-          for (let k = 0; k < gs; k++) gw += normalized[candidates[k]].nw;
-          bestGroupW = gw;
-          bestCount = gs;
-          break;
+        const groupedLabels: string[] = [];
+        for (let k = 0; k < candidates.length; k++) {
+          if (normalized[candidates[k]].label) {
+            groupedLabels.push(normalized[candidates[k]].label!);
+          }
         }
 
-        if (bestCount >= 2) {
-          // Cria peça agrupada com labels individuais preservados
-          const groupedLabels: string[] = [];
-          for (let k = 0; k < bestCount; k++) {
-            if (normalized[candidates[k]].label) {
-              groupedLabels.push(normalized[candidates[k]].label!);
-            }
-          }
+        result.push({
+          w: sumW,
+          h,
+          area: sumW * h,
+          count: candidates.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: "w",
+        });
 
-          result.push({
-            w: bestGroupW,
-            h,
-            area: bestGroupW * h,
-            count: bestCount,
-            labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-            groupedAxis: "w", // Agrupou larguras (somou W), mantendo altura fixa
-          });
-
-          // Remove itens agrupados (em ordem reversa para não afetar índices)
-          for (let k = bestCount - 1; k >= 1; k--) {
-            normalized.splice(candidates[k], 1);
-          }
-          normalized.splice(i, 1);
-          continue;
+        // Remove todos os itens agrupados (em ordem reversa)
+        for (let k = candidates.length - 1; k >= 0; k--) {
+          normalized.splice(candidates[k], 1);
         }
+        continue;
       }
 
       // Peça individual
@@ -605,6 +590,113 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
   return result;
 }
 
+/**
+ * COLUMN-WIDTH MAXIMIZING: Groups pieces by height (like groupPiecesByHeight),
+ * then sorts results so that grouped pieces with the WIDEST combined width come first.
+ * This ensures the X column is wide enough to also accommodate other (possibly wider individual)
+ * pieces that are slightly narrower than the grouped sum.
+ *
+ * Example: 2×(1014×530) → grouped 2028×530 sorted BEFORE 2014×880
+ * → X=2028, then 2014×880 fits in that column (2014 ≤ 2028)
+ */
+function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
+  // First, group by height (same as groupPiecesByHeight)
+  const grouped = groupPiecesByHeight(pieces);
+
+  // Sort by combined width descending (grouped pieces with wider sums first)
+  // This ensures the widest group sets the X column width
+  grouped.sort((a, b) => {
+    // Prioritize grouped pieces (count > 1) over individuals
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Both grouped: wider combined width first
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Grouped pieces come first
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  // Filter out groups wider than usableW (can't fit)
+  return grouped.filter(p => p.w <= usableW);
+}
+
+/**
+ * BAND-FIRST: Groups pieces by height using fill-row, then sorts so that
+ * the WIDEST group (highest coverage of sheet width) comes FIRST.
+ * This ensures horizontal bands spanning most of the sheet are placed
+ * before individual large pieces, preventing them from consuming column space.
+ *
+ * Example: 3×(1014×530) → group 3042×530 placed FIRST as a full-width band,
+ * then 2014×880 uses the remaining height above.
+ */
+function groupPiecesBandFirst(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
+  const grouped = groupPiecesFillRow(pieces, usableW, raw);
+
+  // Sort: widest groups first (highest width coverage), then by area for individuals
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Both grouped: wider first (closer to full sheet width)
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Grouped bands come first
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  return grouped;
+}
+
+/**
+ * BAND-LAST: Same as band-first but groups go LAST (placed at the bottom).
+ * Individual large pieces consume the top, bands fill the bottom.
+ */
+function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
+  const grouped = groupPiecesFillRow(pieces, usableW, raw);
+
+  // Sort: individuals first by area, then grouped bands (widest last)
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Individual pieces first
+    if (!aIsGrouped && bIsGrouped) return -1;
+    if (aIsGrouped && !bIsGrouped) return 1;
+    // Both grouped: wider first
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  return grouped;
+}
+
+
+
+/**
+ * Same as groupPiecesColumnWidth but groups by width (sum heights).
+ */
+function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
+  const grouped = groupPiecesByWidth(pieces);
+
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    if (aIsGrouped && bIsGrouped) return b.h - a.h || b.w - a.w;
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    return b.area - a.area;
+  });
+
+  return grouped.filter(p => p.h <= usableH);
+}
+
 function oris(p: Piece): { w: number; h: number }[] {
   if (p.w === p.h) return [{ w: p.w, h: p.h }];
   return [
@@ -777,47 +869,55 @@ function fillRect(
 ): number {
   let filled = 0;
 
-  for (let i = 0; i < remaining.length; i++) {
-    if (maxH <= 0) break;
-
-    const pc = remaining[i];
+  while (maxH > 0 && remaining.length > 0) {
+    // Scan ALL remaining pieces to find the BEST one for this void
+    let bestIdx = -1;
     let bestO: { w: number; h: number } | null = null;
-    let bestScore = Infinity;
+    let bestArea = 0;
 
-    for (const o of oris(pc)) {
-      if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Y height and Z cut positions across all Y strips
-        if (minBreak > 0) {
-          if (o.h < minBreak) continue;
-          // Check Z cut positions: new piece creates a cut at position o.w
-          const allZPositions = getAllZCutPositionsInColumn(colX);
-          if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
-        }
-        const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
-        if (s < bestScore) {
-          bestScore = s;
-          bestO = o;
+    for (let i = 0; i < remaining.length; i++) {
+      const pc = remaining[i];
+      for (const o of oris(pc)) {
+        if (o.w <= maxW && o.h <= maxH) {
+          // Check minBreak
+          if (minBreak > 0) {
+            if (o.h < minBreak) continue;
+            const allZPositions = getAllZCutPositionsInColumn(colX);
+            if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
+          }
+          // Prefer largest area piece (not first-fit)
+          const pieceArea = o.w * o.h;
+          if (pieceArea > bestArea) {
+            bestArea = pieceArea;
+            bestIdx = i;
+            bestO = o;
+          }
         }
       }
     }
 
-    if (bestO) {
-      // Residual dominance: extend Y container if residual can't fit anything
-      let consumed = bestO.h;
-      const residualH = maxH - bestO.h;
-      if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
-        consumed = maxH;
-      }
-      const yId = insertNode(tree, colX.id, "Y", consumed, 1);
-      const yNode = findNode(tree, yId)!;
+    if (bestIdx < 0 || !bestO) break;
 
-      createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+    const pc = remaining[bestIdx];
 
-      filled += bestO.w * bestO.h;
-      maxH -= consumed;
-      remaining.splice(i, 1);
-      i--;
+    // Safety: verify actual column height before inserting
+    const actualUsedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    if (actualUsedH + bestO.h > actualUsedH + maxH + 0.5) break;
+
+    // Residual dominance: extend Y container if residual can't fit anything
+    let consumed = bestO.h;
+    const residualH = maxH - bestO.h;
+    if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
+      consumed = maxH;
     }
+    const yId = insertNode(tree, colX.id, "Y", consumed, 1);
+    const yNode = findNode(tree, yId)!;
+
+    createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+
+    filled += bestO.w * bestO.h;
+    maxH -= consumed;
+    remaining.splice(bestIdx, 1);
   }
 
   return filled;
@@ -833,48 +933,48 @@ function fillRectZ(
 ): number {
   let filled = 0;
 
-  for (let i = 0; i < remaining.length; i++) {
-    if (maxW <= 0) break;
-
-    const pc = remaining[i];
+  while (maxW > 0 && remaining.length > 0) {
+    // Scan ALL remaining pieces to find the BEST one (largest area)
+    let bestIdx = -1;
     let bestO: { w: number; h: number } | null = null;
-    let bestScore = Infinity;
+    let bestArea = 0;
 
-    for (const o of oris(pc)) {
-      if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Z cut positions across all Y strips in parent column
-        if (minBreak > 0) {
-          const parentX = _tree.filhos.find((x) => x.filhos.some((y) => y.id === yNode.id));
-          if (parentX) {
-            const yIndex = parentX.filhos.indexOf(yNode);
-            const allZPositions = getAllZCutPositionsInColumn(parentX);
-            // Current offset in this Y strip
-            const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-            const newCutPos = currentOffset + o.w;
-            if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+    for (let i = 0; i < remaining.length; i++) {
+      const pc = remaining[i];
+      for (const o of oris(pc)) {
+        if (o.w <= maxW && o.h <= maxH) {
+          if (minBreak > 0) {
+            const parentX = _tree.filhos.find((x) => x.filhos.some((y) => y.id === yNode.id));
+            if (parentX) {
+              const yIndex = parentX.filhos.indexOf(yNode);
+              const allZPositions = getAllZCutPositionsInColumn(parentX);
+              const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+              const newCutPos = currentOffset + o.w;
+              if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+            }
+          }
+          const pieceArea = o.w * o.h;
+          if (pieceArea > bestArea) {
+            bestArea = pieceArea;
+            bestIdx = i;
+            bestO = o;
           }
         }
-        const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
-        if (s < bestScore) {
-          bestScore = s;
-          bestO = o;
-        }
       }
     }
 
-    if (bestO) {
-      // Residual dominance: skip unusable residual for loop optimization
-      let consumed = bestO.w;
-      const residualW = maxW - bestO.w;
-      if (residualW > 0 && !canResidualFitAnyPiece(residualW, maxH, remaining, minBreak)) {
-        consumed = maxW;
-      }
-      createPieceNodes(_tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
-      filled += bestO.w * bestO.h;
-      maxW -= consumed;
-      remaining.splice(i, 1);
-      i--;
+    if (bestIdx < 0 || !bestO) break;
+
+    const pc = remaining[bestIdx];
+    let consumed = bestO.w;
+    const residualW = maxW - bestO.w;
+    if (residualW > 0 && !canResidualFitAnyPiece(residualW, maxH, remaining, minBreak)) {
+      consumed = maxW;
     }
+    createPieceNodes(_tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+    filled += bestO.w * bestO.h;
+    maxW -= consumed;
+    remaining.splice(bestIdx, 1);
   }
 
   return filled;
@@ -890,37 +990,48 @@ function fillRectW(
 ): number {
   let filled = 0;
 
-  for (let i = 0; i < remaining.length; i++) {
-    if (maxH <= 0) break;
+  while (maxH > 0 && remaining.length > 0) {
+    // Scan ALL remaining pieces to find the BEST one (largest area)
+    let bestIdx = -1;
+    let bestO: { w: number; h: number } | null = null;
+    let bestArea = 0;
 
-    const pc = remaining[i];
-    for (const o of oris(pc)) {
-      if (o.w <= zWidth && o.h <= maxH) {
-        // Check minBreak for W siblings
-        if (minBreak > 0) {
-          const violates = zNode.filhos.some((w) => {
-            const diff = Math.abs(w.valor - o.h);
-            return diff > 0 && diff < minBreak;
-          });
-          if (violates) continue;
+    for (let i = 0; i < remaining.length; i++) {
+      const pc = remaining[i];
+      for (const o of oris(pc)) {
+        if (o.w <= zWidth && o.h <= maxH) {
+          if (minBreak > 0) {
+            const violates = zNode.filhos.some((w) => {
+              const diff = Math.abs(w.valor - o.h);
+              return diff > 0 && diff < minBreak;
+            });
+            if (violates) continue;
+          }
+          const pieceArea = o.w * o.h;
+          if (pieceArea > bestArea) {
+            bestArea = pieceArea;
+            bestIdx = i;
+            bestO = o;
+          }
         }
-        // Residual dominance: skip unusable residual for loop optimization
-        let consumed = o.h;
-        const residualH = maxH - o.h;
-        if (residualH > 0 && !canResidualFitAnyPiece(zWidth, residualH, remaining, minBreak)) {
-          consumed = maxH;
-        }
-
-        const actualRotated = o.w !== pc.w;
-        createPieceNodes(tree, zNode, pc, o.w, o.h, actualRotated, zNode);
-
-        filled += o.w * o.h;
-        maxH -= consumed;
-        remaining.splice(i, 1);
-        i--;
-        break;
       }
     }
+
+    if (bestIdx < 0 || !bestO) break;
+
+    const pc = remaining[bestIdx];
+    let consumed = bestO.h;
+    const residualH = maxH - bestO.h;
+    if (residualH > 0 && !canResidualFitAnyPiece(zWidth, residualH, remaining, minBreak)) {
+      consumed = maxH;
+    }
+
+    const actualRotated = bestO.w !== pc.w;
+    createPieceNodes(tree, zNode, pc, bestO.w, bestO.h, actualRotated, zNode);
+
+    filled += bestO.w * bestO.h;
+    maxH -= consumed;
+    remaining.splice(bestIdx, 1);
   }
 
   return filled;
@@ -952,34 +1063,53 @@ export function optimizeV6(
         groupPiecesByHeight(pieces),
         groupPiecesByWidth(pieces),
         groupPiecesByHeight(rotatedPieces),
-        // Fill-row strategies (pack multiple same-height pieces to fill sheet width)
+        // Fill-row strategies (normalized: pack by min dimension as height)
         groupPiecesFillRow(pieces, usableW),
         groupPiecesFillRow(rotatedPieces, usableW),
-        // Fill-col strategies (pack multiple same-width pieces to fill sheet height)
+        // Fill-row RAW (non-normalized: pack by actual h, discovers layouts where larger dim is height)
+        groupPiecesFillRow(pieces, usableW, true),
+        groupPiecesFillRow(rotatedPieces, usableW, true),
+        // Fill-col strategies (normalized)
         groupPiecesFillCol(pieces, usableH),
         groupPiecesFillCol(rotatedPieces, usableH),
+        // Fill-col RAW (non-normalized)
+        groupPiecesFillCol(pieces, usableH, true),
+        groupPiecesFillCol(rotatedPieces, usableH, true),
         // Combined: fill-row on height-grouped pieces
         groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
+        // Combined RAW
+        groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
       ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
+  let bestTransposed = false;
 
-  for (const variant of pieceVariants) {
-    for (const sortFn of strategies) {
-      const sorted = [...variant].sort(sortFn);
-      const result = runPlacement(sorted, usableW, usableH, minBreak);
-      if (result.area > bestArea) {
-        bestArea = result.area;
-        bestTree = result.tree;
-        bestRemaining = result.remaining;
+  // Test both normal and transposed orientations
+  for (const transposed of [false, true]) {
+    const eW = transposed ? usableH : usableW;
+    const eH = transposed ? usableW : usableH;
+
+    for (const variant of pieceVariants) {
+      for (const sortFn of strategies) {
+        const sorted = [...variant].sort(sortFn);
+        const result = runPlacement(sorted, eW, eH, minBreak);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestRemaining = result.remaining;
+          bestTransposed = transposed;
+        }
       }
     }
   }
 
+  const finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree.transposed = true;
+
   return {
-    tree: bestTree || createRoot(usableW, usableH),
+    tree: finalTree,
     remaining: bestRemaining,
   };
 }
@@ -1022,7 +1152,8 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw
+  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight
+  transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
 /**
@@ -1095,11 +1226,14 @@ export async function optimizeGeneticAsync(
   usableH: number,
   minBreak: number = 0,
   onProgress?: (p: OptimizationProgress) => void,
+  priorityLabels?: string[],
+  gaPopulationSize: number = 50,
+  gaGenerations: number = 50,
 ): Promise<TreeNode> {
-  const populationSize = 5; // Global GA is more expensive, using reasonable defaults
-  const generations = 3;
-  const eliteCount = 2;
-  const mutationRate = 0.01;
+  const populationSize = Math.max(10, gaPopulationSize);
+  const generations = Math.max(0, gaGenerations);
+  const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
+  const mutationRate = 0.03;
 
   const numPieces = pieces.length;
 
@@ -1113,7 +1247,8 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6,
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+      transposed: Math.random() > 0.5,
     };
   }
 
@@ -1142,16 +1277,22 @@ export async function optimizeGeneticAsync(
       work = groupPiecesFillCol(work, usableH);
     } else if (ind.groupingMode === 6) {
       work = groupPiecesFillCol(work, usableH, true);
+    } else if (ind.groupingMode === 7) {
+      work = groupPiecesColumnWidth(work, usableW);
+    } else if (ind.groupingMode === 8) {
+      work = groupPiecesColumnHeight(work, usableH);
     }
 
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number } {
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
     const work = buildPieces(ind);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    const result = simulateSheets(work, usableW, usableH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness };
+    const eW = ind.transposed ? usableH : usableW;
+    const eH = ind.transposed ? usableW : usableH;
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
+    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
@@ -1192,6 +1333,7 @@ export async function optimizeGeneticAsync(
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
+      transposed: Math.random() > 0.5 ? pA.transposed : pB.transposed,
     };
   }
 
@@ -1200,15 +1342,16 @@ export async function optimizeGeneticAsync(
       genome: [...ind.genome],
       rotations: [...ind.rotations],
       groupingMode: ind.groupingMode,
+      transposed: ind.transposed,
     };
 
     const r = Math.random();
-    if (r < 0.3) {
+    if (r < 0.25) {
       // Swap Mutation
       const a = Math.floor(Math.random() * c.genome.length);
       const b = Math.floor(Math.random() * c.genome.length);
       [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
-    } else if (r < 0.6) {
+    } else if (r < 0.5) {
       // Block Mutation (Move a segment)
       if (c.genome.length > 3) {
         const blockSize = Math.floor(Math.random() * Math.min(5, c.genome.length / 2)) + 2;
@@ -1217,16 +1360,19 @@ export async function optimizeGeneticAsync(
         const target = Math.floor(Math.random() * c.genome.length);
         c.genome.splice(target, 0, ...segment);
       }
-    } else if (r < 0.8) {
+    } else if (r < 0.7) {
       // Rotation Mutation (Flip 10% of bits)
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else {
+    } else if (r < 0.85) {
       // Grouping Mutation
       c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    } else {
+      // Transposition Mutation
+      c.transposed = !c.transposed;
     }
 
     return c;
@@ -1237,20 +1383,30 @@ export async function optimizeGeneticAsync(
   const strategies = getSortStrategies();
   strategies.forEach((sortFn) => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
-      // Find original pieces to compare
       const pA = pieces[a];
       const pB = pieces[b];
       return sortFn(pA, pB);
     });
 
+    // Always seed BOTH normal and transposed for each strategy
     initialPop.push({
-      genome: sortedIndices,
+      genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
+      transposed: false,
+    });
+    initialPop.push({
+      genome: [...sortedIndices],
+      rotations: Array.from({ length: numPieces }, () => false),
+      groupingMode: 0,
+      transposed: true,
     });
   });
 
-  // Fill rest with random
+  // Trim if seeds exceed population size, or fill with random
+  if (initialPop.length > populationSize) {
+    initialPop.length = populationSize;
+  }
   while (initialPop.length < populationSize) {
     initialPop.push(randomIndividual());
   }
@@ -1258,10 +1414,49 @@ export async function optimizeGeneticAsync(
   let population = initialPop;
   let bestTree: TreeNode | null = null;
   let bestFitness = -1;
+  let bestTransposed = false;
 
-  // Report baseline
+  // --- Run V6 heuristic as baseline (always) ---
   if (onProgress) {
-    onProgress({ phase: "Semeando População e V6...", current: 0, total: generations });
+    onProgress({ phase: "Rodando heurísticas V6...", current: 0, total: Math.max(1, generations) });
+  }
+  const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
+  const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
+  if (v6Util > bestFitness) {
+    bestFitness = v6Util;
+    bestTree = JSON.parse(JSON.stringify(v6Result.tree));
+    bestTransposed = false;
+  }
+  // Also test transposed V6
+  const v6T = optimizeV6(pieces, usableH, usableW, minBreak);
+  const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
+  if (v6TUtil > bestFitness) {
+    bestFitness = v6TUtil;
+    bestTree = JSON.parse(JSON.stringify(v6T.tree));
+    bestTransposed = true;
+  }
+
+  if (onProgress && generations > 0) {
+    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestFitness * 100 });
+  }
+
+  // If generations=0, skip GA entirely (heuristics only)
+  if (generations === 0) {
+    if (onProgress) {
+      onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
+    }
+    let finalTree = bestTree || createRoot(usableW, usableH);
+    if (bestTransposed) finalTree.transposed = true;
+
+    // Pós-análise automática
+    if (onProgress) onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestFitness * 100 });
+    const postResult = postOptimizeRegroup(finalTree, bestFitness * usableW * usableH, pieces, usableW, usableH, minBreak);
+    if (postResult.improved) {
+      finalTree = postResult.tree;
+      if (onProgress) onProgress({ phase: "Pós-análise: layout melhorado!", current: 1, total: 1, bestUtil: (postResult.area / (usableW * usableH)) * 100 });
+    }
+
+    return finalTree;
   }
 
   for (let g = 0; g < generations; g++) {
@@ -1270,7 +1465,9 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const res = simulateSheets(work, usableW, usableH, minBreak, currentLookahead);
+      const eW = ind.transposed ? usableH : usableW;
+      const eH = ind.transposed ? usableW : usableH;
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -1280,6 +1477,7 @@ export async function optimizeGeneticAsync(
     if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
+      bestTransposed = evaluated[0].ind.transposed;
     }
 
     if (onProgress) {
@@ -1295,7 +1493,7 @@ export async function optimizeGeneticAsync(
 
     // Next Gen with basic Diversity check
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
-    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",")));
+    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + (i.transposed ? "T" : "N")));
 
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
@@ -1303,7 +1501,7 @@ export async function optimizeGeneticAsync(
       let child = crossover(pA, pB);
       if (Math.random() < mutationRate) child = mutate(child);
 
-      const key = child.genome.join(",");
+      const key = child.genome.join(",") + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
@@ -1315,7 +1513,18 @@ export async function optimizeGeneticAsync(
     population = nextPop;
   }
 
-  return bestTree || createRoot(usableW, usableH);
+  let finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree.transposed = true;
+
+  // Pós-análise automática de reagrupamento
+  if (onProgress) onProgress({ phase: "Pós-análise de reagrupamento...", current: generations, total: generations, bestUtil: bestFitness * 100 });
+  const postResult = postOptimizeRegroup(finalTree, bestFitness * usableW * usableH, pieces, usableW, usableH, minBreak);
+  if (postResult.improved) {
+    finalTree = postResult.tree;
+    if (onProgress) onProgress({ phase: "Pós-análise: layout melhorado!", current: generations, total: generations, bestUtil: (postResult.area / (usableW * usableH)) * 100 });
+  }
+
+  return finalTree;
 }
 
 // Synchronous wrapper for backward compatibility - Fast Mini-GA Burst
@@ -1558,6 +1767,15 @@ function runPlacement(
       col = bestFit.col!;
     }
 
+    // Safety: verify column height before inserting Y strip
+    {
+      const currentUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      if (currentUsedH + bestFit.h > usableH + 0.5) {
+        console.warn(`[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`);
+        remaining.shift();
+        continue;
+      }
+    }
     const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
     const yNode = findNode(tree, yId)!;
 
@@ -1764,7 +1982,9 @@ function runPlacement(
           }
         }
 
-        freeHRemain -= bestFit.pieceH;
+        // Recalculate freeHRemain from actual tree state (safer than decrementing)
+        const actualUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        freeHRemain = usableH - actualUsedH;
       }
     }
 
@@ -1774,5 +1994,288 @@ function runPlacement(
     }
   }
 
+  // --- VALIDATION: clamp columns that exceed usableH ---
+  placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
+
   return { tree, area: placedArea, remaining };
+}
+
+/**
+ * Validates that no column (X node) has Y strips whose total height exceeds usableH.
+ * If overflow is detected, removes excess Y strips from the end and adjusts placedArea.
+ */
+function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, placedArea: number): number {
+  for (const colX of tree.filhos) {
+    let totalH = 0;
+    const validChildren: TreeNode[] = [];
+
+    for (const yNode of colX.filhos) {
+      const yHeight = yNode.valor * yNode.multi;
+      if (totalH + yHeight <= usableH + 0.5) { // 0.5 tolerance for rounding
+        validChildren.push(yNode);
+        totalH += yHeight;
+      } else {
+        // Check if we can partially keep this Y (reduce multi)
+        if (yNode.multi > 1) {
+          const canFit = Math.floor((usableH - totalH) / yNode.valor);
+          if (canFit > 0) {
+            yNode.multi = canFit;
+            validChildren.push(yNode);
+            totalH += yNode.valor * canFit;
+          }
+        } else if (totalH + yNode.valor <= usableH + 0.5) {
+          validChildren.push(yNode);
+          totalH += yNode.valor;
+        }
+        // Log overflow for debugging
+        if (validChildren.length < colX.filhos.length) {
+          const originalTotal = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+          console.warn(`[CNC-ENGINE] Column overflow detected: ${originalTotal.toFixed(0)}mm > ${usableH}mm usableH. Clamped to ${totalH.toFixed(0)}mm.`);
+        }
+        // Don't break - check remaining Y strips too (in case later ones are smaller)
+      }
+    }
+
+    if (validChildren.length < colX.filhos.length) {
+      // Recalculate placed area for removed Y strips
+      const removedYNodes = colX.filhos.filter(y => !validChildren.includes(y));
+      for (const ry of removedYNodes) {
+        placedArea -= calculateNodeArea(ry);
+      }
+      colX.filhos = validChildren;
+    }
+  }
+
+  return placedArea;
+}
+
+/**
+ * Recursively calculate the area of pieces in a subtree.
+ */
+function calculateNodeArea(node: TreeNode): number {
+  if (node.filhos.length === 0) {
+    // Leaf node - this is a piece
+    return node.valor * node.multi;
+  }
+  let area = 0;
+  for (const child of node.filhos) {
+    area += calculateNodeArea(child) * node.multi;
+  }
+  return area;
+}
+
+// ========== POST-OPTIMIZATION REGROUPING ANALYSIS ==========
+
+/**
+ * Extrai todas as peças posicionadas de uma árvore de corte,
+ * retornando suas dimensões reais (considerando transposição).
+ */
+function extractPlacedPieces(tree: TreeNode): Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> {
+  const pieces: Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> = [];
+  const T = tree.transposed || false;
+
+  tree.filhos.forEach((colX, ci) => {
+    colX.filhos.forEach((yNode, yi) => {
+      for (const zNode of yNode.filhos) {
+        if (zNode.filhos.length === 0) {
+          // Z leaf: piece is zNode.valor × yNode.valor
+          const pw = T ? yNode.valor : zNode.valor;
+          const ph = T ? zNode.valor : yNode.valor;
+          pieces.push({ w: pw, h: ph, label: zNode.label, colIndex: ci, yIndex: yi });
+        } else {
+          for (const wNode of zNode.filhos) {
+            if (wNode.filhos.length === 0) {
+              const pw = T ? wNode.valor : zNode.valor;
+              const ph = T ? zNode.valor : wNode.valor;
+              pieces.push({ w: pw, h: ph, label: wNode.label, colIndex: ci, yIndex: yi });
+            } else {
+              for (const qNode of wNode.filhos) {
+                const pw = T ? wNode.valor : qNode.valor;
+                const ph = T ? qNode.valor : wNode.valor;
+                pieces.push({ w: pw, h: ph, label: qNode.label, colIndex: ci, yIndex: yi });
+              }
+            }
+          }
+        }
+      }
+    });
+  });
+
+  return pieces;
+}
+
+/**
+ * PÓS-ANÁLISE AUTOMÁTICA: Analisa o layout gerado e identifica oportunidades
+ * de reagrupamento que o pré-agrupamento não conseguiu detectar.
+ *
+ * Processo:
+ * 1. Extrai todas as peças posicionadas da árvore
+ * 2. Identifica peças em colunas DIFERENTES que compartilham a mesma altura
+ * 3. Cria agrupamentos forçados juntando essas peças
+ * 4. Re-executa a otimização com os agrupamentos forçados
+ * 5. Retorna o melhor resultado (original ou reagrupado)
+ *
+ * Exemplo da imagem do usuário:
+ * - Coluna 1: peça 1014×530
+ * - Coluna 2: peça com mesma altura 530
+ * → Agrupa em 1014+X × 530, liberando espaço vertical para peças maiores
+ */
+function postOptimizeRegroup(
+  originalTree: TreeNode,
+  originalArea: number,
+  allPieces: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number,
+): { tree: TreeNode; area: number; improved: boolean } {
+  const placedPieces = extractPlacedPieces(originalTree);
+
+  // Identifica peças em colunas diferentes com mesma altura
+  // Agrupa por altura (menor dimensão)
+  const heightMap = new Map<number, typeof placedPieces>();
+  for (const p of placedPieces) {
+    const h = Math.min(p.w, p.h);
+    if (!heightMap.has(h)) heightMap.set(h, []);
+    heightMap.get(h)!.push(p);
+  }
+
+  // Encontra oportunidades: peças de mesma altura em colunas diferentes
+  const regroupOpportunities: Array<{ height: number; pieces: typeof placedPieces }> = [];
+  for (const [h, group] of heightMap) {
+    // Verifica se há peças em colunas diferentes
+    const cols = new Set(group.map(p => p.colIndex));
+    if (cols.size > 1 && group.length >= 2) {
+      // Verifica se a soma das larguras caberia na chapa
+      const totalW = group.reduce((sum, p) => sum + Math.max(p.w, p.h), 0);
+      if (totalW <= usableW) {
+        regroupOpportunities.push({ height: h, pieces: group });
+      }
+    }
+  }
+
+  if (regroupOpportunities.length === 0) {
+    return { tree: originalTree, area: originalArea, improved: false };
+  }
+
+  console.log(`[CNC-ENGINE] Pós-análise: ${regroupOpportunities.length} oportunidade(s) de reagrupamento encontrada(s)`);
+  for (const opp of regroupOpportunities) {
+    console.log(`  → Altura ${opp.height}mm: ${opp.pieces.length} peças em ${new Set(opp.pieces.map(p => p.colIndex)).size} colunas diferentes`);
+  }
+
+  // Para cada oportunidade, cria um agrupamento forçado e re-otimiza
+  let bestTree = originalTree;
+  let bestArea = originalArea;
+  let improved = false;
+
+  // Estratégia: criar variantes de peças com agrupamentos forçados
+  for (const opp of regroupOpportunities) {
+    // Cria uma cópia das peças originais
+    const forcedPieces: Piece[] = [];
+    const usedLabels = new Set<string>();
+
+    // Cria o grupo forçado
+    const groupLabels: string[] = [];
+    let sumW = 0;
+    for (const p of opp.pieces) {
+      const w = Math.max(p.w, p.h);
+      sumW += w;
+      if (p.label) {
+        groupLabels.push(p.label);
+        usedLabels.add(p.label);
+      }
+    }
+
+    // Adiciona o grupo forçado como primeira peça (prioridade)
+    forcedPieces.unshift({
+      w: sumW,
+      h: opp.height,
+      area: sumW * opp.height,
+      count: opp.pieces.length,
+      labels: groupLabels.length > 0 ? groupLabels : undefined,
+      groupedAxis: "w",
+    });
+
+    // Adiciona as demais peças (não agrupadas)
+    for (const p of allPieces) {
+      if (p.label && usedLabels.has(p.label)) continue;
+      forcedPieces.push({ ...p });
+    }
+
+    // Re-otimiza com as peças reagrupadas
+    const strategies = getSortStrategies();
+    for (const transposed of [false, true]) {
+      const eW = transposed ? usableH : usableW;
+      const eH = transposed ? usableW : usableH;
+
+      for (const sortFn of strategies) {
+        // Mantém o grupo forçado no início, ordena o resto
+        const grouped = forcedPieces.slice(0, 1);
+        const rest = [...forcedPieces.slice(1)].sort(sortFn);
+        const sorted = [...grouped, ...rest];
+
+        const result = runPlacement(sorted, eW, eH, minBreak);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          if (transposed) bestTree.transposed = true;
+          improved = true;
+          console.log(`[CNC-ENGINE] Pós-análise: Reagrupamento melhorou! ${(originalArea / (usableW * usableH) * 100).toFixed(1)}% → ${(bestArea / (usableW * usableH) * 100).toFixed(1)}%`);
+        }
+      }
+    }
+  }
+
+  // Tenta também combinar MÚLTIPLAS oportunidades simultaneamente
+  if (regroupOpportunities.length >= 2) {
+    const forcedPieces: Piece[] = [];
+    const usedLabels = new Set<string>();
+
+    for (const opp of regroupOpportunities) {
+      const groupLabels: string[] = [];
+      let sumW = 0;
+      for (const p of opp.pieces) {
+        sumW += Math.max(p.w, p.h);
+        if (p.label) {
+          groupLabels.push(p.label);
+          usedLabels.add(p.label);
+        }
+      }
+      if (sumW <= usableW) {
+        forcedPieces.push({
+          w: sumW,
+          h: opp.height,
+          area: sumW * opp.height,
+          count: opp.pieces.length,
+          labels: groupLabels.length > 0 ? groupLabels : undefined,
+          groupedAxis: "w",
+        });
+      }
+    }
+
+    for (const p of allPieces) {
+      if (p.label && usedLabels.has(p.label)) continue;
+      forcedPieces.push({ ...p });
+    }
+
+    const strategies = getSortStrategies();
+    for (const transposed of [false, true]) {
+      const eW = transposed ? usableH : usableW;
+      const eH = transposed ? usableW : usableH;
+      for (const sortFn of strategies) {
+        const grouped = forcedPieces.filter(p => (p.count || 1) > 1);
+        const rest = forcedPieces.filter(p => (p.count || 1) <= 1).sort(sortFn);
+        const sorted = [...grouped, ...rest];
+        const result = runPlacement(sorted, eW, eH, minBreak);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          if (transposed) bestTree.transposed = true;
+          improved = true;
+          console.log(`[CNC-ENGINE] Pós-análise combinada melhorou! → ${(bestArea / (usableW * usableH) * 100).toFixed(1)}%`);
+        }
+      }
+    }
+  }
+
+  return { tree: bestTree, area: bestArea, improved };
 }
