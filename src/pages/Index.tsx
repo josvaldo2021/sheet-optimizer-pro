@@ -221,7 +221,7 @@ const Index = () => {
     setStatus({ msg: 'Processando todas as chapas...', type: 'warn' });
 
     const runAllSheets = async (useGrouping?: boolean) => {
-      const chapaList: Array<{ tree: TreeNode; usedArea: number }> = [];
+      const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
       const hasPriority = pieces.some(p => p.priority);
       const remaining = (hasPriority ? pieces.filter(p => p.priority) : pieces).map(p => ({ ...p }));
       let sheetCount = 0;
