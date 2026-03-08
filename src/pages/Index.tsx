@@ -413,7 +413,7 @@ const Index = () => {
   return (
     <div className="flex h-screen overflow-hidden" style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }}>
       {/* SIDEBAR */}
-      <div className="w-80 min-w-[320px] flex flex-col h-screen overflow-y-auto cnc-scroll" style={{ background: 'hsl(0 0% 10%)', borderRight: '2px solid hsl(0 0% 20%)' }}>
+      <div className="w-[370px] min-w-[370px] flex flex-col h-screen overflow-y-auto cnc-scroll" style={{ background: 'hsl(0 0% 10%)', borderRight: '2px solid hsl(0 0% 20%)' }}>
 
         {/* ─── SECTION 1: Setup da Chapa ─── */}
         <SidebarSection title="Setup da Chapa" icon="📐" defaultOpen={true}>
