@@ -697,6 +697,37 @@ const Index = () => {
     setStatus({ msg, type: 'success' });
   }, [layoutGroups, chapas, pieces, extractUsedPiecesWithContext, usableW, usableH, activeChapa]);
 
+  // Confirm auto plan: deduct pieces from inventory and mark chapas as confirmed
+  const confirmAutoPlan = useCallback(() => {
+    const autoChapas = chapas.filter(c => !c.manual);
+    if (autoChapas.length === 0) {
+      setStatus({ msg: 'Nenhuma chapa automática para confirmar.', type: 'error' });
+      return;
+    }
+
+    const updatedPieces = pieces.map(p => ({ ...p }));
+    autoChapas.forEach(chapa => {
+      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+      usedPieces.forEach(used => {
+        for (let j = 0; j < updatedPieces.length; j++) {
+          const p = updatedPieces[j];
+          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+            if (p.qty > 0) { p.qty--; break; }
+          }
+        }
+      });
+    });
+
+    const filteredPieces = updatedPieces.filter(p => p.qty > 0);
+    setPieces(filteredPieces);
+
+    // Mark all auto chapas as confirmed (manual) so they won't be confirmed again
+    setChapas(prev => prev.map(c => c.manual ? c : { ...c, manual: true }));
+
+    const remaining = filteredPieces.reduce((s, p) => s + p.qty, 0);
+    setStatus({ msg: `✅ Plano confirmado! ${autoChapas.length} chapa(s) aplicadas ao inventário. ${remaining} peça(s) restante(s).`, type: 'success' });
+  }, [chapas, pieces, extractUsedPiecesWithContext]);
+
   const saveLayout = useCallback((reps?: number) => {
     const usedPieces = extractUsedPiecesWithContext(tree);
     if (usedPieces.length === 0) {
@@ -949,6 +980,16 @@ const Index = () => {
                   )}
                 </div>
               </div>
+            )}
+
+            {layoutGroups.length > 0 && chapas.some(c => !c.manual) && (
+              <button
+                className="cnc-btn-success w-full mt-2"
+                style={{ padding: '10px', fontSize: '12px', fontWeight: 'bold' }}
+                onClick={confirmAutoPlan}
+              >
+                ✅ CONFIRMAR PLANO (ATUALIZAR INVENTÁRIO)
+              </button>
             )}
 
             {layoutGroups.length > 0 && (
