@@ -99,21 +99,32 @@ function drawTreePieces(
 ) {
   const T = tree.transposed || false;
 
-  // Helper: get display label respecting transposition
-  const dimLabel = (d1: number, d2: number) => T
-    ? `${Math.round(d2)}×${Math.round(d1)}`
-    : `${Math.round(d1)}×${Math.round(d2)}`;
+  const dimLabel = (d1: number, d2: number) =>
+    T ? `${Math.round(d2)}×${Math.round(d1)}` : `${Math.round(d1)}×${Math.round(d2)}`;
 
-  // Helper to draw a single piece rect with label
-  const drawPiece = (px: number, py: number, pw: number, ph: number, label: string | undefined, dimW: number, dimH: number) => {
+  const drawPiece = (
+    localX: number,
+    localY: number,
+    localW: number,
+    localH: number,
+    pieceLabel: string | undefined,
+    dimW: number,
+    dimH: number,
+  ) => {
+    const px = baseX + localX * scale;
+    const py = baseY - (localY + localH) * scale;
+    const pw = localW * scale;
+    const ph = localH * scale;
+
     doc.setFillColor(220, 235, 255);
     doc.setDrawColor(100, 130, 180);
     doc.rect(px, py, pw, ph, 'FD');
+
     if (pw > 8 && ph > 4) {
       doc.setFontSize(Math.min(6, Math.min(pw, ph) / 3));
       doc.setTextColor(30, 60, 100);
-      const txt = label ? `${label}\n${dimLabel(dimW, dimH)}` : dimLabel(dimW, dimH);
-      doc.text(txt, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
+      const text = pieceLabel ? `${pieceLabel}\n${dimLabel(dimW, dimH)}` : dimLabel(dimW, dimH);
+      doc.text(text, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
     }
   };
 
@@ -121,70 +132,94 @@ function drawTreePieces(
 
   tree.filhos.forEach(xNode => {
     for (let ix = 0; ix < xNode.multi; ix++) {
-      const cx = xOff;
+      const xBase = T ? 0 : xOff;
+      const xBottom = T ? xOff : 0;
       let yOff = 0;
 
       xNode.filhos.forEach(yNode => {
         for (let iy = 0; iy < yNode.multi; iy++) {
-          const cy = yOff;
+          const yBase = T ? yOff : 0;
+          const yBottom = T ? 0 : yOff;
           let zOff = 0;
 
           yNode.filhos.forEach(zNode => {
             for (let iz = 0; iz < zNode.multi; iz++) {
               if (zNode.filhos.length === 0) {
-                // Leaf Z piece
-                let px: number, py: number, pw: number, ph: number;
                 if (T) {
-                  // Transposed: X→vertical(Y-axis), Y→horizontal(X-axis), Z stacks vertically within Y
-                  px = baseX + cy * scale + zOff * scale;
-                  py = baseY - (cx + xNode.valor) * scale;
-                  pw = zNode.valor * scale;
-                  ph = xNode.valor * scale;
+                  // Transposed: piece = yNode (width) × zNode (height)
+                  drawPiece(
+                    xBase + yBase,
+                    xBottom + yBottom + zOff,
+                    yNode.valor,
+                    zNode.valor,
+                    zNode.label,
+                    zNode.valor,
+                    yNode.valor,
+                  );
                 } else {
-                  px = baseX + cx * scale + zOff * scale;
-                  py = baseY - (cy + yNode.valor) * scale;
-                  pw = zNode.valor * scale;
-                  ph = yNode.valor * scale;
+                  drawPiece(
+                    xBase + zOff,
+                    xBottom + yBottom,
+                    zNode.valor,
+                    yNode.valor,
+                    zNode.label,
+                    zNode.valor,
+                    yNode.valor,
+                  );
                 }
-                drawPiece(px, py, pw, ph, zNode.label, zNode.valor, yNode.valor);
               } else {
-                // Z with W children
                 let wOff = 0;
                 zNode.filhos.forEach(wNode => {
                   for (let iw = 0; iw < wNode.multi; iw++) {
                     if (wNode.filhos.length === 0) {
-                      let px: number, py: number, pw: number, ph: number;
                       if (T) {
-                        // W subdivides Z horizontally in transposed mode
-                        px = baseX + cy * scale + zOff * scale;
-                        py = baseY - (cx + wOff + wNode.valor) * scale;
-                        pw = zNode.valor * scale;
-                        ph = wNode.valor * scale;
+                        // Transposed: piece = wNode (width) × zNode (height)
+                        drawPiece(
+                          xBase + yBase + wOff,
+                          xBottom + yBottom + zOff,
+                          wNode.valor,
+                          zNode.valor,
+                          wNode.label,
+                          zNode.valor,
+                          wNode.valor,
+                        );
                       } else {
-                        px = baseX + cx * scale + zOff * scale;
-                        py = baseY - (cy + wOff + wNode.valor) * scale;
-                        pw = zNode.valor * scale;
-                        ph = wNode.valor * scale;
+                        drawPiece(
+                          xBase + zOff,
+                          xBottom + yBottom + wOff,
+                          zNode.valor,
+                          wNode.valor,
+                          wNode.label,
+                          zNode.valor,
+                          wNode.valor,
+                        );
                       }
-                      drawPiece(px, py, pw, ph, wNode.label, zNode.valor, wNode.valor);
                     } else {
-                      // W with Q children
                       let qOff = 0;
                       wNode.filhos.forEach(qNode => {
                         for (let iq = 0; iq < qNode.multi; iq++) {
-                          let px: number, py: number, pw: number, ph: number;
                           if (T) {
-                            px = baseX + cy * scale + zOff * scale;
-                            py = baseY - (cx + wOff + wNode.valor) * scale + qOff * scale;
-                            pw = qNode.valor * scale;
-                            ph = wNode.valor * scale;
+                            // Transposed: piece = wNode (width) × qNode (height)
+                            drawPiece(
+                              xBase + yBase + wOff,
+                              xBottom + yBottom + zOff + qOff,
+                              wNode.valor,
+                              qNode.valor,
+                              qNode.label,
+                              qNode.valor,
+                              wNode.valor,
+                            );
                           } else {
-                            px = baseX + cx * scale + zOff * scale + qOff * scale;
-                            py = baseY - (cy + wOff + wNode.valor) * scale;
-                            pw = qNode.valor * scale;
-                            ph = wNode.valor * scale;
+                            drawPiece(
+                              xBase + zOff + qOff,
+                              xBottom + yBottom + wOff,
+                              qNode.valor,
+                              wNode.valor,
+                              qNode.label,
+                              qNode.valor,
+                              wNode.valor,
+                            );
                           }
-                          drawPiece(px, py, pw, ph, qNode.label, qNode.valor, wNode.valor);
                           qOff += qNode.valor;
                         }
                       });
@@ -203,30 +238,31 @@ function drawTreePieces(
     }
   });
 
-  // Draw waste areas
+  // Draw X-level waste
   const totalX = tree.filhos.reduce((a, x) => {
     let s = 0;
     for (let i = 0; i < x.multi; i++) s += x.valor;
     return a + s;
   }, 0);
+
   const xDimTotal = T ? usableH : usableW;
   const xWaste = xDimTotal - totalX;
+
   if (xWaste > 0) {
-    let px: number, py: number, pw: number, ph: number;
-    if (T) {
-      px = baseX;
-      py = baseY - usableH * scale;
-      pw = usableW * scale;
-      ph = xWaste * scale;
-    } else {
-      px = baseX + totalX * scale;
-      py = baseY - usableH * scale;
-      pw = xWaste * scale;
-      ph = usableH * scale;
-    }
+    const localX = T ? 0 : totalX;
+    const localY = T ? totalX : 0;
+    const localW = T ? usableW : xWaste;
+    const localH = T ? xWaste : usableH;
+
+    const px = baseX + localX * scale;
+    const py = baseY - (localY + localH) * scale;
+    const pw = localW * scale;
+    const ph = localH * scale;
+
     doc.setFillColor(200, 220, 240);
     doc.setDrawColor(150, 180, 210);
     doc.rect(px, py, pw, ph, 'FD');
+
     if (pw > 10 && ph > 5) {
       doc.setFontSize(5);
       doc.setTextColor(100, 140, 180);
