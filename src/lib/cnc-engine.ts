@@ -1029,6 +1029,12 @@ export function optimizeV6(
           groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
           // Combined RAW
           groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
+          // Column-width maximizing: grouped pieces with widest combined width first
+          groupPiecesColumnWidth(pieces, usableW),
+          groupPiecesColumnWidth(rotatedPieces, usableW),
+          // Column-height maximizing: grouped pieces with tallest combined height first
+          groupPiecesColumnHeight(pieces, usableH),
+          groupPiecesColumnHeight(rotatedPieces, usableH),
         ];
 
   let bestTree: TreeNode | null = null;
