@@ -607,6 +607,58 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
   return result;
 }
 
+/**
+ * COLUMN-WIDTH MAXIMIZING: Groups pieces by height (like groupPiecesByHeight),
+ * then sorts results so that grouped pieces with the WIDEST combined width come first.
+ * This ensures the X column is wide enough to also accommodate other (possibly wider individual)
+ * pieces that are slightly narrower than the grouped sum.
+ *
+ * Example: 2×(1014×530) → grouped 2028×530 sorted BEFORE 2014×880
+ * → X=2028, then 2014×880 fits in that column (2014 ≤ 2028)
+ */
+function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
+  // First, group by height (same as groupPiecesByHeight)
+  const grouped = groupPiecesByHeight(pieces);
+
+  // Sort by combined width descending (grouped pieces with wider sums first)
+  // This ensures the widest group sets the X column width
+  grouped.sort((a, b) => {
+    // Prioritize grouped pieces (count > 1) over individuals
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Both grouped: wider combined width first
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Grouped pieces come first
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  // Filter out groups wider than usableW (can't fit)
+  return grouped.filter(p => p.w <= usableW);
+}
+
+/**
+ * Same as groupPiecesColumnWidth but groups by width (sum heights).
+ */
+function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
+  const grouped = groupPiecesByWidth(pieces);
+
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    if (aIsGrouped && bIsGrouped) return b.h - a.h || b.w - a.w;
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    return b.area - a.area;
+  });
+
+  return grouped.filter(p => p.h <= usableH);
+}
+
 function oris(p: Piece): { w: number; h: number }[] {
   if (p.w === p.h) return [{ w: p.w, h: p.h }];
   return [
