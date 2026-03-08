@@ -1131,6 +1131,14 @@ export function optimizeV6(
           // Column-height maximizing: grouped pieces with tallest combined height first
           groupPiecesColumnHeight(pieces, usableH),
           groupPiecesColumnHeight(rotatedPieces, usableH),
+          // Strip-first: full-width horizontal strip placed first
+          groupPiecesStripFirst(pieces, usableW, usableH, 0.7),
+          groupPiecesStripFirst(pieces, usableW, usableH, 0.5),
+          groupPiecesStripFirst(rotatedPieces, usableW, usableH, 0.7),
+          groupPiecesStripFirst(rotatedPieces, usableW, usableH, 0.5),
+          // Strip-first transposed dimensions
+          groupPiecesStripFirst(pieces, usableH, usableW, 0.7),
+          groupPiecesStripFirst(pieces, usableH, usableW, 0.5),
         ];
 
   let bestTree: TreeNode | null = null;
