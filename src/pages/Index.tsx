@@ -844,6 +844,28 @@ const Index = () => {
                   style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
                 >✕</button>
               </div>
+              <div className="flex gap-2 mb-2 items-center">
+                <span style={{ color: 'hsl(0 0% 60%)' }}>Salvar</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={replicationInfo.count}
+                  defaultValue={replicationInfo.count}
+                  id="saveRepCount"
+                  className="cnc-input w-14 text-center"
+                />
+                <span style={{ color: 'hsl(0 0% 60%)' }}>cópias</span>
+                <button
+                  onClick={() => {
+                    const val = parseInt((document.getElementById('saveRepCount') as HTMLInputElement)?.value || '1');
+                    saveLayout(Math.max(1, Math.min(val, replicationInfo?.count || 1)));
+                  }}
+                  className="cnc-btn-secondary flex-1 text-[10px]"
+                  style={{ background: 'hsl(120 60% 25%)', fontWeight: 'bold' }}
+                >
+                  💾 SALVAR ×{replicationInfo.count}
+                </button>
+              </div>
               <table className="w-full" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ color: 'hsl(0 0% 45%)', fontSize: '8px' }}>
