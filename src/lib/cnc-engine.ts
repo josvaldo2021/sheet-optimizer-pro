@@ -1099,14 +1099,20 @@ export function optimizeV6(
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
-  const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
-  const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
+  const rotatedPieces = pieces.map((p) => ({
+    w: p.h,
+    h: p.w,
+    area: p.area,
+    count: p.count,
+    label: p.label,
+    labels: p.labels,
+    groupedAxis: p.groupedAxis,
+    placeFirst: p.placeFirst,
+  }));
 
-  const pieceVariants: Piece[][] = hasLabels
-    ? [pieces, rotatedPieces]
-    : useGrouping === false
+  const pieceVariants: Piece[][] = useGrouping === false
       ? [pieces, rotatedPieces]
       : [
           pieces,
@@ -1150,6 +1156,7 @@ export function optimizeV6(
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
+  let bestHadPinned = false;
 
   // Test both normal and transposed orientations
   for (const transposed of [false, true]) {
@@ -1159,15 +1166,21 @@ export function optimizeV6(
     for (const variant of pieceVariants) {
       for (const sortFn of strategies) {
         // Preserve placeFirst pieces at the front, sort only the rest
-        const pinned = variant.filter(p => p.placeFirst);
-        const rest = variant.filter(p => !p.placeFirst);
+        const pinned = variant.filter((p) => p.placeFirst);
+        const rest = variant.filter((p) => !p.placeFirst);
         const sorted = [...pinned, ...rest.sort(sortFn)];
         const result = runPlacement(sorted, eW, eH, minBreak);
-        if (result.area > bestArea) {
+        const hasPinned = pinned.length > 0;
+
+        if (
+          result.area > bestArea ||
+          (Math.abs(result.area - bestArea) <= 0.001 && hasPinned && !bestHadPinned)
+        ) {
           bestArea = result.area;
           bestTree = result.tree;
           bestRemaining = result.remaining;
           bestTransposed = transposed;
+          bestHadPinned = hasPinned;
         }
       }
     }
