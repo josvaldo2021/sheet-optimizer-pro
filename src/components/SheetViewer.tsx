@@ -120,12 +120,13 @@ export default function SheetViewer({
                   const isVertical = realH > realW;
                   const pxW = (T ? yNode.valor : zNode.valor) * scale;
                   const pxH = (T ? zNode.valor : yNode.valor) * scale;
-                  const fs = dynamicFontSize(pxW, pxH);
+                  const dim = dimLabel(zNode.valor, yNode.valor);
+                  const fs = dynamicFontSize(pxW, pxH, dim, zNode.label, isVertical);
                   wEls.push(
                     <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
                       <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
                         {zNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{zNode.label}</span>}
-                        {dimLabel(zNode.valor, yNode.valor)}
+                        {dim}
                       </span>
                     </div>
                   );
