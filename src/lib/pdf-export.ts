@@ -292,23 +292,23 @@ export function exportPdf(options: PdfExportOptions) {
   const margin = 12;
 
   // ─── Cover page ───
-  doc.setFontSize(22);
+  doc.setFontSize(28);
   doc.setTextColor(30, 30, 30);
-  doc.text('Plano de Corte', margin, 25);
+  doc.text('Plano de Corte', margin, 28);
 
-  doc.setFontSize(10);
+  doc.setFontSize(13);
   doc.setTextColor(100);
-  doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, 33);
+  doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, 38);
 
-  let cy = 45;
-  doc.setFontSize(11);
+  let cy = 52;
+  doc.setFontSize(14);
   doc.setTextColor(40);
-  doc.text(`Chapa: ${chapaW} × ${chapaH} mm`, margin, cy); cy += 7;
-  doc.text(`Área útil: ${usableW} × ${usableH} mm`, margin, cy); cy += 7;
-  doc.text(`Refilos: E=${options.ml} D=${options.mr} S=${options.mt} I=${options.mb} mm`, margin, cy); cy += 7;
-  doc.text(`Total de chapas: ${chapas.length}`, margin, cy); cy += 7;
-  doc.text(`Layouts únicos: ${layoutGroups.length}`, margin, cy); cy += 7;
-  doc.text(`Aproveitamento total: ${utilization.toFixed(1)}%`, margin, cy); cy += 12;
+  doc.text(`Chapa: ${chapaW} × ${chapaH} mm`, margin, cy); cy += 9;
+  doc.text(`Área útil: ${usableW} × ${usableH} mm`, margin, cy); cy += 9;
+  doc.text(`Refilos: E=${options.ml} D=${options.mr} S=${options.mt} I=${options.mb} mm`, margin, cy); cy += 9;
+  doc.text(`Total de chapas: ${chapas.length}`, margin, cy); cy += 9;
+  doc.text(`Layouts únicos: ${layoutGroups.length}`, margin, cy); cy += 9;
+  doc.text(`Aproveitamento total: ${utilization.toFixed(1)}%`, margin, cy); cy += 14;
 
   // Summary table
   doc.setFontSize(13);
