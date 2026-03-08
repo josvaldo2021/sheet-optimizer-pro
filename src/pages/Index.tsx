@@ -982,6 +982,16 @@ const Index = () => {
               </div>
             )}
 
+            {layoutGroups.length > 0 && chapas.some(c => !c.manual) && (
+              <button
+                className="cnc-btn-success w-full mt-2"
+                style={{ padding: '10px', fontSize: '12px', fontWeight: 'bold' }}
+                onClick={confirmAutoPlan}
+              >
+                ✅ CONFIRMAR PLANO (ATUALIZAR INVENTÁRIO)
+              </button>
+            )}
+
             {layoutGroups.length > 0 && (
               <button
                 className="cnc-btn-secondary w-full mt-2"
