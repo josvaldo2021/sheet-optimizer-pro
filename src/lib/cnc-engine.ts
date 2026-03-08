@@ -624,6 +624,119 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
 }
 
 /**
+ * STRIP-FIRST: Identifica peças de mesma altura cuja soma de larguras preenche
+ * ≥ threshold% da largura da chapa. Coloca esse grupo PRIMEIRO na lista,
+ * forçando a criação de uma coluna X de largura total da chapa.
+ * As peças grandes (2014×880, 987×1700 etc.) ficam acima como Z subdivisions.
+ *
+ * Exemplo: 3× 1014×530 → strip de 3042×530 na base
+ * → X=3042 (largura total), Y1=530 (strip), Y2=1700+ (peças grandes)
+ */
+function groupPiecesStripFirst(pieces: Piece[], usableW: number, usableH: number, threshold: number = 0.7): Piece[] {
+  // Agrupa peças por menor dimensão (altura da faixa)
+  const heightGroups = new Map<number, Piece[]>();
+  for (const p of pieces) {
+    // Test both orientations for the "height" of the strip
+    const dims = [Math.min(p.w, p.h), Math.max(p.w, p.h)];
+    for (const h of dims) {
+      if (!heightGroups.has(h)) heightGroups.set(h, []);
+      // Avoid duplicates: only add once per dimension
+    }
+  }
+  // Rebuild properly: for each piece, choose the orientation where h = smaller dim
+  heightGroups.clear();
+  for (const p of pieces) {
+    const h = Math.min(p.w, p.h);
+    if (!heightGroups.has(h)) heightGroups.set(h, []);
+    heightGroups.get(h)!.push(p);
+  }
+
+  // Find groups that fill ≥ threshold of usableW
+  let bestStrip: { height: number; pieces: Piece[]; totalW: number } | null = null;
+  let bestFillRatio = 0;
+
+  for (const [h, group] of heightGroups) {
+    if (group.length < 2) continue;
+    
+    // Try to pack as many pieces as possible into usableW
+    const sorted = [...group].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h));
+    const stripPieces: Piece[] = [];
+    let totalW = 0;
+    
+    for (const p of sorted) {
+      const w = Math.max(p.w, p.h);
+      if (totalW + w <= usableW) {
+        stripPieces.push(p);
+        totalW += w;
+      }
+    }
+    
+    const fillRatio = totalW / usableW;
+    if (stripPieces.length >= 2 && fillRatio >= threshold && fillRatio > bestFillRatio) {
+      bestFillRatio = fillRatio;
+      bestStrip = { height: h, pieces: stripPieces, totalW };
+    }
+  }
+
+  // Also test with max dimension as height (rotated strips)
+  const heightGroupsRot = new Map<number, Piece[]>();
+  for (const p of pieces) {
+    const h = Math.max(p.w, p.h);
+    if (!heightGroupsRot.has(h)) heightGroupsRot.set(h, []);
+    heightGroupsRot.get(h)!.push(p);
+  }
+  for (const [h, group] of heightGroupsRot) {
+    if (group.length < 2 || h > usableH) continue;
+    const sorted = [...group].sort((a, b) => Math.min(b.w, b.h) - Math.min(a.w, a.h));
+    const stripPieces: Piece[] = [];
+    let totalW = 0;
+    for (const p of sorted) {
+      const w = Math.min(p.w, p.h);
+      if (totalW + w <= usableW) {
+        stripPieces.push(p);
+        totalW += w;
+      }
+    }
+    const fillRatio = totalW / usableW;
+    if (stripPieces.length >= 2 && fillRatio >= threshold && fillRatio > bestFillRatio) {
+      bestFillRatio = fillRatio;
+      bestStrip = { height: h, pieces: stripPieces, totalW };
+    }
+  }
+
+  if (!bestStrip) {
+    // No good strip found, return original pieces sorted by area
+    return [...pieces].sort((a, b) => b.area - a.area);
+  }
+
+  // Build result: strip group FIRST, then remaining pieces
+  const result: Piece[] = [];
+  const usedPieces = new Set(bestStrip.pieces);
+  
+  // Create the strip group
+  const groupLabels: string[] = [];
+  for (const p of bestStrip.pieces) {
+    if (p.label) groupLabels.push(p.label);
+  }
+  
+  result.push({
+    w: bestStrip.totalW,
+    h: bestStrip.height,
+    area: bestStrip.pieces[0] ? Math.max(bestStrip.pieces[0].w, bestStrip.pieces[0].h) * bestStrip.height : bestStrip.totalW * bestStrip.height,
+    count: bestStrip.pieces.length,
+    labels: groupLabels.length > 0 ? groupLabels : undefined,
+    groupedAxis: "w",
+  });
+  
+  // Add remaining pieces (sorted by area descending)
+  const remaining = pieces.filter(p => !usedPieces.has(p));
+  remaining.sort((a, b) => b.area - a.area);
+  result.push(...remaining);
+  
+  return result;
+}
+
+/**
  * Same as groupPiecesColumnWidth but groups by width (sum heights).
  */
 function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
@@ -1018,6 +1131,14 @@ export function optimizeV6(
           // Column-height maximizing: grouped pieces with tallest combined height first
           groupPiecesColumnHeight(pieces, usableH),
           groupPiecesColumnHeight(rotatedPieces, usableH),
+          // Strip-first: full-width horizontal strip placed first
+          groupPiecesStripFirst(pieces, usableW, usableH, 0.7),
+          groupPiecesStripFirst(pieces, usableW, usableH, 0.5),
+          groupPiecesStripFirst(rotatedPieces, usableW, usableH, 0.7),
+          groupPiecesStripFirst(rotatedPieces, usableW, usableH, 0.5),
+          // Strip-first transposed dimensions
+          groupPiecesStripFirst(pieces, usableH, usableW, 0.7),
+          groupPiecesStripFirst(pieces, usableH, usableW, 0.5),
         ];
 
   let bestTree: TreeNode | null = null;
@@ -1091,7 +1212,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight
+  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight, 9=stripFirst
   transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
@@ -1186,7 +1307,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const)[Math.floor(Math.random() * 10)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
       transposed: Math.random() > 0.5,
     };
   }
@@ -1220,6 +1341,10 @@ export async function optimizeGeneticAsync(
       work = groupPiecesColumnWidth(work, usableW);
     } else if (ind.groupingMode === 8) {
       work = groupPiecesColumnHeight(work, usableH);
+    } else if (ind.groupingMode === 9) {
+      const eW = ind.transposed ? usableH : usableW;
+      const eH = ind.transposed ? usableW : usableH;
+      work = groupPiecesStripFirst(work, eW, eH);
     }
 
     return work;
@@ -1266,7 +1391,7 @@ export async function optimizeGeneticAsync(
 
     // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
-    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
     return {
       genome: childGenome,
@@ -1308,7 +1433,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const)[Math.floor(Math.random() * 10)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
