@@ -278,7 +278,7 @@ const Index = () => {
 
         if (!isFinite(maxReplications) || maxReplications < 0) maxReplications = 0;
         // Cap to avoid runaway
-        maxReplications = Math.min(maxReplications, 100 - chapaList.length);
+        maxReplications = Math.min(maxReplications, maxSheets - chapaList.length);
 
         // Deduct first sheet's pieces from remaining
         usedPieces.forEach(used => {
