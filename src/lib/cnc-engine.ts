@@ -624,6 +624,61 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
 }
 
 /**
+ * BAND-FIRST: Groups pieces by height using fill-row, then sorts so that
+ * the WIDEST group (highest coverage of sheet width) comes FIRST.
+ * This ensures horizontal bands spanning most of the sheet are placed
+ * before individual large pieces, preventing them from consuming column space.
+ *
+ * Example: 3×(1014×530) → group 3042×530 placed FIRST as a full-width band,
+ * then 2014×880 uses the remaining height above.
+ */
+function groupPiecesBandFirst(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
+  const grouped = groupPiecesFillRow(pieces, usableW, raw);
+
+  // Sort: widest groups first (highest width coverage), then by area for individuals
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Both grouped: wider first (closer to full sheet width)
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Grouped bands come first
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  return grouped;
+}
+
+/**
+ * BAND-LAST: Same as band-first but groups go LAST (placed at the bottom).
+ * Individual large pieces consume the top, bands fill the bottom.
+ */
+function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
+  const grouped = groupPiecesFillRow(pieces, usableW, raw);
+
+  // Sort: individuals first by area, then grouped bands (widest last)
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Individual pieces first
+    if (!aIsGrouped && bIsGrouped) return -1;
+    if (aIsGrouped && !bIsGrouped) return 1;
+    // Both grouped: wider first
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  return grouped;
+}
+
+
+
+/**
  * Same as groupPiecesColumnWidth but groups by width (sum heights).
  */
 function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
@@ -1018,6 +1073,14 @@ export function optimizeV6(
           // Column-height maximizing: grouped pieces with tallest combined height first
           groupPiecesColumnHeight(pieces, usableH),
           groupPiecesColumnHeight(rotatedPieces, usableH),
+          // Band-first: widest horizontal bands placed first (full-width strips)
+          groupPiecesBandFirst(pieces, usableW),
+          groupPiecesBandFirst(rotatedPieces, usableW),
+          groupPiecesBandFirst(pieces, usableW, true),
+          groupPiecesBandFirst(rotatedPieces, usableW, true),
+          // Band-last: large pieces first, bands fill remaining space
+          groupPiecesBandLast(pieces, usableW),
+          groupPiecesBandLast(rotatedPieces, usableW),
         ];
 
   let bestTree: TreeNode | null = null;
