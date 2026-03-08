@@ -347,19 +347,19 @@ export function exportPdf(options: PdfExportOptions) {
     const pieces = extractPiecesFromTree(group.tree);
 
     // Header
-    doc.setFontSize(16);
+    doc.setFontSize(20);
     doc.setTextColor(30);
-    doc.text(`Layout ${gIdx + 1}`, margin, 18);
+    doc.text(`Layout ${gIdx + 1}`, margin, 20);
 
-    doc.setFontSize(11);
+    doc.setFontSize(14);
     doc.setTextColor(80);
-    doc.text(`Quantidade de chapas a cortar: ${group.count}`, margin + 50, 18);
+    doc.text(`Quantidade de chapas a cortar: ${group.count}`, margin + 55, 20);
 
-    doc.setFontSize(10);
+    doc.setFontSize(13);
     doc.setTextColor(60);
-    let hy = 26;
+    let hy = 30;
     doc.text(`Aproveitamento: ${util.toFixed(1)}%  •  Peças: ${pieces.length}  •  Chapa: ${chapaW}×${chapaH} mm`, margin, hy);
-    hy += 8;
+    hy += 10;
 
     // Miniature drawing
     const miniMaxW = pageW - margin * 2;
@@ -367,22 +367,23 @@ export function exportPdf(options: PdfExportOptions) {
     const { h: drawnH } = drawSheetMiniature(doc, group.tree, margin, hy, miniMaxW, miniMaxH, usableW, usableH, chapaW, chapaH, ml, mb);
 
     // Pieces table
-    let ty = hy + drawnH + 10;
-    doc.setFontSize(12);
+    let ty = hy + drawnH + 12;
+    doc.setFontSize(15);
     doc.setTextColor(30);
-    doc.text('Lista de Peças', margin, ty); ty += 7;
+    doc.text('Lista de Peças', margin, ty); ty += 9;
 
-    doc.setFontSize(8);
+    doc.setFontSize(11);
     doc.setTextColor(100);
     doc.text('#', margin, ty);
-    doc.text('ID', margin + 8, ty);
-    doc.text('Largura', margin + 40, ty);
-    doc.text('Altura', margin + 60, ty);
-    ty += 3;
+    doc.text('ID', margin + 10, ty);
+    doc.text('Largura', margin + 50, ty);
+    doc.text('Altura', margin + 80, ty);
+    ty += 5;
     doc.setDrawColor(200);
-    doc.line(margin, ty, margin + 80, ty);
-    ty += 4;
+    doc.line(margin, ty, margin + 100, ty);
+    ty += 5;
 
+    doc.setFontSize(11);
     doc.setTextColor(40);
     pieces.forEach((p, pIdx) => {
       if (ty > pageH - 15) {
@@ -390,10 +391,10 @@ export function exportPdf(options: PdfExportOptions) {
         ty = 18;
       }
       doc.text(`${pIdx + 1}`, margin, ty);
-      doc.text(p.label || '-', margin + 8, ty);
-      doc.text(`${Math.round(p.w)}`, margin + 40, ty);
-      doc.text(`${Math.round(p.h)}`, margin + 60, ty);
-      ty += 5;
+      doc.text(p.label || '-', margin + 10, ty);
+      doc.text(`${Math.round(p.w)}`, margin + 50, ty);
+      doc.text(`${Math.round(p.h)}`, margin + 80, ty);
+      ty += 7;
     });
   });
 
