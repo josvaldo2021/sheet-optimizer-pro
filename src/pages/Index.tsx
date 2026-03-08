@@ -310,7 +310,7 @@ const Index = () => {
         // Replicate the layout for additional copies
         if (maxReplications > 0) {
           for (let rep = 0; rep < maxReplications; rep++) {
-            chapaList.push({ tree: cloneTree(result), usedArea });
+            chapaList.push({ tree: cloneTree(result), usedArea, manual: false });
             // Deduct pieces for this replicated sheet
             layoutBOM.forEach(({ w, h, count }) => {
               let toDeduct = count;
