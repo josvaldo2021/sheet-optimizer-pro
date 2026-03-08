@@ -210,8 +210,10 @@ const Index = () => {
       const hasPriority = pieces.some(p => p.priority);
       const remaining = (hasPriority ? pieces.filter(p => p.priority) : pieces).map(p => ({ ...p }));
       let sheetCount = 0;
+      const totalPieces = remaining.reduce((sum, p) => sum + Math.max(p.qty, 1), 0);
+      const maxSheets = Math.max(100, totalPieces * 2);
 
-      while (remaining.length > 0 && sheetCount < 100) {
+      while (remaining.length > 0 && sheetCount < maxSheets) {
         sheetCount++;
         const inv: { w: number; h: number; area: number; label?: string }[] = [];
         remaining.forEach(p => {
