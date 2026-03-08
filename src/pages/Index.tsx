@@ -907,16 +907,45 @@ const Index = () => {
               <label className="text-[9px] uppercase tracking-wider font-bold block mb-1" style={{ color: 'hsl(0 0% 50%)' }}>
                 IDs Prioritários
               </label>
-              <input
-                type="text"
-                value={priorityIds}
-                onChange={e => setPriorityIds(e.target.value)}
-                className="cnc-input w-full"
-                placeholder="Ex: A1, A2, B3"
-                style={{ fontSize: '10px' }}
-              />
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={priorityIds}
+                  onChange={e => setPriorityIds(e.target.value)}
+                  className="cnc-input flex-1"
+                  placeholder="Ex: A1, A2, B3"
+                  style={{ fontSize: '10px' }}
+                />
+                <button
+                  onClick={() => {
+                    const labels = priorityIds.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+                    if (labels.length === 0) {
+                      setStatus({ msg: 'Preencha os IDs prioritários primeiro!', type: 'error' });
+                      return;
+                    }
+                    const toRemove: number[] = [];
+                    chapas.forEach((chapa, idx) => {
+                      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+                      const hasAny = usedPieces.some(p => p.label && labels.includes(p.label.toUpperCase()));
+                      if (!hasAny) toRemove.push(idx);
+                    });
+                    if (toRemove.length === 0) {
+                      setStatus({ msg: 'Todos os layouts já contêm IDs prioritários.', type: 'success' });
+                      return;
+                    }
+                    setChapas(prev => prev.filter((_, idx) => !toRemove.includes(idx)));
+                    if (activeChapa >= chapas.length - toRemove.length) setActiveChapa(0);
+                    setStatus({ msg: `🗑️ ${toRemove.length} layout(s) sem IDs prioritários removido(s).`, type: 'success' });
+                  }}
+                  className="cnc-btn text-[8px] px-2 whitespace-nowrap"
+                  title="Remover layouts que NÃO contêm os IDs listados"
+                  style={{ background: 'hsl(0 70% 40%)', color: 'white', fontSize: '9px' }}
+                >
+                  🗑️ Filtrar
+                </button>
+              </div>
               <div style={{ fontSize: '8px', color: 'hsl(0 0% 45%)', marginTop: '3px' }}>
-                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas.
+                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Botão remove chapas sem esses IDs.
               </div>
             </div>
             <div className="flex gap-2 mb-3">
