@@ -471,7 +471,7 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="max-h-[280px] overflow-y-auto p-2.5 cnc-scroll">
+            <div className="max-h-[280px] overflow-x-auto overflow-y-auto p-2.5 cnc-scroll">
               {/* Header */}
               {pieces.length > 0 && (
               <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '20px 70px 70px 15px 70px 70px 20px', color: 'hsl(0 0% 45%)' }}>
