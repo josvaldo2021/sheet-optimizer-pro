@@ -72,16 +72,21 @@ const Index = () => {
     setStatus({ msg: 'Setup aplicado', type: 'success' });
   }, [usableW, usableH]);
 
-  // Helper to sync tree changes to chapas after manual edits
+  // Track whether we're editing a saved chapa or drawing a fresh layout
+  const [editingExistingChapa, setEditingExistingChapa] = useState(false);
+
+  // Helper to sync tree changes to chapas after manual edits (only when editing an existing chapa)
   const updateTreeAndChapas = useCallback((newTree: TreeNode) => {
     setTree(newTree);
-    setChapas(prev => {
-      if (prev.length === 0) return prev;
-      const updated = [...prev];
-      updated[activeChapa] = { tree: newTree, usedArea: calcPlacedArea(newTree) };
-      return updated;
-    });
-  }, [activeChapa]);
+    if (editingExistingChapa) {
+      setChapas(prev => {
+        if (prev.length === 0) return prev;
+        const updated = [...prev];
+        updated[activeChapa] = { tree: newTree, usedArea: calcPlacedArea(newTree) };
+        return updated;
+      });
+    }
+  }, [activeChapa, editingExistingChapa]);
 
   const processCommand = useCallback((text: string) => {
     if (text === 'U') {
