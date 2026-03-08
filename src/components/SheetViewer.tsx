@@ -66,6 +66,13 @@ export default function SheetViewer({
       ? `${Math.round(d2)}×${Math.round(d1)}`
       : `${Math.round(d1)}×${Math.round(d2)}`;
 
+    // Dynamic font size based on piece pixel dimensions
+    const dynamicFontSize = (pxW: number, pxH: number) => {
+      const maxByW = pxW * 0.35;
+      const maxByH = pxH * 0.4;
+      return Math.max(7, Math.min(28, maxByW, maxByH));
+    };
+
     tree.filhos.forEach(xNode => {
       for (let ix = 0; ix < xNode.multi; ix++) {
         const cx = xOff;
