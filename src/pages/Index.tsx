@@ -588,7 +588,8 @@ const Index = () => {
 
     processCommand(suggestion.cmd);
     setCmdInput('');
-    setShowSuggestions(false);
+    // Keep open to immediately suggest the next level after insertion
+    setShowSuggestions(true);
     setSelectedSuggestionIdx(-1);
     cmdInputRef.current?.focus();
   }, [processCommand, cmdInput]);
