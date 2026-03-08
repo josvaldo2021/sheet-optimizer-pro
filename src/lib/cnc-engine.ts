@@ -1341,6 +1341,10 @@ export async function optimizeGeneticAsync(
       work = groupPiecesColumnWidth(work, usableW);
     } else if (ind.groupingMode === 8) {
       work = groupPiecesColumnHeight(work, usableH);
+    } else if (ind.groupingMode === 9) {
+      const eW = ind.transposed ? usableH : usableW;
+      const eH = ind.transposed ? usableW : usableH;
+      work = groupPiecesStripFirst(work, eW, eH);
     }
 
     return work;
