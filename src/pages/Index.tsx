@@ -776,13 +776,14 @@ const Index = () => {
       {/* MAIN */}
       <div className="flex-1 flex flex-col" style={{ background: 'hsl(0 0% 0%)' }}>
         <SheetViewer
-          chapas={chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
-          activeIndex={chapas.length > 0 ? activeChapa : 0}
+          chapas={editingExistingChapa && chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
+          activeIndex={editingExistingChapa && chapas.length > 0 ? activeChapa : 0}
           onSelectSheet={(idx) => {
             setActiveChapa(idx);
             if (chapas[idx]) {
               setTree(chapas[idx].tree);
               setSelectedId('root');
+              setEditingExistingChapa(true);
             }
           }}
           selectedId={selectedId}
