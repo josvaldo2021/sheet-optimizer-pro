@@ -1384,8 +1384,17 @@ export async function optimizeGeneticAsync(
     if (onProgress) {
       onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
     }
-    const finalTree = bestTree || createRoot(usableW, usableH);
+    let finalTree = bestTree || createRoot(usableW, usableH);
     if (bestTransposed) finalTree.transposed = true;
+
+    // Pós-análise automática
+    if (onProgress) onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestFitness * 100 });
+    const postResult = postOptimizeRegroup(finalTree, bestFitness * usableW * usableH, pieces, usableW, usableH, minBreak);
+    if (postResult.improved) {
+      finalTree = postResult.tree;
+      if (onProgress) onProgress({ phase: "Pós-análise: layout melhorado!", current: 1, total: 1, bestUtil: (postResult.area / (usableW * usableH)) * 100 });
+    }
+
     return finalTree;
   }
 
