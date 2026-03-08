@@ -607,6 +607,58 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
   return result;
 }
 
+/**
+ * COLUMN-WIDTH MAXIMIZING: Groups pieces by height (like groupPiecesByHeight),
+ * then sorts results so that grouped pieces with the WIDEST combined width come first.
+ * This ensures the X column is wide enough to also accommodate other (possibly wider individual)
+ * pieces that are slightly narrower than the grouped sum.
+ *
+ * Example: 2×(1014×530) → grouped 2028×530 sorted BEFORE 2014×880
+ * → X=2028, then 2014×880 fits in that column (2014 ≤ 2028)
+ */
+function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
+  // First, group by height (same as groupPiecesByHeight)
+  const grouped = groupPiecesByHeight(pieces);
+
+  // Sort by combined width descending (grouped pieces with wider sums first)
+  // This ensures the widest group sets the X column width
+  grouped.sort((a, b) => {
+    // Prioritize grouped pieces (count > 1) over individuals
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    // Both grouped: wider combined width first
+    if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
+    // Grouped pieces come first
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    // Both individual: larger area first
+    return b.area - a.area;
+  });
+
+  // Filter out groups wider than usableW (can't fit)
+  return grouped.filter(p => p.w <= usableW);
+}
+
+/**
+ * Same as groupPiecesColumnWidth but groups by width (sum heights).
+ */
+function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
+  const grouped = groupPiecesByWidth(pieces);
+
+  grouped.sort((a, b) => {
+    const aIsGrouped = (a.count || 1) > 1;
+    const bIsGrouped = (b.count || 1) > 1;
+
+    if (aIsGrouped && bIsGrouped) return b.h - a.h || b.w - a.w;
+    if (aIsGrouped && !bIsGrouped) return -1;
+    if (!aIsGrouped && bIsGrouped) return 1;
+    return b.area - a.area;
+  });
+
+  return grouped.filter(p => p.h <= usableH);
+}
+
 function oris(p: Piece): { w: number; h: number }[] {
   if (p.w === p.h) return [{ w: p.w, h: p.h }];
   return [
@@ -977,6 +1029,12 @@ export function optimizeV6(
           groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
           // Combined RAW
           groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
+          // Column-width maximizing: grouped pieces with widest combined width first
+          groupPiecesColumnWidth(pieces, usableW),
+          groupPiecesColumnWidth(rotatedPieces, usableW),
+          // Column-height maximizing: grouped pieces with tallest combined height first
+          groupPiecesColumnHeight(pieces, usableH),
+          groupPiecesColumnHeight(rotatedPieces, usableH),
         ];
 
   let bestTree: TreeNode | null = null;
@@ -1050,7 +1108,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw
+  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight
   transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
@@ -1145,7 +1203,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6,
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
       transposed: Math.random() > 0.5,
     };
   }
@@ -1175,6 +1233,10 @@ export async function optimizeGeneticAsync(
       work = groupPiecesFillCol(work, usableH);
     } else if (ind.groupingMode === 6) {
       work = groupPiecesFillCol(work, usableH, true);
+    } else if (ind.groupingMode === 7) {
+      work = groupPiecesColumnWidth(work, usableW);
+    } else if (ind.groupingMode === 8) {
+      work = groupPiecesColumnHeight(work, usableH);
     }
 
     return work;
