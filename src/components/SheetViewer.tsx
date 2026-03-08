@@ -66,11 +66,35 @@ export default function SheetViewer({
       ? `${Math.round(d2)}×${Math.round(d1)}`
       : `${Math.round(d1)}×${Math.round(d2)}`;
 
-    // Dynamic font size based on piece pixel dimensions
-    const dynamicFontSize = (pxW: number, pxH: number) => {
-      const maxByW = pxW * 0.35;
-      const maxByH = pxH * 0.4;
-      return Math.max(7, Math.min(28, maxByW, maxByH));
+    // Dynamic font sizing that adapts to piece box + text length
+    const dynamicFontSize = (
+      pxW: number,
+      pxH: number,
+      dimText: string,
+      idText?: string,
+      vertical = false,
+    ) => {
+      const lines = idText ? 2 : 1;
+      const availW = Math.max(4, pxW - 6);
+      const availH = Math.max(4, pxH - 6);
+      const shortSide = Math.min(availW, availH);
+      const longSide = Math.max(availW, availH);
+
+      const byBox = Math.min(availW * 0.32, availH * 0.36);
+
+      const fs = vertical
+        ? Math.min(
+            byBox,
+            (longSide * 0.92) / Math.max(dimText.length, idText?.length || 1),
+            (shortSide * 0.9) / (lines * 1.1),
+          )
+        : Math.min(
+            byBox,
+            availW / (Math.max(dimText.length, idText?.length || 0) * 0.58),
+            availH / (lines * 1.2),
+          );
+
+      return Math.max(6, Math.min(26, fs));
     };
 
     tree.filhos.forEach(xNode => {
