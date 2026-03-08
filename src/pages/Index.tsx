@@ -31,7 +31,7 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState('root');
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: 'Pronto', type: 'info' });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
