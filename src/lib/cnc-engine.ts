@@ -1073,6 +1073,14 @@ export function optimizeV6(
           // Column-height maximizing: grouped pieces with tallest combined height first
           groupPiecesColumnHeight(pieces, usableH),
           groupPiecesColumnHeight(rotatedPieces, usableH),
+          // Band-first: widest horizontal bands placed first (full-width strips)
+          groupPiecesBandFirst(pieces, usableW),
+          groupPiecesBandFirst(rotatedPieces, usableW),
+          groupPiecesBandFirst(pieces, usableW, true),
+          groupPiecesBandFirst(rotatedPieces, usableW, true),
+          // Band-last: large pieces first, bands fill remaining space
+          groupPiecesBandLast(pieces, usableW),
+          groupPiecesBandLast(rotatedPieces, usableW),
         ];
 
   let bestTree: TreeNode | null = null;
