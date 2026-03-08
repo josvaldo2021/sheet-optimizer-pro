@@ -1021,8 +1021,10 @@ const Index = () => {
                     } else {
                       processCommand(cmdInput.trim().toUpperCase());
                       setCmdInput('');
+                      // Keep suggestions open so next-level suggestions appear after command executes
+                      setShowSuggestions(true);
                     }
-                    setShowSuggestions(false);
+                    setSelectedSuggestionIdx(-1);
                     e.preventDefault();
                   } else if (e.key === 'ArrowDown') {
                     e.preventDefault();
