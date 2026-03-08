@@ -1452,8 +1452,17 @@ export async function optimizeGeneticAsync(
     population = nextPop;
   }
 
-  const finalTree = bestTree || createRoot(usableW, usableH);
+  let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) finalTree.transposed = true;
+
+  // Pós-análise automática de reagrupamento
+  if (onProgress) onProgress({ phase: "Pós-análise de reagrupamento...", current: generations, total: generations, bestUtil: bestFitness * 100 });
+  const postResult = postOptimizeRegroup(finalTree, bestFitness * usableW * usableH, pieces, usableW, usableH, minBreak);
+  if (postResult.improved) {
+    finalTree = postResult.tree;
+    if (onProgress) onProgress({ phase: "Pós-análise: layout melhorado!", current: generations, total: generations, bestUtil: (postResult.area / (usableW * usableH)) * 100 });
+  }
+
   return finalTree;
 }
 
