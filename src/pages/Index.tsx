@@ -643,31 +643,35 @@ const Index = () => {
     const group = layoutGroups[groupIndex];
     if (!group) return;
 
-    // Restore pieces to inventory for all chapas in this group
-    const updatedPieces = pieces.map(p => ({ ...p }));
-    group.indices.forEach(chapaIdx => {
-      const chapa = chapas[chapaIdx];
-      if (!chapa) return;
-      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
-      usedPieces.forEach(used => {
-        const existing = updatedPieces.find(p =>
-          (p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)
-        );
-        if (existing) {
-          existing.qty++;
-        } else {
-          updatedPieces.push({
-            id: `p${Date.now()}_${Math.random().toString(36).slice(2)}`,
-            qty: 1,
-            w: used.w,
-            h: used.h,
-            label: used.label,
-          });
-        }
-      });
-    });
+    // Check if any chapa in this group is manual
+    const hasManualChapas = group.indices.some(idx => chapas[idx]?.manual === true);
 
-    setPieces(updatedPieces);
+    // Only restore pieces to inventory if chapas were manually created
+    if (hasManualChapas) {
+      const updatedPieces = pieces.map(p => ({ ...p }));
+      group.indices.forEach(chapaIdx => {
+        const chapa = chapas[chapaIdx];
+        if (!chapa || !chapa.manual) return; // only restore manual ones
+        const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+        usedPieces.forEach(used => {
+          const existing = updatedPieces.find(p =>
+            (p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)
+          );
+          if (existing) {
+            existing.qty++;
+          } else {
+            updatedPieces.push({
+              id: `p${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              qty: 1,
+              w: used.w,
+              h: used.h,
+              label: used.label,
+            });
+          }
+        });
+      });
+      setPieces(updatedPieces);
+    }
 
     // Remove chapas at group indices
     const indicesToRemove = new Set(group.indices);
@@ -687,7 +691,10 @@ const Index = () => {
       setSelectedId('root');
     }
 
-    setStatus({ msg: `🗑️ Layout excluído (×${group.count}). Peças devolvidas ao inventário.`, type: 'success' });
+    const msg = hasManualChapas
+      ? `🗑️ Layout excluído (×${group.count}). Peças manuais devolvidas ao inventário.`
+      : `🗑️ Layout excluído (×${group.count}).`;
+    setStatus({ msg, type: 'success' });
   }, [layoutGroups, chapas, pieces, extractUsedPiecesWithContext, usableW, usableH, activeChapa]);
 
   const saveLayout = useCallback((reps?: number) => {
