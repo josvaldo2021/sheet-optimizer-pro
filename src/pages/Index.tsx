@@ -499,7 +499,7 @@ const Index = () => {
                   <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
                   <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
                   <input type="number" value={p.h} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, h: +e.target.value } : x))} className="cnc-input" />
-                  <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" style={{ fontSize: '10px' }} />
+                  <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" />
                   <button
                     onClick={() => setPieces(ps => ps.filter(x => x.id !== p.id))}
                     className="text-[14px] cursor-pointer hover:text-red-400 transition-colors"
