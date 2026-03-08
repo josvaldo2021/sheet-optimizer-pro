@@ -172,7 +172,9 @@ export default function SheetViewer({
                             const realH = T ? qNode.valor : wNode.valor;
                             const pxW = realW * scale;
                             const pxH = realH * scale;
-                            const fs = dynamicFontSize(pxW, pxH);
+                            const isVertical = realH > realW;
+                            const dim = dimLabel(qNode.valor, wNode.valor);
+                            const fs = dynamicFontSize(pxW, pxH, dim, qNode.label, isVertical);
                             qEls.push(
                               <div
                                 key={`q-${qNode.id}-${iq}`}
@@ -191,9 +193,9 @@ export default function SheetViewer({
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
-                                <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
                                   {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
-                                  {dimLabel(qNode.valor, wNode.valor)}
+                                  {dim}
                                 </span>
                               </div>
                             );
