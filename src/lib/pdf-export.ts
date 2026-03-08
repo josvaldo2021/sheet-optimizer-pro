@@ -311,32 +311,33 @@ export function exportPdf(options: PdfExportOptions) {
   doc.text(`Aproveitamento total: ${utilization.toFixed(1)}%`, margin, cy); cy += 14;
 
   // Summary table
-  doc.setFontSize(13);
+  doc.setFontSize(16);
   doc.setTextColor(30);
-  doc.text('Resumo dos Layouts', margin, cy); cy += 8;
+  doc.text('Resumo dos Layouts', margin, cy); cy += 10;
 
-  doc.setFontSize(9);
+  doc.setFontSize(12);
   doc.setTextColor(80);
   doc.text('Layout', margin, cy);
-  doc.text('Qtd. Chapas', margin + 30, cy);
-  doc.text('Aproveitamento', margin + 65, cy);
-  doc.text('Peças', margin + 100, cy);
-  cy += 5;
+  doc.text('Qtd. Chapas', margin + 35, cy);
+  doc.text('Aproveitamento', margin + 75, cy);
+  doc.text('Peças', margin + 115, cy);
+  cy += 6;
 
   doc.setDrawColor(200);
-  doc.line(margin, cy - 1, margin + 130, cy - 1);
-  cy += 2;
+  doc.line(margin, cy - 1, margin + 140, cy - 1);
+  cy += 3;
 
+  doc.setFontSize(12);
   layoutGroups.forEach((group, gIdx) => {
     const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
     const pieces = extractPiecesFromTree(group.tree);
 
     doc.setTextColor(40);
     doc.text(`Layout ${gIdx + 1}`, margin, cy);
-    doc.text(`×${group.count}`, margin + 30, cy);
-    doc.text(`${util.toFixed(1)}%`, margin + 65, cy);
-    doc.text(`${pieces.length}`, margin + 100, cy);
-    cy += 6;
+    doc.text(`×${group.count}`, margin + 35, cy);
+    doc.text(`${util.toFixed(1)}%`, margin + 75, cy);
+    doc.text(`${pieces.length}`, margin + 115, cy);
+    cy += 8;
   });
 
   // ─── One page per layout ───
