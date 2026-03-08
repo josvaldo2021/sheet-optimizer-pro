@@ -483,6 +483,7 @@ const Index = () => {
     const freshTree = createRoot(usableW, usableH);
     setTree(freshTree);
     setSelectedId('root');
+    setEditingExistingChapa(false);
     setReplicationInfo(null);
 
     setStatus({ msg: `✅ Layout salvo (×${count})! ${filteredPieces.reduce((s, p) => s + p.qty, 0)} peças restantes.`, type: 'success' });
