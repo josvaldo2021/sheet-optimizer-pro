@@ -405,6 +405,127 @@ const Index = () => {
     return usableW > 0 && usableH > 0 ? (area / (usableW * usableH)) * 100 : 0;
   }, [tree, usableW, usableH]);
 
+  // ─── Auto-suggestion logic ───
+  const commandSuggestions = useMemo(() => {
+    if (pieces.length === 0) return [];
+    const selected = findNode(tree, selectedId);
+    if (!selected) return [];
+
+    const suggestions: Array<{ cmd: string; label: string; desc: string }> = [];
+    const seen = new Set<string>();
+
+    // Determine what the next expected node type is based on selection
+    const addSuggestion = (tipo: string, valor: number, desc: string) => {
+      const key = `${tipo}${valor}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      // Verify it fits
+      const res = calcAllocation(tree, selectedId, tipo as any, valor, 1, usableW, usableH, minBreak);
+      if (res.allocated > 0) {
+        suggestions.push({ cmd: key, label: key, desc });
+      }
+    };
+
+    // Get unique piece dimensions from inventory
+    const uniquePieces = new Map<string, { w: number; h: number; qty: number; label?: string }>();
+    pieces.forEach(p => {
+      if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
+      const k1 = `${p.w}x${p.h}`;
+      if (!uniquePieces.has(k1)) uniquePieces.set(k1, { w: p.w, h: p.h, qty: p.qty, label: p.label });
+      else uniquePieces.get(k1)!.qty += p.qty;
+    });
+
+    if (selected.tipo === 'ROOT' || (selected.tipo === 'ROOT' && tree.filhos.length === 0)) {
+      // Suggest X values = piece widths and heights (could be rotated)
+      uniquePieces.forEach(({ w, h, label }) => {
+        addSuggestion('X', w, `Coluna ${w}mm${label ? ` (${label})` : ''}`);
+        addSuggestion('X', h, `Coluna ${h}mm (rotacionado)${label ? ` (${label})` : ''}`);
+      });
+    }
+
+    if (selected.tipo === 'X' || findParentOfType(tree, selectedId, 'X')) {
+      const xNode = selected.tipo === 'X' ? selected : findParentOfType(tree, selectedId, 'X');
+      if (xNode) {
+        // Suggest Y values = piece heights where piece width matches X value
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === xNode.valor) {
+            addSuggestion('Y', h, `Fita ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === xNode.valor) {
+            addSuggestion('Y', w, `Fita ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+        // Also suggest new X for another column
+        if (selected.tipo !== 'X') {
+          uniquePieces.forEach(({ w, h, label }) => {
+            addSuggestion('X', w, `Nova coluna ${w}mm${label ? ` (${label})` : ''}`);
+            addSuggestion('X', h, `Nova coluna ${h}mm (rot.)${label ? ` (${label})` : ''}`);
+          });
+        }
+      }
+    }
+
+    if (selected.tipo === 'Y' || selected.tipo === 'Z') {
+      // If at Z level (auto-created), suggest another Y for the same X
+      const xNode = findParentOfType(tree, selectedId, 'X');
+      if (xNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === xNode.valor) {
+            addSuggestion('Y', h, `Fita ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === xNode.valor) {
+            addSuggestion('Y', w, `Fita ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+      // Suggest Z subdivisions
+      if (selected.tipo === 'Y' || selected.tipo === 'Z') {
+        const yNode = selected.tipo === 'Y' ? selected : findParentOfType(tree, selectedId, 'Y');
+        if (yNode) {
+          uniquePieces.forEach(({ w, h, label }) => {
+            if (h === yNode.valor) {
+              addSuggestion('Z', w, `Subdivisão ${w}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+            }
+            if (w === yNode.valor) {
+              addSuggestion('Z', h, `Subdivisão ${h}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+            }
+          });
+        }
+      }
+    }
+
+    if (selected.tipo === 'W' || findParentOfType(tree, selectedId, 'W')) {
+      const zNode = findParentOfType(tree, selectedId, 'Z');
+      if (zNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === zNode.valor) {
+            addSuggestion('W', h, `Sub-H ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === zNode.valor) {
+            addSuggestion('W', w, `Sub-H ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+    }
+
+    return suggestions;
+  }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
+
+  // Filter suggestions based on current input
+  const filteredSuggestions = useMemo(() => {
+    if (!cmdInput) return commandSuggestions;
+    const upper = cmdInput.toUpperCase();
+    return commandSuggestions.filter(s => s.cmd.startsWith(upper));
+  }, [commandSuggestions, cmdInput]);
+
+  const applySuggestion = useCallback((cmd: string) => {
+    processCommand(cmd);
+    setCmdInput('');
+    setShowSuggestions(false);
+    setSelectedSuggestionIdx(-1);
+    cmdInputRef.current?.focus();
+  }, [processCommand]);
+
   const calcReplication = useCallback(() => {
     const usedPieces = extractUsedPiecesWithContext(tree);
     if (usedPieces.length === 0) {
