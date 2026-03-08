@@ -572,13 +572,26 @@ const Index = () => {
     return directMatches;
   }, [commandSuggestions, cmdInput, pieces]);
 
-  const applySuggestion = useCallback((cmd: string) => {
-    processCommand(cmd);
+  const applySuggestion = useCallback((suggestion: CommandSuggestion) => {
+    const typed = cmdInput.trim().toUpperCase();
+
+    // If user clicked a look-ahead suggestion (e.g. Z after typing Y),
+    // execute current command first, then preload next command.
+    if (suggestion.kind === 'lookahead' && /^(?:M\d+)?[XYZWQ]\d+$/.test(typed) && typed !== suggestion.cmd) {
+      processCommand(typed);
+      setCmdInput(suggestion.cmd);
+      setShowSuggestions(true);
+      setSelectedSuggestionIdx(-1);
+      cmdInputRef.current?.focus();
+      return;
+    }
+
+    processCommand(suggestion.cmd);
     setCmdInput('');
     setShowSuggestions(false);
     setSelectedSuggestionIdx(-1);
     cmdInputRef.current?.focus();
-  }, [processCommand]);
+  }, [processCommand, cmdInput]);
 
   const calcReplication = useCallback(() => {
     const usedPieces = extractUsedPiecesWithContext(tree);
