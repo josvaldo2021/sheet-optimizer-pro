@@ -22,6 +22,8 @@ export interface Piece {
   labels?: string[];
   /** Axis along which pieces were grouped */
   groupedAxis?: "w" | "h";
+  /** If true, this piece must be placed first (strip-first strategy) */
+  placeFirst?: boolean;
 }
 
 export interface PieceItem {
