@@ -34,6 +34,7 @@ const Index = () => {
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [priorityIds, setPriorityIds] = useState('');
+  const [replicationInfo, setReplicationInfo] = useState<{ count: number; bom: Array<{ w: number; h: number; need: number; available: number }> } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(50);
   const [gaGens, setGaGens] = useState(50);
 
