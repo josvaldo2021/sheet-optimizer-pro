@@ -121,19 +121,19 @@ function drawTreePieces(
     doc.rect(px, py, pw, ph, 'FD');
 
     if (pw > 4 && ph > 3) {
-      // Dynamic font size based on piece dimensions
-      const maxFontByW = pw / 5;
-      const maxFontByH = ph / (pieceLabel ? 4 : 2.5);
-      const fontSize = Math.max(2.5, Math.min(8, maxFontByW, maxFontByH));
+      // Font scales proportionally to piece size
+      const maxFontByW = pw * 0.35;
+      const maxFontByH = ph * (pieceLabel ? 0.3 : 0.5);
+      const fontSize = Math.max(3, Math.min(14, maxFontByW, maxFontByH));
       doc.setFontSize(fontSize);
       doc.setTextColor(30, 60, 100);
 
       const dim = dimLabel(dimW, dimH);
-      if (pieceLabel && ph > fontSize * 0.6) {
-        // Two lines: label + dimensions
-        const lineGap = fontSize * 0.45;
+      if (pieceLabel && ph > fontSize * 1.2) {
+        const lineGap = fontSize * 0.5;
+        doc.setFontSize(fontSize);
         doc.text(pieceLabel, px + pw / 2, py + ph / 2 - lineGap, { align: 'center', baseline: 'middle' });
-        doc.setFontSize(fontSize * 0.8);
+        doc.setFontSize(fontSize * 0.75);
         doc.text(dim, px + pw / 2, py + ph / 2 + lineGap, { align: 'center', baseline: 'middle' });
       } else {
         doc.text(pieceLabel ? `${pieceLabel} ${dim}` : dim, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
