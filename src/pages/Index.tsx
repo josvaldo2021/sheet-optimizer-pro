@@ -408,12 +408,12 @@ const Index = () => {
   }, [tree, usableW, usableH]);
 
   // ─── Auto-suggestion logic ───
-  const commandSuggestions = useMemo(() => {
+  const commandSuggestions = useMemo<CommandSuggestion[]>(() => {
     if (pieces.length === 0) return [];
     const selected = findNode(tree, selectedId);
     if (!selected) return [];
 
-    const suggestions: Array<{ cmd: string; label: string; desc: string }> = [];
+    const suggestions: CommandSuggestion[] = [];
     const seen = new Set<string>();
 
     // Determine what the next expected node type is based on selection
@@ -424,7 +424,7 @@ const Index = () => {
       // Verify it fits
       const res = calcAllocation(tree, selectedId, tipo as any, valor, 1, usableW, usableH, minBreak);
       if (res.allocated > 0) {
-        suggestions.push({ cmd: key, label: key, desc });
+        suggestions.push({ cmd: key, label: key, desc, kind: 'direct' });
       }
     };
 
@@ -523,7 +523,7 @@ const Index = () => {
   }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
 
   // Filter suggestions based on current input + look-ahead for next coordinate
-  const filteredSuggestions = useMemo(() => {
+  const filteredSuggestions = useMemo<CommandSuggestion[]>(() => {
     if (!cmdInput) return commandSuggestions;
     const upper = cmdInput.toUpperCase();
     const directMatches = commandSuggestions.filter(s => s.cmd.startsWith(upper));
@@ -533,7 +533,7 @@ const Index = () => {
     if (m) {
       const tipo = m[1];
       const valor = Number(m[2]);
-      const lookAhead: Array<{ cmd: string; label: string; desc: string }> = [];
+      const lookAhead: CommandSuggestion[] = [];
       const seenLA = new Set<string>();
 
       // Hierarchy: X→Y, Y→Z, Z→W, W→Q
@@ -546,8 +546,6 @@ const Index = () => {
           let nextVal: number | null = null;
           let descText = '';
 
-          // For any coordinate level, match the typed value against both dimensions
-          // and suggest the complementary dimension as the next coordinate
           if (p.w === valor) {
             nextVal = p.h;
             descText = `→ próximo: ${nextTipo}${p.h} (peça ${p.w}×${p.h}${p.label ? ' - ' + p.label : ''})`;
@@ -560,7 +558,7 @@ const Index = () => {
             const key = `${nextTipo}${nextVal}`;
             if (!seenLA.has(key)) {
               seenLA.add(key);
-              lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText });
+              lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText, kind: 'lookahead' });
             }
           }
         });
