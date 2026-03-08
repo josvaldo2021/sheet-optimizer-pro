@@ -37,6 +37,10 @@ const Index = () => {
   const [replicationInfo, setReplicationInfo] = useState<{ count: number; bom: Array<{ w: number; h: number; need: number; available: number }> } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(50);
   const [gaGens, setGaGens] = useState(50);
+  const [cmdInput, setCmdInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
+  const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
@@ -400,6 +404,127 @@ const Index = () => {
     const area = calcPlacedArea(tree);
     return usableW > 0 && usableH > 0 ? (area / (usableW * usableH)) * 100 : 0;
   }, [tree, usableW, usableH]);
+
+  // ─── Auto-suggestion logic ───
+  const commandSuggestions = useMemo(() => {
+    if (pieces.length === 0) return [];
+    const selected = findNode(tree, selectedId);
+    if (!selected) return [];
+
+    const suggestions: Array<{ cmd: string; label: string; desc: string }> = [];
+    const seen = new Set<string>();
+
+    // Determine what the next expected node type is based on selection
+    const addSuggestion = (tipo: string, valor: number, desc: string) => {
+      const key = `${tipo}${valor}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      // Verify it fits
+      const res = calcAllocation(tree, selectedId, tipo as any, valor, 1, usableW, usableH, minBreak);
+      if (res.allocated > 0) {
+        suggestions.push({ cmd: key, label: key, desc });
+      }
+    };
+
+    // Get unique piece dimensions from inventory
+    const uniquePieces = new Map<string, { w: number; h: number; qty: number; label?: string }>();
+    pieces.forEach(p => {
+      if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
+      const k1 = `${p.w}x${p.h}`;
+      if (!uniquePieces.has(k1)) uniquePieces.set(k1, { w: p.w, h: p.h, qty: p.qty, label: p.label });
+      else uniquePieces.get(k1)!.qty += p.qty;
+    });
+
+    if (selectedId === 'root') {
+      // Suggest X values = piece widths and heights (could be rotated)
+      uniquePieces.forEach(({ w, h, label }) => {
+        addSuggestion('X', w, `Coluna ${w}mm${label ? ` (${label})` : ''}`);
+        addSuggestion('X', h, `Coluna ${h}mm (rotacionado)${label ? ` (${label})` : ''}`);
+      });
+    }
+
+    if (selected.tipo === 'X' || findParentOfType(tree, selectedId, 'X')) {
+      const xNode = selected.tipo === 'X' ? selected : findParentOfType(tree, selectedId, 'X');
+      if (xNode) {
+        // Suggest Y values = piece heights where piece width matches X value
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === xNode.valor) {
+            addSuggestion('Y', h, `Fita ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === xNode.valor) {
+            addSuggestion('Y', w, `Fita ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+        // Also suggest new X for another column
+        if (selected.tipo !== 'X') {
+          uniquePieces.forEach(({ w, h, label }) => {
+            addSuggestion('X', w, `Nova coluna ${w}mm${label ? ` (${label})` : ''}`);
+            addSuggestion('X', h, `Nova coluna ${h}mm (rot.)${label ? ` (${label})` : ''}`);
+          });
+        }
+      }
+    }
+
+    if (selected.tipo === 'Y' || selected.tipo === 'Z') {
+      // If at Z level (auto-created), suggest another Y for the same X
+      const xNode = findParentOfType(tree, selectedId, 'X');
+      if (xNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === xNode.valor) {
+            addSuggestion('Y', h, `Fita ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === xNode.valor) {
+            addSuggestion('Y', w, `Fita ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+      // Suggest Z subdivisions
+      if (selected.tipo === 'Y' || selected.tipo === 'Z') {
+        const yNode = selected.tipo === 'Y' ? selected : findParentOfType(tree, selectedId, 'Y');
+        if (yNode) {
+          uniquePieces.forEach(({ w, h, label }) => {
+            if (h === yNode.valor) {
+              addSuggestion('Z', w, `Subdivisão ${w}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+            }
+            if (w === yNode.valor) {
+              addSuggestion('Z', h, `Subdivisão ${h}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+            }
+          });
+        }
+      }
+    }
+
+    if (selected.tipo === 'W' || findParentOfType(tree, selectedId, 'W')) {
+      const zNode = findParentOfType(tree, selectedId, 'Z');
+      if (zNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === zNode.valor) {
+            addSuggestion('W', h, `Sub-H ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === zNode.valor) {
+            addSuggestion('W', w, `Sub-H ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+    }
+
+    return suggestions;
+  }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
+
+  // Filter suggestions based on current input
+  const filteredSuggestions = useMemo(() => {
+    if (!cmdInput) return commandSuggestions;
+    const upper = cmdInput.toUpperCase();
+    return commandSuggestions.filter(s => s.cmd.startsWith(upper));
+  }, [commandSuggestions, cmdInput]);
+
+  const applySuggestion = useCallback((cmd: string) => {
+    processCommand(cmd);
+    setCmdInput('');
+    setShowSuggestions(false);
+    setSelectedSuggestionIdx(-1);
+    cmdInputRef.current?.focus();
+  }, [processCommand]);
 
   const calcReplication = useCallback(() => {
     const usedPieces = extractUsedPiecesWithContext(tree);
@@ -806,19 +931,89 @@ const Index = () => {
             Status: {status.msg}
           </div>
           <div className="flex gap-2">
-            <input
-              type="text"
-              autoFocus
-              autoComplete="off"
-              placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
-              className="cnc-command-input flex-1"
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  processCommand(e.currentTarget.value.trim().toUpperCase());
-                  e.currentTarget.value = '';
-                }
-              }}
-            />
+            <div className="relative flex-1">
+              <input
+                ref={cmdInputRef}
+                type="text"
+                autoFocus
+                autoComplete="off"
+                value={cmdInput}
+                onChange={e => {
+                  setCmdInput(e.target.value);
+                  setShowSuggestions(true);
+                  setSelectedSuggestionIdx(-1);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
+                className="cnc-command-input w-full"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (selectedSuggestionIdx >= 0 && filteredSuggestions[selectedSuggestionIdx]) {
+                      applySuggestion(filteredSuggestions[selectedSuggestionIdx].cmd);
+                    } else {
+                      processCommand(cmdInput.trim().toUpperCase());
+                      setCmdInput('');
+                    }
+                    setShowSuggestions(false);
+                    e.preventDefault();
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setSelectedSuggestionIdx(i => Math.min(i + 1, filteredSuggestions.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setSelectedSuggestionIdx(i => Math.max(i - 1, -1));
+                  } else if (e.key === 'Escape') {
+                    setShowSuggestions(false);
+                  } else if (e.key === 'Tab' && filteredSuggestions.length > 0) {
+                    e.preventDefault();
+                    const idx = selectedSuggestionIdx >= 0 ? selectedSuggestionIdx : 0;
+                    if (filteredSuggestions[idx]) {
+                      setCmdInput(filteredSuggestions[idx].cmd);
+                      setSelectedSuggestionIdx(idx);
+                    }
+                  }
+                }}
+              />
+              {/* Suggestions dropdown */}
+              {showSuggestions && filteredSuggestions.length > 0 && (
+                <div
+                  className="absolute bottom-full left-0 right-0 mb-1 max-h-[240px] overflow-y-auto rounded cnc-scroll"
+                  style={{
+                    background: 'hsl(0 0% 8%)',
+                    border: '1px solid hsl(0 0% 25%)',
+                    boxShadow: '0 -4px 20px hsla(0 0% 0% / 0.5)',
+                    zIndex: 1000,
+                  }}
+                >
+                  <div className="px-2 py-1 text-[8px] uppercase tracking-wider font-bold" style={{ color: 'hsl(0 0% 40%)', borderBottom: '1px solid hsl(0 0% 18%)' }}>
+                    Sugestões do inventário ({filteredSuggestions.length})
+                  </div>
+                  {filteredSuggestions.map((s, i) => (
+                    <div
+                      key={s.cmd + i}
+                      className="flex items-center justify-between px-2 py-1.5 cursor-pointer transition-colors"
+                      style={{
+                        background: i === selectedSuggestionIdx ? 'hsl(211 60% 25%)' : 'transparent',
+                        borderBottom: '1px solid hsl(0 0% 12%)',
+                      }}
+                      onMouseEnter={() => setSelectedSuggestionIdx(i)}
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        applySuggestion(s.cmd);
+                      }}
+                    >
+                      <span className="text-[12px] font-bold font-mono" style={{ color: 'hsl(120 80% 60%)' }}>
+                        {s.cmd}
+                      </span>
+                      <span className="text-[10px] ml-2" style={{ color: 'hsl(0 0% 55%)' }}>
+                        {s.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => saveLayout(replicationInfo?.count || 1)}
               className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
