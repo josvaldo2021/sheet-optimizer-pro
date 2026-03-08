@@ -435,7 +435,7 @@ const Index = () => {
       else uniquePieces.get(k1)!.qty += p.qty;
     });
 
-    if (selected.tipo === 'ROOT' || (selected.tipo === 'ROOT' && tree.filhos.length === 0)) {
+    if (selectedId === 'root') {
       // Suggest X values = piece widths and heights (could be rotated)
       uniquePieces.forEach(({ w, h, label }) => {
         addSuggestion('X', w, `Coluna ${w}mm${label ? ` (${label})` : ''}`);
