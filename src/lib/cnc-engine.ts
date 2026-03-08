@@ -306,60 +306,43 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
       }))
       .sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
 
+    // Agrupa o máximo de peças possível (sem limite fixo)
     let i = 0;
     while (i < normalized.length) {
       const h = normalized[i].nh;
 
-      // Tenta agrupar 3, depois 2 peças
-      let groupSize = 0;
-      let sumW = 0;
-      const candidates: number[] = [];
+      // Coleta todas as peças consecutivas com mesma altura
+      const candidates: number[] = [i];
+      let sumW = normalized[i].nw;
 
-      for (let j = i; j < normalized.length && candidates.length < 3; j++) {
+      for (let j = i + 1; j < normalized.length; j++) {
         candidates.push(j);
         sumW += normalized[j].nw;
       }
 
-      // Aceita grupo de 3 ou 2
+      // Agrupa se há 2+ peças
       if (candidates.length >= 2) {
-        // Tenta 3 primeiro, depois 2
-        const trySize = candidates.length >= 3 ? 3 : 2;
-        let bestGroupW = 0;
-        let bestCount = 0;
-
-        for (let gs = trySize; gs >= 2; gs--) {
-          let gw = 0;
-          for (let k = 0; k < gs; k++) gw += normalized[candidates[k]].nw;
-          bestGroupW = gw;
-          bestCount = gs;
-          break;
+        const groupedLabels: string[] = [];
+        for (let k = 0; k < candidates.length; k++) {
+          if (normalized[candidates[k]].label) {
+            groupedLabels.push(normalized[candidates[k]].label!);
+          }
         }
 
-        if (bestCount >= 2) {
-          // Cria peça agrupada com labels individuais preservados
-          const groupedLabels: string[] = [];
-          for (let k = 0; k < bestCount; k++) {
-            if (normalized[candidates[k]].label) {
-              groupedLabels.push(normalized[candidates[k]].label!);
-            }
-          }
+        result.push({
+          w: sumW,
+          h,
+          area: sumW * h,
+          count: candidates.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: "w",
+        });
 
-          result.push({
-            w: bestGroupW,
-            h,
-            area: bestGroupW * h,
-            count: bestCount,
-            labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-            groupedAxis: "w", // Agrupou larguras (somou W), mantendo altura fixa
-          });
-
-          // Remove itens agrupados (em ordem reversa para não afetar índices)
-          for (let k = bestCount - 1; k >= 1; k--) {
-            normalized.splice(candidates[k], 1);
-          }
-          normalized.splice(i, 1);
-          continue;
+        // Remove todos os itens agrupados (em ordem reversa)
+        for (let k = candidates.length - 1; k >= 0; k--) {
+          normalized.splice(candidates[k], 1);
         }
+        continue;
       }
 
       // Peça individual
