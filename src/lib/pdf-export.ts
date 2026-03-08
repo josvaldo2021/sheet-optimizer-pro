@@ -97,6 +97,26 @@ function drawTreePieces(
   usableW: number,
   usableH: number,
 ) {
+  const T = tree.transposed || false;
+
+  // Helper: get display label respecting transposition
+  const dimLabel = (d1: number, d2: number) => T
+    ? `${Math.round(d2)}×${Math.round(d1)}`
+    : `${Math.round(d1)}×${Math.round(d2)}`;
+
+  // Helper to draw a single piece rect with label
+  const drawPiece = (px: number, py: number, pw: number, ph: number, label: string | undefined, dimW: number, dimH: number) => {
+    doc.setFillColor(220, 235, 255);
+    doc.setDrawColor(100, 130, 180);
+    doc.rect(px, py, pw, ph, 'FD');
+    if (pw > 8 && ph > 4) {
+      doc.setFontSize(Math.min(6, Math.min(pw, ph) / 3));
+      doc.setTextColor(30, 60, 100);
+      const txt = label ? `${label}\n${dimLabel(dimW, dimH)}` : dimLabel(dimW, dimH);
+      doc.text(txt, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
+    }
+  };
+
   let xOff = 0;
 
   tree.filhos.forEach(xNode => {
@@ -113,56 +133,58 @@ function drawTreePieces(
             for (let iz = 0; iz < zNode.multi; iz++) {
               if (zNode.filhos.length === 0) {
                 // Leaf Z piece
-                const px = baseX + cx * scale + zOff * scale;
-                const py = baseY - (cy + yNode.valor) * scale;
-                const pw = zNode.valor * scale;
-                const ph = yNode.valor * scale;
-                doc.setFillColor(220, 235, 255);
-                doc.setDrawColor(100, 130, 180);
-                doc.rect(px, py, pw, ph, 'FD');
-                if (pw > 8 && ph > 4) {
-                  doc.setFontSize(Math.min(6, pw / 4));
-                  doc.setTextColor(30, 60, 100);
-                  const label = zNode.label ? `${zNode.label}\n${Math.round(zNode.valor)}×${Math.round(yNode.valor)}` : `${Math.round(zNode.valor)}×${Math.round(yNode.valor)}`;
-                  doc.text(label, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
+                let px: number, py: number, pw: number, ph: number;
+                if (T) {
+                  // Transposed: X→vertical(Y-axis), Y→horizontal(X-axis), Z stacks vertically within Y
+                  px = baseX + cy * scale + zOff * scale;
+                  py = baseY - (cx + xNode.valor) * scale;
+                  pw = zNode.valor * scale;
+                  ph = xNode.valor * scale;
+                } else {
+                  px = baseX + cx * scale + zOff * scale;
+                  py = baseY - (cy + yNode.valor) * scale;
+                  pw = zNode.valor * scale;
+                  ph = yNode.valor * scale;
                 }
+                drawPiece(px, py, pw, ph, zNode.label, zNode.valor, yNode.valor);
               } else {
                 // Z with W children
                 let wOff = 0;
                 zNode.filhos.forEach(wNode => {
                   for (let iw = 0; iw < wNode.multi; iw++) {
                     if (wNode.filhos.length === 0) {
-                      const px = baseX + cx * scale + zOff * scale;
-                      const py = baseY - (cy + wOff + wNode.valor) * scale;
-                      const pw = zNode.valor * scale;
-                      const ph = wNode.valor * scale;
-                      doc.setFillColor(220, 235, 255);
-                      doc.setDrawColor(100, 130, 180);
-                      doc.rect(px, py, pw, ph, 'FD');
-                      if (pw > 8 && ph > 4) {
-                        doc.setFontSize(Math.min(6, pw / 4));
-                        doc.setTextColor(30, 60, 100);
-                        const label = wNode.label ? `${wNode.label}\n${Math.round(zNode.valor)}×${Math.round(wNode.valor)}` : `${Math.round(zNode.valor)}×${Math.round(wNode.valor)}`;
-                        doc.text(label, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
+                      let px: number, py: number, pw: number, ph: number;
+                      if (T) {
+                        // W subdivides Z horizontally in transposed mode
+                        px = baseX + cy * scale + zOff * scale;
+                        py = baseY - (cx + wOff + wNode.valor) * scale;
+                        pw = zNode.valor * scale;
+                        ph = wNode.valor * scale;
+                      } else {
+                        px = baseX + cx * scale + zOff * scale;
+                        py = baseY - (cy + wOff + wNode.valor) * scale;
+                        pw = zNode.valor * scale;
+                        ph = wNode.valor * scale;
                       }
+                      drawPiece(px, py, pw, ph, wNode.label, zNode.valor, wNode.valor);
                     } else {
                       // W with Q children
                       let qOff = 0;
                       wNode.filhos.forEach(qNode => {
                         for (let iq = 0; iq < qNode.multi; iq++) {
-                          const px = baseX + cx * scale + zOff * scale + qOff * scale;
-                          const py = baseY - (cy + wOff + wNode.valor) * scale;
-                          const pw = qNode.valor * scale;
-                          const ph = wNode.valor * scale;
-                          doc.setFillColor(220, 235, 255);
-                          doc.setDrawColor(100, 130, 180);
-                          doc.rect(px, py, pw, ph, 'FD');
-                          if (pw > 8 && ph > 4) {
-                            doc.setFontSize(Math.min(6, pw / 4));
-                            doc.setTextColor(30, 60, 100);
-                            const label = qNode.label ? `${qNode.label}\n${Math.round(qNode.valor)}×${Math.round(wNode.valor)}` : `${Math.round(qNode.valor)}×${Math.round(wNode.valor)}`;
-                            doc.text(label, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
+                          let px: number, py: number, pw: number, ph: number;
+                          if (T) {
+                            px = baseX + cy * scale + zOff * scale;
+                            py = baseY - (cx + wOff + wNode.valor) * scale + qOff * scale;
+                            pw = qNode.valor * scale;
+                            ph = wNode.valor * scale;
+                          } else {
+                            px = baseX + cx * scale + zOff * scale + qOff * scale;
+                            py = baseY - (cy + wOff + wNode.valor) * scale;
+                            pw = qNode.valor * scale;
+                            ph = wNode.valor * scale;
                           }
+                          drawPiece(px, py, pw, ph, qNode.label, qNode.valor, wNode.valor);
                           qOff += qNode.valor;
                         }
                       });
@@ -187,16 +209,25 @@ function drawTreePieces(
     for (let i = 0; i < x.multi; i++) s += x.valor;
     return a + s;
   }, 0);
-  const xWaste = usableW - totalX;
+  const xDimTotal = T ? usableH : usableW;
+  const xWaste = xDimTotal - totalX;
   if (xWaste > 0) {
-    const px = baseX + totalX * scale;
-    const py = baseY - usableH * scale;
-    const pw = xWaste * scale;
-    const ph = usableH * scale;
+    let px: number, py: number, pw: number, ph: number;
+    if (T) {
+      px = baseX;
+      py = baseY - usableH * scale;
+      pw = usableW * scale;
+      ph = xWaste * scale;
+    } else {
+      px = baseX + totalX * scale;
+      py = baseY - usableH * scale;
+      pw = xWaste * scale;
+      ph = usableH * scale;
+    }
     doc.setFillColor(200, 220, 240);
     doc.setDrawColor(150, 180, 210);
     doc.rect(px, py, pw, ph, 'FD');
-    if (pw > 10) {
+    if (pw > 10 && ph > 5) {
       doc.setFontSize(5);
       doc.setTextColor(100, 140, 180);
       doc.text('SOBRA', px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
