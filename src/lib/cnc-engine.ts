@@ -1156,6 +1156,7 @@ export function optimizeV6(
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
+  let bestHadPinned = false;
 
   // Test both normal and transposed orientations
   for (const transposed of [false, true]) {
@@ -1165,15 +1166,21 @@ export function optimizeV6(
     for (const variant of pieceVariants) {
       for (const sortFn of strategies) {
         // Preserve placeFirst pieces at the front, sort only the rest
-        const pinned = variant.filter(p => p.placeFirst);
-        const rest = variant.filter(p => !p.placeFirst);
+        const pinned = variant.filter((p) => p.placeFirst);
+        const rest = variant.filter((p) => !p.placeFirst);
         const sorted = [...pinned, ...rest.sort(sortFn)];
         const result = runPlacement(sorted, eW, eH, minBreak);
-        if (result.area > bestArea) {
+        const hasPinned = pinned.length > 0;
+
+        if (
+          result.area > bestArea ||
+          (Math.abs(result.area - bestArea) <= 0.001 && hasPinned && !bestHadPinned)
+        ) {
           bestArea = result.area;
           bestTree = result.tree;
           bestRemaining = result.remaining;
           bestTransposed = transposed;
+          bestHadPinned = hasPinned;
         }
       }
     }
