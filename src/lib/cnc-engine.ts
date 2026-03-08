@@ -869,54 +869,55 @@ function fillRect(
 ): number {
   let filled = 0;
 
-  for (let i = 0; i < remaining.length; i++) {
-    if (maxH <= 0) break;
-
-    const pc = remaining[i];
+  while (maxH > 0 && remaining.length > 0) {
+    // Scan ALL remaining pieces to find the BEST one for this void
+    let bestIdx = -1;
     let bestO: { w: number; h: number } | null = null;
-    let bestScore = Infinity;
+    let bestArea = 0;
 
-    for (const o of oris(pc)) {
-      if (o.w <= maxW && o.h <= maxH) {
-        // Check minBreak for Y height and Z cut positions across all Y strips
-        if (minBreak > 0) {
-          if (o.h < minBreak) continue;
-          // Check Z cut positions: new piece creates a cut at position o.w
-          const allZPositions = getAllZCutPositionsInColumn(colX);
-          if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
-        }
-        const s = scoreFit(maxW, maxH, o.w, o.h, remaining);
-        if (s < bestScore) {
-          bestScore = s;
-          bestO = o;
+    for (let i = 0; i < remaining.length; i++) {
+      const pc = remaining[i];
+      for (const o of oris(pc)) {
+        if (o.w <= maxW && o.h <= maxH) {
+          // Check minBreak
+          if (minBreak > 0) {
+            if (o.h < minBreak) continue;
+            const allZPositions = getAllZCutPositionsInColumn(colX);
+            if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
+          }
+          // Prefer largest area piece (not first-fit)
+          const pieceArea = o.w * o.h;
+          if (pieceArea > bestArea) {
+            bestArea = pieceArea;
+            bestIdx = i;
+            bestO = o;
+          }
         }
       }
     }
 
-    if (bestO) {
-      // Safety: verify actual column height before inserting
-      const actualUsedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-      const actualFreeH = maxH; // maxH is already tracked correctly
-      
-      // Double-check: don't insert if actual column is full
-      if (actualUsedH + bestO.h > actualUsedH + actualFreeH + 0.5) continue;
-      
-      // Residual dominance: extend Y container if residual can't fit anything
-      let consumed = bestO.h;
-      const residualH = maxH - bestO.h;
-      if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
-        consumed = maxH;
-      }
-      const yId = insertNode(tree, colX.id, "Y", consumed, 1);
-      const yNode = findNode(tree, yId)!;
+    if (bestIdx < 0 || !bestO) break;
 
-      createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+    const pc = remaining[bestIdx];
 
-      filled += bestO.w * bestO.h;
-      maxH -= consumed;
-      remaining.splice(i, 1);
-      i--;
+    // Safety: verify actual column height before inserting
+    const actualUsedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    if (actualUsedH + bestO.h > actualUsedH + maxH + 0.5) break;
+
+    // Residual dominance: extend Y container if residual can't fit anything
+    let consumed = bestO.h;
+    const residualH = maxH - bestO.h;
+    if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
+      consumed = maxH;
     }
+    const yId = insertNode(tree, colX.id, "Y", consumed, 1);
+    const yNode = findNode(tree, yId)!;
+
+    createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+
+    filled += bestO.w * bestO.h;
+    maxH -= consumed;
+    remaining.splice(bestIdx, 1);
   }
 
   return filled;
