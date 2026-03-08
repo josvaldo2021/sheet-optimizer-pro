@@ -396,6 +396,48 @@ const Index = () => {
     return usableW > 0 && usableH > 0 ? (area / (usableW * usableH)) * 100 : 0;
   }, [tree, usableW, usableH]);
 
+  const calcReplication = useCallback(() => {
+    const usedPieces = extractUsedPiecesWithContext(tree);
+    if (usedPieces.length === 0) {
+      setStatus({ msg: 'Desenhe um layout primeiro!', type: 'error' });
+      return;
+    }
+    if (pieces.length === 0) {
+      setStatus({ msg: 'Adicione peças na lista primeiro!', type: 'error' });
+      return;
+    }
+
+    // Build BOM from the current layout
+    const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
+    usedPieces.forEach(used => {
+      const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
+      const existing = layoutBOM.get(key);
+      if (existing) existing.count++;
+      else layoutBOM.set(key, { w: used.w, h: used.h, count: 1 });
+    });
+
+    // Check inventory availability
+    const bomDetails: Array<{ w: number; h: number; need: number; available: number }> = [];
+    let maxReps = Infinity;
+
+    layoutBOM.forEach(({ w, h, count }) => {
+      let available = 0;
+      pieces.forEach(p => {
+        if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
+          available += p.qty;
+        }
+      });
+      const reps = Math.floor(available / count);
+      maxReps = Math.min(maxReps, reps);
+      bomDetails.push({ w, h, need: count, available });
+    });
+
+    if (!isFinite(maxReps)) maxReps = 0;
+
+    setReplicationInfo({ count: maxReps, bom: bomDetails });
+    setStatus({ msg: `Layout pode ser repetido ${maxReps}×`, type: maxReps > 0 ? 'success' : 'error' });
+  }, [tree, pieces, extractUsedPiecesWithContext]);
+
   // ─── Render helpers ───
   const renderActionTree = (node: TreeNode, depth = 0): JSX.Element[] =>
     node.filhos.map(child => (
