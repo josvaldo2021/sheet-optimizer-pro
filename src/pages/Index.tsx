@@ -37,6 +37,10 @@ const Index = () => {
   const [replicationInfo, setReplicationInfo] = useState<{ count: number; bom: Array<{ w: number; h: number; need: number; available: number }> } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(50);
   const [gaGens, setGaGens] = useState(50);
+  const [cmdInput, setCmdInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
+  const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState({ w: 800, h: 600 });
