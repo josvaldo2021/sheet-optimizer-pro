@@ -471,10 +471,10 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="max-h-[280px] overflow-x-auto overflow-y-auto p-2.5 cnc-scroll">
+            <div className="max-h-[280px] overflow-y-auto p-2.5 cnc-scroll">
               {/* Header */}
               {pieces.length > 0 && (
-              <div className="grid min-w-max gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '20px 70px 70px 15px 70px 70px 20px', color: 'hsl(0 0% 45%)' }}>
+                <div className="grid gap-1 mb-1 text-[9px] font-bold uppercase" style={{ gridTemplateColumns: '18px 40px 1fr 10px 1fr 1fr 18px', color: 'hsl(0 0% 45%)' }}>
                   <span className="text-center" title="Prioridade">🚩</span>
                   <span className="text-center">Qtd</span>
                   <span className="text-center">Larg</span>
@@ -485,7 +485,7 @@ const Index = () => {
                 </div>
               )}
               {pieces.map(p => (
-                <div key={p.id} className="cnc-inv-item min-w-max" style={{ gridTemplateColumns: '20px 70px 70px 15px 70px 70px 20px' }}>
+                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '18px 40px 1fr 10px 1fr 1fr 18px' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="checkbox"
@@ -497,13 +497,13 @@ const Index = () => {
                   </div>
                   <input type="number" value={p.qty} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, qty: +e.target.value } : x))} className="cnc-input" />
                   <input type="number" value={p.w} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, w: +e.target.value } : x))} className="cnc-input" />
-                  <span className="text-center text-[10px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
+                  <span className="text-center text-[8px]" style={{ color: 'hsl(0 0% 53%)' }}>×</span>
                   <input type="number" value={p.h} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, h: +e.target.value } : x))} className="cnc-input" />
                   <input type="text" value={p.label || ''} onChange={e => setPieces(ps => ps.map(x => x.id === p.id ? { ...x, label: e.target.value || undefined } : x))} className="cnc-input" placeholder="ID" />
                   <button
                     onClick={() => setPieces(ps => ps.filter(x => x.id !== p.id))}
-                    className="text-[14px] cursor-pointer hover:text-red-400 transition-colors"
-                    style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
+                    className="text-[12px] cursor-pointer hover:text-red-400 transition-colors"
+                    style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none', padding: 0 }}
                     title="Remover peça"
                   >
                     ×
