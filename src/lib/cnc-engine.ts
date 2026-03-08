@@ -1170,7 +1170,7 @@ export async function optimizeGeneticAsync(
   gaGenerations: number = 50,
 ): Promise<TreeNode> {
   const populationSize = Math.max(10, gaPopulationSize);
-  const generations = Math.max(1, gaGenerations);
+  const generations = Math.max(0, gaGenerations);
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
   const mutationRate = 0.03;
 
