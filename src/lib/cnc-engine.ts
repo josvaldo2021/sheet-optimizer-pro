@@ -711,6 +711,8 @@ function groupPiecesStripFirst(pieces: Piece[], usableW: number, usableH: number
     return [...pieces].sort((a, b) => b.area - a.area);
   }
 
+  console.log(`[CNC-ENGINE] Strip-first: ${bestStrip.pieces.length} peças de altura ${bestStrip.height}mm → faixa de ${bestStrip.totalW}mm (${(bestFillRatio * 100).toFixed(0)}% da largura)`);
+
   // Build result: strip group FIRST, then remaining pieces
   const result: Piece[] = [];
   const usedPieces = new Set(bestStrip.pieces);
