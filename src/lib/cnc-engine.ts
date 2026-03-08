@@ -22,6 +22,8 @@ export interface Piece {
   labels?: string[];
   /** Axis along which pieces were grouped */
   groupedAxis?: "w" | "h";
+  /** If true, this piece must be placed first (strip-first strategy) */
+  placeFirst?: boolean;
 }
 
 export interface PieceItem {
@@ -709,6 +711,8 @@ function groupPiecesStripFirst(pieces: Piece[], usableW: number, usableH: number
     return [...pieces].sort((a, b) => b.area - a.area);
   }
 
+  console.log(`[CNC-ENGINE] Strip-first: ${bestStrip.pieces.length} peças de altura ${bestStrip.height}mm → faixa de ${bestStrip.totalW}mm (${(bestFillRatio * 100).toFixed(0)}% da largura)`);
+
   // Build result: strip group FIRST, then remaining pieces
   const result: Piece[] = [];
   const usedPieces = new Set(bestStrip.pieces);
@@ -726,6 +730,7 @@ function groupPiecesStripFirst(pieces: Piece[], usableW: number, usableH: number
     count: bestStrip.pieces.length,
     labels: groupLabels.length > 0 ? groupLabels : undefined,
     groupedAxis: "w",
+    placeFirst: true,
   });
   
   // Add remaining pieces (sorted by area descending)
@@ -1153,7 +1158,10 @@ export function optimizeV6(
 
     for (const variant of pieceVariants) {
       for (const sortFn of strategies) {
-        const sorted = [...variant].sort(sortFn);
+        // Preserve placeFirst pieces at the front, sort only the rest
+        const pinned = variant.filter(p => p.placeFirst);
+        const rest = variant.filter(p => !p.placeFirst);
+        const sorted = [...pinned, ...rest.sort(sortFn)];
         const result = runPlacement(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
