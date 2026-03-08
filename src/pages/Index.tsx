@@ -485,7 +485,7 @@ const Index = () => {
                 </div>
               )}
               {pieces.map(p => (
-                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '18px 40px 1fr 10px 1fr 1fr 18px' }}>
+                <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: '20px 70px 70px 15px 70px 70px 20px' }}>
                   <div className="flex items-center justify-center">
                     <input
                       type="checkbox"
