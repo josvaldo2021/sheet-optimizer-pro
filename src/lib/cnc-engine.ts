@@ -675,7 +675,8 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
 
   return grouped;
 }
-}
+
+
 
 /**
  * Same as groupPiecesColumnWidth but groups by width (sum heights).
