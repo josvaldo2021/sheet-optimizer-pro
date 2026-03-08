@@ -255,7 +255,7 @@ const Index = () => {
           });
         }, priorityLabels.length > 0 ? priorityLabels : undefined, gaPopSize, gaGens);
         const usedArea = calcPlacedArea(result);
-        chapaList.push({ tree: result, usedArea });
+        chapaList.push({ tree: result, usedArea, manual: false });
 
         const usedPieces = extractUsedPiecesWithContext(result);
 
