@@ -517,49 +517,45 @@ const Index = () => {
     const upper = cmdInput.toUpperCase();
     const directMatches = commandSuggestions.filter(s => s.cmd.startsWith(upper));
 
-    // Look-ahead: if the typed command matches an exact suggestion, show what comes NEXT
-    const exactMatch = commandSuggestions.find(s => s.cmd === upper);
-    if (exactMatch) {
-      // Parse the typed command to extract coordinate type and value
-      const m = upper.match(/^([XYZWQ])(\d+)$/);
-      if (m) {
-        const tipo = m[1];
-        const valor = Number(m[2]);
-        const lookAhead: Array<{ cmd: string; label: string; desc: string }> = [];
-        const seenLA = new Set<string>();
+    // Look-ahead: parse ANY typed command (doesn't need to be in suggestion list)
+    const m = upper.match(/^(?:M\d+)?([XYZWQ])(\d+)$/);
+    if (m) {
+      const tipo = m[1];
+      const valor = Number(m[2]);
+      const lookAhead: Array<{ cmd: string; label: string; desc: string }> = [];
+      const seenLA = new Set<string>();
 
-        // Hierarchy: X→Y, Y→Z, Z→W
-        const nextTipoMap: Record<string, string> = { X: 'Y', Y: 'Z', Z: 'W', W: 'Q' };
-        const nextTipo = nextTipoMap[tipo];
+      // Hierarchy: X→Y, Y→Z, Z→W, W→Q
+      const nextTipoMap: Record<string, string> = { X: 'Y', Y: 'Z', Z: 'W', W: 'Q' };
+      const nextTipo = nextTipoMap[tipo];
 
-        if (nextTipo) {
-          pieces.forEach(p => {
-            if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
-            // Match: if the typed value equals one dimension, suggest the other as the next coordinate
-            let nextVal: number | null = null;
-            let descText = '';
-            if (tipo === 'X') {
-              // X = column width. Next = Y (strip height). Match piece width or height to X value.
-              if (p.w === valor) { nextVal = p.h; descText = `→ ${nextTipo}${p.h} (peça ${p.w}×${p.h})`; }
-              else if (p.h === valor) { nextVal = p.w; descText = `→ ${nextTipo}${p.w} (peça ${p.w}×${p.h} rot.)`; }
-            } else if (tipo === 'Y') {
-              // Y = strip height. Next = Z (subdivision width). Find pieces where height matches Y.
-              // We need the parent X value to fully match, but as a look-ahead we match on Y dimension
-              if (p.h === valor) { nextVal = p.w; descText = `→ ${nextTipo}${p.w} (peça ${p.w}×${p.h})`; }
-              else if (p.w === valor) { nextVal = p.h; descText = `→ ${nextTipo}${p.h} (peça ${p.w}×${p.h} rot.)`; }
-            } else if (tipo === 'Z') {
-              if (p.w === valor) { nextVal = p.h; descText = `→ ${nextTipo}${p.h} (peça ${p.w}×${p.h})`; }
-              else if (p.h === valor) { nextVal = p.w; descText = `→ ${nextTipo}${p.w} (peça ${p.w}×${p.h} rot.)`; }
+      if (nextTipo) {
+        pieces.forEach(p => {
+          if (p.qty <= 0 || p.w <= 0 || p.h <= 0) return;
+          let nextVal: number | null = null;
+          let descText = '';
+
+          // For any coordinate level, match the typed value against both dimensions
+          // and suggest the complementary dimension as the next coordinate
+          if (p.w === valor) {
+            nextVal = p.h;
+            descText = `→ próximo: ${nextTipo}${p.h} (peça ${p.w}×${p.h}${p.label ? ' - ' + p.label : ''})`;
+          } else if (p.h === valor) {
+            nextVal = p.w;
+            descText = `→ próximo: ${nextTipo}${p.w} (peça ${p.w}×${p.h} rot.${p.label ? ' - ' + p.label : ''})`;
+          }
+
+          if (nextVal !== null) {
+            const key = `${nextTipo}${nextVal}`;
+            if (!seenLA.has(key)) {
+              seenLA.add(key);
+              lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText });
             }
-            if (nextVal !== null) {
-              const key = `${nextTipo}${nextVal}`;
-              if (!seenLA.has(key)) {
-                seenLA.add(key);
-                lookAhead.push({ cmd: key, label: `⟶ ${key}`, desc: descText });
-              }
-            }
-          });
-        }
+          }
+        });
+      }
+
+      if (lookAhead.length > 0) {
         return [...directMatches, ...lookAhead];
       }
     }
