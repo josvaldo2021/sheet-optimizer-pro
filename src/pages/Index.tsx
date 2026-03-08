@@ -655,9 +655,9 @@ const Index = () => {
                 <input
                   type="number"
                   value={gaGens}
-                  onChange={e => setGaGens(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={e => setGaGens(Math.max(0, parseInt(e.target.value) || 0))}
                   className="cnc-input w-full"
-                  min={1}
+                  min={0}
                   style={{ fontSize: '10px' }}
                 />
               </div>

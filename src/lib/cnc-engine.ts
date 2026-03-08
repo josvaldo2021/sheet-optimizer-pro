@@ -1170,7 +1170,7 @@ export async function optimizeGeneticAsync(
   gaGenerations: number = 50,
 ): Promise<TreeNode> {
   const populationSize = Math.max(10, gaPopulationSize);
-  const generations = Math.max(1, gaGenerations);
+  const generations = Math.max(0, gaGenerations);
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
   const mutationRate = 0.03;
 
@@ -1355,9 +1355,38 @@ export async function optimizeGeneticAsync(
   let bestFitness = -1;
   let bestTransposed = false;
 
-  // Report baseline
+  // --- Run V6 heuristic as baseline (always) ---
   if (onProgress) {
-    onProgress({ phase: "Semeando População e V6...", current: 0, total: generations });
+    onProgress({ phase: "Rodando heurísticas V6...", current: 0, total: Math.max(1, generations) });
+  }
+  const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
+  const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
+  if (v6Util > bestFitness) {
+    bestFitness = v6Util;
+    bestTree = JSON.parse(JSON.stringify(v6Result.tree));
+    bestTransposed = false;
+  }
+  // Also test transposed V6
+  const v6T = optimizeV6(pieces, usableH, usableW, minBreak);
+  const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
+  if (v6TUtil > bestFitness) {
+    bestFitness = v6TUtil;
+    bestTree = JSON.parse(JSON.stringify(v6T.tree));
+    bestTransposed = true;
+  }
+
+  if (onProgress && generations > 0) {
+    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestFitness * 100 });
+  }
+
+  // If generations=0, skip GA entirely (heuristics only)
+  if (generations === 0) {
+    if (onProgress) {
+      onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
+    }
+    const finalTree = bestTree || createRoot(usableW, usableH);
+    if (bestTransposed) finalTree.transposed = true;
+    return finalTree;
   }
 
   for (let g = 0; g < generations; g++) {
