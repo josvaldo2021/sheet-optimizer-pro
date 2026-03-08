@@ -588,7 +588,8 @@ const Index = () => {
 
     processCommand(suggestion.cmd);
     setCmdInput('');
-    setShowSuggestions(false);
+    // Keep open to immediately suggest the next level after insertion
+    setShowSuggestions(true);
     setSelectedSuggestionIdx(-1);
     cmdInputRef.current?.focus();
   }, [processCommand, cmdInput]);
@@ -1019,8 +1020,10 @@ const Index = () => {
                     if (selectedSuggestionIdx >= 0 && filteredSuggestions[selectedSuggestionIdx]) {
                       applySuggestion(filteredSuggestions[selectedSuggestionIdx]);
                     } else {
-                      processCommand(cmdInput.trim().toUpperCase());
-                      setCmdInput('');
+                      const typed = cmdInput.trim().toUpperCase();
+                      const lookAhead = filteredSuggestions.find(s => s.kind === 'lookahead');
+                      processCommand(typed);
+                      setCmdInput(lookAhead?.cmd || '');
                       // Keep suggestions open so next-level suggestions appear after command executes
                       setShowSuggestions(true);
                     }
