@@ -158,11 +158,14 @@ const Index = () => {
 
   const extractUsedPiecesWithContext = useCallback((node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
     const used: Array<{ w: number; h: number; label?: string }> = [];
-    const traverse = (n: TreeNode, parents: TreeNode[]) => {
+    const traverse = (n: TreeNode, parents: TreeNode[], parentMultiplier: number) => {
       const yAncestor = parents.find(p => p.tipo === 'Y');
       const zAncestor = parents.find(p => p.tipo === 'Z');
       const wAncestor = parents.find(p => p.tipo === 'W');
       let pieceW = 0, pieceH = 0, isLeaf = false;
+
+      // Cumulative multiplier: parent chain × this node's own multi
+      const totalMulti = parentMultiplier * n.multi;
 
       if (n.tipo === 'Z' && n.filhos.length === 0) {
         pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
@@ -173,13 +176,13 @@ const Index = () => {
       }
 
       if (isLeaf && pieceW > 0 && pieceH > 0) {
-        for (let m = 0; m < n.multi; m++) {
+        for (let m = 0; m < totalMulti; m++) {
           used.push({ w: pieceW, h: pieceH, label: n.label });
         }
       }
-      n.filhos.forEach(f => traverse(f, [...parents, n]));
+      n.filhos.forEach(f => traverse(f, [...parents, n], totalMulti));
     };
-    traverse(node, []);
+    traverse(node, [], 1);
     return used;
   }, []);
 
