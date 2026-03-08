@@ -479,18 +479,27 @@ const Index = () => {
         });
       }
       // Suggest Z subdivisions
-      if (selected.tipo === 'Y' || selected.tipo === 'Z') {
-        const yNode = selected.tipo === 'Y' ? selected : findParentOfType(tree, selectedId, 'Y');
-        if (yNode) {
-          uniquePieces.forEach(({ w, h, label }) => {
-            if (h === yNode.valor) {
-              addSuggestion('Z', w, `Subdivisão ${w}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
-            }
-            if (w === yNode.valor) {
-              addSuggestion('Z', h, `Subdivisão ${h}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
-            }
-          });
-        }
+      const yNode = selected.tipo === 'Y' ? selected : findParentOfType(tree, selectedId, 'Y');
+      if (yNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (h === yNode.valor) {
+            addSuggestion('Z', w, `Subdivisão ${w}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (w === yNode.valor) {
+            addSuggestion('Z', h, `Subdivisão ${h}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
+      }
+      // Suggest W subdivisions when Z is selected
+      if (selected.tipo === 'Z') {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === selected.valor) {
+            addSuggestion('W', h, `Sub-H ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ''}`);
+          }
+          if (h === selected.valor) {
+            addSuggestion('W', w, `Sub-H ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ''}`);
+          }
+        });
       }
     }
 
