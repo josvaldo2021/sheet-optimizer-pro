@@ -746,26 +746,78 @@ const Index = () => {
           layoutGroups={layoutGroups}
         />
 
-        <div className="flex flex-col p-2 px-4" style={{ height: 80, background: 'hsl(0 0% 13%)', borderTop: '4px solid hsl(0 0% 20%)' }}>
+        <div className="flex flex-col p-2 px-4" style={{ height: 'auto', minHeight: 80, background: 'hsl(0 0% 13%)', borderTop: '4px solid hsl(0 0% 20%)' }}>
           <div
             className="text-xs font-bold h-5 mb-1"
             style={{ color: status.type === 'error' ? 'hsl(0 73% 63%)' : status.type === 'success' ? 'hsl(134 53% 40%)' : 'hsl(40 100% 50%)' }}
           >
             Status: {status.msg}
           </div>
-          <input
-            type="text"
-            autoFocus
-            autoComplete="off"
-            placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
-            className="cnc-command-input flex-1"
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                processCommand(e.currentTarget.value.trim().toUpperCase());
-                e.currentTarget.value = '';
-              }
-            }}
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              autoFocus
+              autoComplete="off"
+              placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
+              className="cnc-command-input flex-1"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  processCommand(e.currentTarget.value.trim().toUpperCase());
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
+            <button
+              onClick={calcReplication}
+              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+              style={{ background: 'hsl(270 60% 35%)', fontWeight: 'bold' }}
+              title="Calcular quantas vezes o layout atual pode ser repetido com o inventário disponível"
+            >
+              🔄 REPETIÇÕES
+            </button>
+          </div>
+
+          {/* Replication info */}
+          {replicationInfo && (
+            <div className="mt-2 p-2 rounded text-[10px]" style={{ background: 'hsl(0 0% 6%)', border: '1px solid hsl(0 0% 25%)' }}>
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-bold uppercase tracking-wider" style={{ color: 'hsl(0 0% 50%)' }}>Repetições possíveis</span>
+                <span className="text-[14px] font-bold" style={{ color: replicationInfo.count > 0 ? 'hsl(120 70% 55%)' : 'hsl(0 70% 55%)' }}>
+                  ×{replicationInfo.count}
+                </span>
+                <button
+                  onClick={() => setReplicationInfo(null)}
+                  className="text-[10px] cursor-pointer"
+                  style={{ color: 'hsl(0 0% 40%)', background: 'none', border: 'none' }}
+                >✕</button>
+              </div>
+              <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: 'hsl(0 0% 45%)', fontSize: '8px' }}>
+                    <th className="text-left py-0.5">Peça</th>
+                    <th className="text-center py-0.5">Precisa</th>
+                    <th className="text-center py-0.5">Disponível</th>
+                    <th className="text-center py-0.5">Máx Rep.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {replicationInfo.bom.map((item, i) => {
+                    const maxRep = Math.floor(item.available / item.need);
+                    return (
+                      <tr key={i} style={{ color: 'hsl(0 0% 70%)', borderTop: '1px solid hsl(0 0% 15%)' }}>
+                        <td className="py-0.5">{item.w}×{item.h}</td>
+                        <td className="text-center py-0.5">{item.need}</td>
+                        <td className="text-center py-0.5">{item.available}</td>
+                        <td className="text-center py-0.5 font-bold" style={{ color: maxRep > 0 ? 'hsl(120 60% 50%)' : 'hsl(0 60% 50%)' }}>
+                          {maxRep}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
