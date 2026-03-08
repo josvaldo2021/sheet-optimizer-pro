@@ -1017,7 +1017,7 @@ const Index = () => {
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     if (selectedSuggestionIdx >= 0 && filteredSuggestions[selectedSuggestionIdx]) {
-                      applySuggestion(filteredSuggestions[selectedSuggestionIdx].cmd);
+                      applySuggestion(filteredSuggestions[selectedSuggestionIdx]);
                     } else {
                       processCommand(cmdInput.trim().toUpperCase());
                       setCmdInput('');
@@ -1067,7 +1067,7 @@ const Index = () => {
                       onMouseEnter={() => setSelectedSuggestionIdx(i)}
                       onMouseDown={e => {
                         e.preventDefault();
-                        applySuggestion(s.cmd);
+                        applySuggestion(s);
                       }}
                     >
                       <span className="text-[12px] font-bold font-mono" style={{ color: 'hsl(120 80% 60%)' }}>
