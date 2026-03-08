@@ -143,6 +143,9 @@ export default function SheetViewer({
                             colorIdx++;
                             const realW = T ? wNode.valor : qNode.valor;
                             const realH = T ? qNode.valor : wNode.valor;
+                            const pxW = realW * scale;
+                            const pxH = realH * scale;
+                            const fs = dynamicFontSize(pxW, pxH);
                             qEls.push(
                               <div
                                 key={`q-${qNode.id}-${iq}`}
@@ -161,8 +164,8 @@ export default function SheetViewer({
                                 }}
                                 onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                               >
-                                <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`}>
-                                  {qNode.label && <span className="sv-piece-id">{qNode.label}</span>}
+                                <span className={`sv-piece-label ${realH > realW ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                  {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
                                   {dimLabel(qNode.valor, wNode.valor)}
                                 </span>
                               </div>
