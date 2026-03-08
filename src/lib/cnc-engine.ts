@@ -728,6 +728,7 @@ function groupPiecesStripFirst(pieces: Piece[], usableW: number, usableH: number
     count: bestStrip.pieces.length,
     labels: groupLabels.length > 0 ? groupLabels : undefined,
     groupedAxis: "w",
+    placeFirst: true,
   });
   
   // Add remaining pieces (sorted by area descending)
