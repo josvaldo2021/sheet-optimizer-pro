@@ -886,7 +886,24 @@ function runStripPlacement(
   totalArea = clampTreeHeights(tree, usableW, usableH, totalArea);
 
   return { tree, area: totalArea, remaining };
-}
+  }
+
+  // === Strip Packing with DP ===
+  for (const tolerance of [0, 5, 10, 20]) {
+    for (const rot of ['natural', 'rotated'] as const) {
+      for (const transposed of [false, true]) {
+        const eW = transposed ? usableH : usableW;
+        const eH = transposed ? usableW : usableH;
+        const result = runStripPlacement(pieces, eW, eH, minBreak, tolerance, rot);
+        if (result.area > bestArea) {
+          bestArea = result.area;
+          bestTree = result.tree;
+          bestRemaining = result.remaining;
+          bestTransposed = transposed;
+        }
+      }
+    }
+  }
 
 
 
