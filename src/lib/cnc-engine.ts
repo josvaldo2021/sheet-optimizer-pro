@@ -1351,6 +1351,12 @@ export async function optimizeGeneticAsync(
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
     const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
+    // Enforce largest piece at position 0
+    const lIdx = childGenome.indexOf(largestIdx);
+    if (lIdx > 0) {
+      [childGenome[0], childGenome[lIdx]] = [childGenome[lIdx], childGenome[0]];
+    }
+
     return {
       genome: childGenome,
       rotations: childRotations,
