@@ -1251,13 +1251,21 @@ export async function optimizeGeneticAsync(
 
   const numPieces = pieces.length;
 
+  // Find the index of the largest piece by area (fixed at position 0)
+  const largestIdx = pieces.reduce((best, p, i) => {
+    const area = p.w * p.h;
+    const bestArea = pieces[best].w * pieces[best].h;
+    return area > bestArea ? i : best;
+  }, 0);
+
   function randomIndividual(): GAIndividual {
-    const genome = Array.from({ length: numPieces }, (_, i) => i);
-    // Shuffle genome
-    for (let i = genome.length - 1; i > 0; i--) {
+    // Largest piece always first; shuffle the rest
+    const rest = Array.from({ length: numPieces }, (_, i) => i).filter(i => i !== largestIdx);
+    for (let i = rest.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [genome[i], genome[j]] = [genome[j], genome[i]];
+      [rest[i], rest[j]] = [rest[j], rest[i]];
     }
+    const genome = [largestIdx, ...rest];
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
