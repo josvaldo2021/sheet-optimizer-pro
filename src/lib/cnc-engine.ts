@@ -1375,18 +1375,22 @@ export async function optimizeGeneticAsync(
 
     const r = Math.random();
     if (r < 0.25) {
-      // Swap Mutation
-      const a = Math.floor(Math.random() * c.genome.length);
-      const b = Math.floor(Math.random() * c.genome.length);
-      [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
+      // Swap Mutation — only swap among positions 1+
+      if (c.genome.length > 2) {
+        const a = 1 + Math.floor(Math.random() * (c.genome.length - 1));
+        const b = 1 + Math.floor(Math.random() * (c.genome.length - 1));
+        [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
+      }
     } else if (r < 0.5) {
-      // Block Mutation (Move a segment)
-      if (c.genome.length > 3) {
-        const blockSize = Math.floor(Math.random() * Math.min(5, c.genome.length / 2)) + 2;
-        const start = Math.floor(Math.random() * (c.genome.length - blockSize));
-        const [segment] = [c.genome.splice(start, blockSize)];
-        const target = Math.floor(Math.random() * c.genome.length);
-        c.genome.splice(target, 0, ...segment);
+      // Block Mutation (Move a segment) — only among positions 1+
+      if (c.genome.length > 4) {
+        const tail = c.genome.splice(1); // keep pos 0 fixed
+        const blockSize = Math.floor(Math.random() * Math.min(5, tail.length / 2)) + 2;
+        const start = Math.floor(Math.random() * Math.max(1, tail.length - blockSize));
+        const segment = tail.splice(start, blockSize);
+        const target = Math.floor(Math.random() * tail.length);
+        tail.splice(target, 0, ...segment);
+        c.genome = [c.genome[0], ...tail];
       }
     } else if (r < 0.7) {
       // Rotation Mutation (Flip 10% of bits)
@@ -1397,7 +1401,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6] as const)[Math.floor(Math.random() * 7)] as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
