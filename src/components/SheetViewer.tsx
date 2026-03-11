@@ -317,21 +317,11 @@ export default function SheetViewer({
           }
         });
 
-        // Y waste (remaining dimension in column/strip)
+        // Y waste - collect for merging instead of rendering individually
         const yDimTotal = T ? usableW : usableH;
         const yWaste = yDimTotal - yOff;
         if (yWaste > 0 && yWaste * scale >= 4) {
-          strips.push(
-            <div key="sy" className="sv-waste sv-waste-large" style={{
-              position: 'absolute',
-              ...(T
-                ? { bottom: 0, left: yOff * scale, width: yWaste * scale, height: xNode.valor * scale }
-                : { left: 0, bottom: yOff * scale, width: xNode.valor * scale, height: yWaste * scale }
-              ),
-            }}>
-              <span className="sv-waste-label">{dimLabel(xNode.valor, yWaste)}</span>
-            </div>
-          );
+          yWastes.push({ xStart: cx, xWidth: xNode.valor, yStart: yOff, wasteH: yWaste, xNodeValor: xNode.valor });
         }
 
         els.push(
