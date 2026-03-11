@@ -344,6 +344,41 @@ export default function SheetViewer({
       }
     });
 
+    // Merge adjacent Y-wastes with same yStart and wasteH into unified blocks
+    if (yWastes.length > 0) {
+      const merged: Array<{ xStart: number; totalWidth: number; yStart: number; wasteH: number }> = [];
+      let current = { xStart: yWastes[0].xStart, totalWidth: yWastes[0].xWidth, yStart: yWastes[0].yStart, wasteH: yWastes[0].wasteH };
+
+      for (let i = 1; i < yWastes.length; i++) {
+        const w = yWastes[i];
+        const adjacent = Math.abs((current.xStart + current.totalWidth) - w.xStart) < 1;
+        const sameYStart = Math.abs(current.yStart - w.yStart) < 1;
+        const sameWasteH = Math.abs(current.wasteH - w.wasteH) < 1;
+
+        if (adjacent && sameYStart && sameWasteH) {
+          current.totalWidth += w.xWidth;
+        } else {
+          merged.push({ ...current });
+          current = { xStart: w.xStart, totalWidth: w.xWidth, yStart: w.yStart, wasteH: w.wasteH };
+        }
+      }
+      merged.push(current);
+
+      merged.forEach((m, mi) => {
+        els.push(
+          <div key={`yw-merged-${mi}`} className="sv-waste sv-waste-large" style={{
+            position: 'absolute',
+            ...(T
+              ? { bottom: 0, left: m.yStart * scale, width: m.wasteH * scale, height: m.totalWidth * scale, top: (usableH - m.xStart - m.totalWidth) * scale }
+              : { left: m.xStart * scale, bottom: m.yStart * scale, width: m.totalWidth * scale, height: m.wasteH * scale }
+            ),
+          }}>
+            <span className="sv-waste-label">{dimLabel(m.totalWidth, m.wasteH)}</span>
+          </div>
+        );
+      });
+    }
+
     // X waste (remaining dimension)
     const xDimTotal = T ? usableH : usableW;
     const xWaste = xDimTotal - xOff;
