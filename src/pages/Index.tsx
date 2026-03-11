@@ -135,19 +135,6 @@ const Index = () => {
       const t = cloneTree(tree);
       const nid = insertNode(t, selectedId, tipo, valor, res.allocated);
 
-      // Auto-create Z node when Y is inserted to complete the piece
-      if (tipo === 'Y') {
-        const yNode = findNode(t, nid);
-        const xParent = findParentOfType(t, nid, 'X');
-        if (yNode && xParent) {
-          const zId = insertNode(t, nid, 'Z', xParent.valor, 1);
-          updateTreeAndChapas(t);
-          setSelectedId(zId);
-          setStatus({ msg: `Peça ${xParent.valor}×${valor} criada!`, type: 'success' });
-          return;
-        }
-      }
-
       updateTreeAndChapas(t);
       setSelectedId(nid);
       setStatus({ msg: `${tipo}${valor} criado!`, type: 'success' });
