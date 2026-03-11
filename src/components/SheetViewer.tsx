@@ -97,6 +97,10 @@ export default function SheetViewer({
       return Math.max(6, Math.min(26, fs));
     };
 
+    // Collect Y-waste metadata for merging across adjacent X columns
+    type YWasteInfo = { xStart: number; xWidth: number; yStart: number; wasteH: number; xNodeValor: number };
+    const yWastes: YWasteInfo[] = [];
+
     tree.filhos.forEach(xNode => {
       for (let ix = 0; ix < xNode.multi; ix++) {
         const cx = xOff;
@@ -313,21 +317,11 @@ export default function SheetViewer({
           }
         });
 
-        // Y waste (remaining dimension in column/strip)
+        // Y waste - collect for merging instead of rendering individually
         const yDimTotal = T ? usableW : usableH;
         const yWaste = yDimTotal - yOff;
         if (yWaste > 0 && yWaste * scale >= 4) {
-          strips.push(
-            <div key="sy" className="sv-waste sv-waste-large" style={{
-              position: 'absolute',
-              ...(T
-                ? { bottom: 0, left: yOff * scale, width: yWaste * scale, height: xNode.valor * scale }
-                : { left: 0, bottom: yOff * scale, width: xNode.valor * scale, height: yWaste * scale }
-              ),
-            }}>
-              <span className="sv-waste-label">{dimLabel(xNode.valor, yWaste)}</span>
-            </div>
-          );
+          yWastes.push({ xStart: cx, xWidth: xNode.valor, yStart: yOff, wasteH: yWaste, xNodeValor: xNode.valor });
         }
 
         els.push(
@@ -349,6 +343,41 @@ export default function SheetViewer({
         xOff += xNode.valor;
       }
     });
+
+    // Merge adjacent Y-wastes with same yStart and wasteH into unified blocks
+    if (yWastes.length > 0) {
+      const merged: Array<{ xStart: number; totalWidth: number; yStart: number; wasteH: number }> = [];
+      let current = { xStart: yWastes[0].xStart, totalWidth: yWastes[0].xWidth, yStart: yWastes[0].yStart, wasteH: yWastes[0].wasteH };
+
+      for (let i = 1; i < yWastes.length; i++) {
+        const w = yWastes[i];
+        const adjacent = Math.abs((current.xStart + current.totalWidth) - w.xStart) < 1;
+        const sameYStart = Math.abs(current.yStart - w.yStart) < 1;
+        const sameWasteH = Math.abs(current.wasteH - w.wasteH) < 1;
+
+        if (adjacent && sameYStart && sameWasteH) {
+          current.totalWidth += w.xWidth;
+        } else {
+          merged.push({ ...current });
+          current = { xStart: w.xStart, totalWidth: w.xWidth, yStart: w.yStart, wasteH: w.wasteH };
+        }
+      }
+      merged.push(current);
+
+      merged.forEach((m, mi) => {
+        els.push(
+          <div key={`yw-merged-${mi}`} className="sv-waste sv-waste-large" style={{
+            position: 'absolute',
+            ...(T
+              ? { bottom: 0, left: m.yStart * scale, width: m.wasteH * scale, height: m.totalWidth * scale, top: (usableH - m.xStart - m.totalWidth) * scale }
+              : { left: m.xStart * scale, bottom: m.yStart * scale, width: m.totalWidth * scale, height: m.wasteH * scale }
+            ),
+          }}>
+            <span className="sv-waste-label">{dimLabel(m.totalWidth, m.wasteH)}</span>
+          </div>
+        );
+      });
+    }
 
     // X waste (remaining dimension)
     const xDimTotal = T ? usableH : usableW;
