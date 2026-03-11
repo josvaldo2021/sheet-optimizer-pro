@@ -1169,8 +1169,7 @@ const Index = () => {
                       const typed = cmdInput.trim().toUpperCase();
                       const lookAhead = filteredSuggestions.find(s => s.kind === 'lookahead');
                       processCommand(typed);
-                      setCmdInput(lookAhead?.cmd || '');
-                      // Keep suggestions open so next-level suggestions appear after command executes
+                      setCmdInput('');
                       setShowSuggestions(true);
                     }
                     setSelectedSuggestionIdx(-1);
