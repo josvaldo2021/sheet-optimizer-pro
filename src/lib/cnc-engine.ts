@@ -271,177 +271,154 @@ export function calcPlacedArea(tree: TreeNode): number {
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
 /**
- * AGRUPAMENTO POR MESMA LARGURA EM X (Estratégia Principal)
+ * NOVA IMPLEMENTAÇÃO: Agrupamento por Altura
  *
- * Peças com a mesma largura (W) são empilhadas verticalmente numa única coluna X.
- * Cada peça individual vira um Y strip separado dentro dessa coluna.
- * Isso espelha o comportamento do comando manual m4x818 (1 coluna X, N faixas Y).
+ * Detecta peças com a mesma altura e as agrupa em pares ou trios,
+ * somando as larguras. Isso reduz o número de cortes em X e melhora
+ * o aproveitamento da chapa.
  *
  * Exemplo:
- * Input:  [818×951, 818×600, 818×400]
- * Output: [818×1951 (count=3, groupedAxis="h")]
+ * Input:  [600×1296, 610×1296, 610×1296]
+ * Output: [1210×1296 (count=2), 610×1296 (count=1)]
  *
  * Na árvore de corte:
- * X(818) -> Y(951) peça1, Y(600) peça2, Y(400) peça3
- *
- * @param maxH - Altura máxima da chapa. Limita a soma das alturas do grupo.
+ * X(1210) -> Y(1296) -> Z(600) + Z(610)
  */
-function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece[] {
-  const normalized = pieces.map((p) => ({
-    ...p,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
-  }));
+function groupPiecesByHeight(pieces: Piece[]): Piece[] {
+  // Mapeia peças por altura (usando a menor dimensão como altura)
+  const heightGroups = new Map<number, Piece[]>();
 
-  const widthGroups = new Map<number, typeof normalized>();
-  normalized.forEach((p) => {
-    if (!widthGroups.has(p.nw)) widthGroups.set(p.nw, []);
-    widthGroups.get(p.nw)!.push(p);
+  pieces.forEach((p) => {
+    const h = Math.min(p.w, p.h);
+    if (!heightGroups.has(h)) heightGroups.set(h, []);
+    heightGroups.get(h)!.push(p);
   });
 
   const result: Piece[] = [];
 
-  widthGroups.forEach((group, w) => {
-    const sorted = [...group].sort((a, b) => b.nh - a.nh);
-    let remaining = [...sorted];
+  heightGroups.forEach((group) => {
+    // Normaliza peças: largura = max, altura = min
+    const normalized = group
+      .map((p) => ({
+        ...p,
+        nw: Math.max(p.w, p.h),
+        nh: Math.min(p.w, p.h),
+      }))
+      .sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
 
-    while (remaining.length > 0) {
-      const stack: typeof remaining = [];
-      let stackHeight = 0;
+    // Agrupa o máximo de peças possível (sem limite fixo)
+    let i = 0;
+    while (i < normalized.length) {
+      const h = normalized[i].nh;
 
-      for (let i = 0; i < remaining.length; i++) {
-        if (stackHeight + remaining[i].nh <= maxH) {
-          stack.push(remaining[i]);
-          stackHeight += remaining[i].nh;
-        }
+      // Coleta todas as peças consecutivas com mesma altura
+      const candidates: number[] = [i];
+      let sumW = normalized[i].nw;
+
+      for (let j = i + 1; j < normalized.length; j++) {
+        candidates.push(j);
+        sumW += normalized[j].nw;
       }
 
-      if (stack.length >= 2) {
+      // Agrupa se há 2+ peças
+      if (candidates.length >= 2) {
         const groupedLabels: string[] = [];
-        stack.forEach((p) => {
-          if (p.label) groupedLabels.push(p.label);
-        });
-
-        const individualArea = w * stack[0].nh;
-        result.push({
-          w,
-          h: stackHeight,
-          area: individualArea,
-          count: stack.length,
-          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: "h",
-        });
-
-        for (const used of stack) {
-          const idx = remaining.indexOf(used);
-          if (idx >= 0) remaining.splice(idx, 1);
+        for (let k = 0; k < candidates.length; k++) {
+          if (normalized[candidates[k]].label) {
+            groupedLabels.push(normalized[candidates[k]].label!);
+          }
         }
-      } else {
-        const p = remaining.shift()!;
-        result.push({
-          w: p.nw,
-          h: p.nh,
-          area: p.nw * p.nh,
-          count: 1,
-          label: p.label,
-        });
-      }
-    }
-  });
 
-  result.sort((a, b) => {
-    const wA = a.count && a.count > 1 ? a.w : Math.max(a.w, a.h);
-    const wB = b.count && b.count > 1 ? b.w : Math.max(b.w, b.h);
-    if (wB !== wA) return wB - wA;
-    return b.area - a.area;
+        result.push({
+          w: sumW,
+          h,
+          area: sumW * h,
+          count: candidates.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: "w",
+        });
+
+        // Remove todos os itens agrupados (em ordem reversa)
+        for (let k = candidates.length - 1; k >= 0; k--) {
+          normalized.splice(candidates[k], 1);
+        }
+        continue;
+      }
+
+      // Peça individual
+      result.push({
+        w: normalized[i].nw,
+        h: normalized[i].nh,
+        area: normalized[i].nw * normalized[i].nh,
+        count: 1,
+        label: normalized[i].label,
+      });
+      i++;
+    }
   });
 
   return result;
 }
 
 /**
- * AGRUPAMENTO POR MESMA ALTURA EM Y (Estratégia Complementar)
- * Peças com a mesma altura são colocadas lado a lado, somando larguras.
+ * Agrupamento por Largura (implementação original mantida)
  */
-function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piece[] {
-  const normalized = pieces.map((p) => ({
-    ...p,
-    nw: Math.max(p.w, p.h),
-    nh: Math.min(p.w, p.h),
-  }));
+function groupPiecesByWidth(pieces: Piece[]): Piece[] {
+  const widthGroups = new Map<number, Piece[]>();
 
-  const heightGroups = new Map<number, typeof normalized>();
-  normalized.forEach((p) => {
-    if (!heightGroups.has(p.nh)) heightGroups.set(p.nh, []);
-    heightGroups.get(p.nh)!.push(p);
+  pieces.forEach((p) => {
+    const w = Math.max(p.w, p.h);
+    if (!widthGroups.has(w)) widthGroups.set(w, []);
+    widthGroups.get(w)!.push(p);
   });
 
   const result: Piece[] = [];
 
-  heightGroups.forEach((group, h) => {
-    const sorted = [...group].sort((a, b) => b.nw - a.nw);
-    let remaining = [...sorted];
+  widthGroups.forEach((group) => {
+    const sorted = group
+      .map((p) => ({
+        ...p,
+        nw: Math.max(p.w, p.h),
+        nh: Math.min(p.w, p.h),
+      }))
+      .sort((a, b) => b.nh - a.nh);
 
-    while (remaining.length > 0) {
-      const row: typeof remaining = [];
-      let rowWidth = 0;
+    let i = 0;
+    while (i < sorted.length) {
+      if (i + 1 < sorted.length) {
+        const w = sorted[i].nw;
+        const sumH = sorted[i].nh + sorted[i + 1].nh;
 
-      for (let i = 0; i < remaining.length; i++) {
-        if (rowWidth + remaining[i].nw <= maxW) {
-          row.push(remaining[i]);
-          rowWidth += remaining[i].nw;
-        }
-      }
-
-      if (row.length >= 2) {
         const groupedLabels: string[] = [];
-        row.forEach((p) => {
-          if (p.label) groupedLabels.push(p.label);
-        });
+        if (sorted[i].label) groupedLabels.push(sorted[i].label);
+        if (sorted[i + 1].label) groupedLabels.push(sorted[i + 1].label);
 
-        const individualArea = row[0].nw * h;
         result.push({
-          w: rowWidth,
-          h,
-          area: individualArea,
-          count: row.length,
+          w,
+          h: sumH,
+          area: w * sumH,
+          count: 2,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: "w",
+          groupedAxis: "h",
         });
 
-        for (const used of row) {
-          const idx = remaining.indexOf(used);
-          if (idx >= 0) remaining.splice(idx, 1);
-        }
-      } else {
-        const p = remaining.shift()!;
-        result.push({
-          w: p.nw,
-          h: p.nh,
-          area: p.nw * p.nh,
-          count: 1,
-          label: p.label,
-        });
+        sorted.splice(i + 1, 1);
+        sorted.splice(i, 1);
+        continue;
       }
+
+      result.push({
+        w: sorted[i].nw,
+        h: sorted[i].nh,
+        area: sorted[i].nw * sorted[i].nh,
+        count: 1,
+        label: sorted[i].label,
+      });
+      i++;
     }
   });
 
-  result.sort((a, b) => {
-    const hA = a.count && a.count > 1 ? a.h : Math.min(a.w, a.h);
-    const hB = b.count && b.count > 1 ? b.h : Math.min(b.w, b.h);
-    if (hB !== hA) return hB - hA;
-    return b.area - a.area;
-  });
-
   return result;
-}
-
-// Backward-compatible aliases used by other grouping strategies
-function groupPiecesByHeight(pieces: Piece[]): Piece[] {
-  return groupPiecesBySameHeight(pieces);
-}
-function groupPiecesByWidth(pieces: Piece[]): Piece[] {
-  return groupPiecesBySameWidth(pieces);
 }
 
 /**
@@ -1083,39 +1060,37 @@ export function optimizeV6(
       : [
           pieces,
           rotatedPieces,
-          // PRIMARY: Agrupamento por mesma largura em X (empilhamento vertical)
-          groupPiecesBySameWidth(pieces, usableH),
-          groupPiecesBySameWidth(rotatedPieces, usableH),
-          groupPiecesBySameWidth(pieces), // sem limite de altura
-          groupPiecesBySameWidth(rotatedPieces),
-          // COMPLEMENTAR: Agrupamento por mesma altura em Y (lado a lado)
-          groupPiecesBySameHeight(pieces, usableW),
-          groupPiecesBySameHeight(rotatedPieces, usableW),
-          groupPiecesBySameHeight(pieces),
-          groupPiecesBySameHeight(rotatedPieces),
-          // Fill-row strategies
+          groupPiecesByHeight(pieces),
+          groupPiecesByWidth(pieces),
+          groupPiecesByHeight(rotatedPieces),
+          // Fill-row strategies (normalized: pack by min dimension as height)
           groupPiecesFillRow(pieces, usableW),
           groupPiecesFillRow(rotatedPieces, usableW),
+          // Fill-row RAW (non-normalized: pack by actual h, discovers layouts where larger dim is height)
           groupPiecesFillRow(pieces, usableW, true),
           groupPiecesFillRow(rotatedPieces, usableW, true),
-          // Fill-col strategies
+          // Fill-col strategies (normalized)
           groupPiecesFillCol(pieces, usableH),
           groupPiecesFillCol(rotatedPieces, usableH),
+          // Fill-col RAW (non-normalized)
           groupPiecesFillCol(pieces, usableH, true),
           groupPiecesFillCol(rotatedPieces, usableH, true),
-          // Combined: fill-row on width-grouped pieces
-          groupPiecesFillRow(groupPiecesBySameWidth(pieces, usableH), usableW),
-          groupPiecesFillRow(groupPiecesBySameHeight(pieces, usableW), usableW),
-          // Column-width/height maximizing
+          // Combined: fill-row on height-grouped pieces
+          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
+          // Combined RAW
+          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
+          // Column-width maximizing: grouped pieces with widest combined width first
           groupPiecesColumnWidth(pieces, usableW),
           groupPiecesColumnWidth(rotatedPieces, usableW),
+          // Column-height maximizing: grouped pieces with tallest combined height first
           groupPiecesColumnHeight(pieces, usableH),
           groupPiecesColumnHeight(rotatedPieces, usableH),
-          // Band strategies
+          // Band-first: widest horizontal bands placed first (full-width strips)
           groupPiecesBandFirst(pieces, usableW),
           groupPiecesBandFirst(rotatedPieces, usableW),
           groupPiecesBandFirst(pieces, usableW, true),
           groupPiecesBandFirst(rotatedPieces, usableW, true),
+          // Band-last: large pieces first, bands fill remaining space
           groupPiecesBandLast(pieces, usableW),
           groupPiecesBandLast(rotatedPieces, usableW),
         ];
