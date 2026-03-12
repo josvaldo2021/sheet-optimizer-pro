@@ -107,8 +107,15 @@ const Index = () => {
     const m = text.match(/^M(\d+)(.+)$/);
     if (m) { multi = parseInt(m[1]); cmd = m[2]; }
     const tipo = cmd.charAt(0) as any;
-    const valor = parseFloat(cmd.substring(1));
+    let valor = parseFloat(cmd.substring(1));
     if (isNaN(valor) || !['X', 'Y', 'Z', 'W', 'Q'].includes(tipo)) return;
+
+    // For X nodes, multiply value instead of creating separate columns
+    // e.g. m4x818 → single X of 3272 instead of 4 separate X818
+    if (tipo === 'X' && multi > 1) {
+      valor = valor * multi;
+      multi = 1;
+    }
 
     // If inserting Z and the Y parent has a single auto-created full-width Z, remove it first
     if (tipo === 'Z') {
