@@ -1083,37 +1083,39 @@ export function optimizeV6(
       : [
           pieces,
           rotatedPieces,
-          groupPiecesByHeight(pieces),
-          groupPiecesByWidth(pieces),
-          groupPiecesByHeight(rotatedPieces),
-          // Fill-row strategies (normalized: pack by min dimension as height)
+          // PRIMARY: Agrupamento por mesma largura em X (empilhamento vertical)
+          groupPiecesBySameWidth(pieces, usableH),
+          groupPiecesBySameWidth(rotatedPieces, usableH),
+          groupPiecesBySameWidth(pieces), // sem limite de altura
+          groupPiecesBySameWidth(rotatedPieces),
+          // COMPLEMENTAR: Agrupamento por mesma altura em Y (lado a lado)
+          groupPiecesBySameHeight(pieces, usableW),
+          groupPiecesBySameHeight(rotatedPieces, usableW),
+          groupPiecesBySameHeight(pieces),
+          groupPiecesBySameHeight(rotatedPieces),
+          // Fill-row strategies
           groupPiecesFillRow(pieces, usableW),
           groupPiecesFillRow(rotatedPieces, usableW),
-          // Fill-row RAW (non-normalized: pack by actual h, discovers layouts where larger dim is height)
           groupPiecesFillRow(pieces, usableW, true),
           groupPiecesFillRow(rotatedPieces, usableW, true),
-          // Fill-col strategies (normalized)
+          // Fill-col strategies
           groupPiecesFillCol(pieces, usableH),
           groupPiecesFillCol(rotatedPieces, usableH),
-          // Fill-col RAW (non-normalized)
           groupPiecesFillCol(pieces, usableH, true),
           groupPiecesFillCol(rotatedPieces, usableH, true),
-          // Combined: fill-row on height-grouped pieces
-          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW),
-          // Combined RAW
-          groupPiecesFillRow(groupPiecesByHeight(pieces), usableW, true),
-          // Column-width maximizing: grouped pieces with widest combined width first
+          // Combined: fill-row on width-grouped pieces
+          groupPiecesFillRow(groupPiecesBySameWidth(pieces, usableH), usableW),
+          groupPiecesFillRow(groupPiecesBySameHeight(pieces, usableW), usableW),
+          // Column-width/height maximizing
           groupPiecesColumnWidth(pieces, usableW),
           groupPiecesColumnWidth(rotatedPieces, usableW),
-          // Column-height maximizing: grouped pieces with tallest combined height first
           groupPiecesColumnHeight(pieces, usableH),
           groupPiecesColumnHeight(rotatedPieces, usableH),
-          // Band-first: widest horizontal bands placed first (full-width strips)
+          // Band strategies
           groupPiecesBandFirst(pieces, usableW),
           groupPiecesBandFirst(rotatedPieces, usableW),
           groupPiecesBandFirst(pieces, usableW, true),
           groupPiecesBandFirst(rotatedPieces, usableW, true),
-          // Band-last: large pieces first, bands fill remaining space
           groupPiecesBandLast(pieces, usableW),
           groupPiecesBandLast(rotatedPieces, usableW),
         ];
