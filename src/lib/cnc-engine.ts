@@ -676,6 +676,218 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
   return grouped;
 }
 
+// ========== TOLERANT HEIGHT GROUPING ==========
+
+/**
+ * Groups pieces with SIMILAR heights (within tolerance) into horizontal bands.
+ * Unlike groupPiecesByHeight which requires exact match, this allows height
+ * differences up to maxTol mm, using the tallest piece as band height.
+ * Width-constrained: band total width ≤ usableW.
+ *
+ * Height compatibility rules:
+ * - Exact match (diff === 0): always compatible
+ * - Difference between 30mm and maxTol: compatible (enough space for clean cut)
+ * - Difference 1-29mm: NOT compatible (too close for clean guillotine cut)
+ *
+ * This is the key strategy used by commercial optimizers like OptimaWay.
+ */
+function groupPiecesByHeightTolerant(
+  pieces: Piece[],
+  usableW: number,
+  maxTol: number = 100,
+  raw: boolean = false,
+): Piece[] {
+  const normalized = pieces.map((p) => ({
+    ...p,
+    nw: raw ? p.w : Math.max(p.w, p.h),
+    nh: raw ? p.h : Math.min(p.w, p.h),
+  }));
+
+  // Sort by height descending, then width descending (BFD)
+  normalized.sort((a, b) => b.nh - a.nh || b.nw - a.nw);
+
+  const used = new Array(normalized.length).fill(false);
+  const result: Piece[] = [];
+
+  for (let i = 0; i < normalized.length; i++) {
+    if (used[i]) continue;
+
+    const anchor = normalized[i];
+    const bandH = anchor.nh; // tallest piece defines band height
+    const band: number[] = [i];
+    let bandW = anchor.nw;
+    used[i] = true;
+
+    // Greedy BFD: add compatible pieces
+    for (let j = i + 1; j < normalized.length; j++) {
+      if (used[j]) continue;
+      const candidate = normalized[j];
+      const heightDiff = bandH - candidate.nh;
+
+      if (heightDiff < 0) continue;
+      // Compatible: exact match OR difference in [30, maxTol]
+      const compatible = heightDiff === 0 || (heightDiff >= 30 && heightDiff <= maxTol);
+      if (!compatible) continue;
+
+      if (bandW + candidate.nw <= usableW) {
+        band.push(j);
+        bandW += candidate.nw;
+        used[j] = true;
+      }
+    }
+
+    if (band.length >= 2) {
+      const groupedLabels: string[] = [];
+      for (const idx of band) {
+        if (normalized[idx].label) groupedLabels.push(normalized[idx].label!);
+      }
+
+      result.push({
+        w: bandW,
+        h: bandH,
+        area: normalized[band[0]].nw * normalized[band[0]].nh,
+        count: band.length,
+        labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+        groupedAxis: "w",
+      });
+    } else {
+      result.push({
+        w: anchor.nw,
+        h: anchor.nh,
+        area: anchor.nw * anchor.nh,
+        count: 1,
+        label: anchor.label,
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Fill-Row with height tolerance: packs pieces with similar heights into
+ * width-constrained rows using First-Fit Decreasing. Allows height
+ * differences up to maxTol mm within each band.
+ */
+function groupPiecesFillRowTolerant(
+  pieces: Piece[],
+  usableW: number,
+  maxTol: number = 100,
+  raw: boolean = false,
+): Piece[] {
+  const normalized = pieces.map((p) => ({
+    ...p,
+    nw: raw ? p.w : Math.max(p.w, p.h),
+    nh: raw ? p.h : Math.min(p.w, p.h),
+  }));
+
+  normalized.sort((a, b) => b.nh - a.nh || b.nw - a.nw);
+
+  const used = new Array(normalized.length).fill(false);
+  const result: Piece[] = [];
+
+  for (let i = 0; i < normalized.length; i++) {
+    if (used[i]) continue;
+
+    const anchor = normalized[i];
+    const bandH = anchor.nh;
+    used[i] = true;
+
+    // First-Fit Decreasing: pack into multiple rows if needed
+    const rows: { indices: number[]; width: number }[] = [{ indices: [i], width: anchor.nw }];
+
+    for (let j = i + 1; j < normalized.length; j++) {
+      if (used[j]) continue;
+      const candidate = normalized[j];
+      const heightDiff = bandH - candidate.nh;
+
+      if (heightDiff < 0 || heightDiff > maxTol) continue;
+      if (heightDiff > 0 && heightDiff < 30) continue;
+
+      // Try to fit in existing rows (FFD)
+      let placed = false;
+      for (const row of rows) {
+        if (row.width + candidate.nw <= usableW) {
+          row.indices.push(j);
+          row.width += candidate.nw;
+          used[j] = true;
+          placed = true;
+          break;
+        }
+      }
+
+      // Start new row if piece fits sheet width
+      if (!placed && candidate.nw <= usableW) {
+        rows.push({ indices: [j], width: candidate.nw });
+        used[j] = true;
+      }
+    }
+
+    for (const row of rows) {
+      if (row.indices.length >= 2) {
+        const groupedLabels: string[] = [];
+        for (const idx of row.indices) {
+          if (normalized[idx].label) groupedLabels.push(normalized[idx].label!);
+        }
+        const individualArea = normalized[row.indices[0]].nw * normalized[row.indices[0]].nh;
+        result.push({
+          w: row.width,
+          h: bandH,
+          area: individualArea,
+          count: row.indices.length,
+          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+          groupedAxis: "w",
+        });
+      } else {
+        const p = normalized[row.indices[0]];
+        result.push({
+          w: p.nw,
+          h: p.nh,
+          area: p.nw * p.nh,
+          count: 1,
+          label: p.label,
+        });
+      }
+    }
+  }
+
+  // Sort: groups first (widest bands first), then individuals by area
+  result.sort((a, b) => {
+    const aG = (a.count || 1) > 1;
+    const bG = (b.count || 1) > 1;
+    if (aG && !bG) return -1;
+    if (!aG && bG) return 1;
+    if (aG && bG) return b.w - a.w || b.h - a.h;
+    return b.area - a.area;
+  });
+
+  return result;
+}
+
+/**
+ * Band-First Tolerant: creates tolerant bands, widest first.
+ * Combines tolerant grouping with band-first ordering for maximum coverage.
+ */
+function groupPiecesBandFirstTolerant(
+  pieces: Piece[],
+  usableW: number,
+  maxTol: number = 100,
+  raw: boolean = false,
+): Piece[] {
+  const grouped = groupPiecesFillRowTolerant(pieces, usableW, maxTol, raw);
+
+  grouped.sort((a, b) => {
+    const aG = (a.count || 1) > 1;
+    const bG = (b.count || 1) > 1;
+    if (aG && bG) return b.w - a.w || b.h - a.h;
+    if (aG && !bG) return -1;
+    if (!aG && bG) return 1;
+    return b.area - a.area;
+  });
+
+  return grouped;
+}
+
 
 
 /**
@@ -1093,6 +1305,31 @@ export function optimizeV6(
           // Band-last: large pieces first, bands fill remaining space
           groupPiecesBandLast(pieces, usableW),
           groupPiecesBandLast(rotatedPieces, usableW),
+          // === TOLERANT HEIGHT GROUPING (30-100mm tolerance) ===
+          // Height-tolerant grouping with different tolerances
+          groupPiecesByHeightTolerant(pieces, usableW, 50),
+          groupPiecesByHeightTolerant(pieces, usableW, 100),
+          groupPiecesByHeightTolerant(rotatedPieces, usableW, 50),
+          groupPiecesByHeightTolerant(rotatedPieces, usableW, 100),
+          // Raw variants (use original w/h without normalizing)
+          groupPiecesByHeightTolerant(pieces, usableW, 100, true),
+          groupPiecesByHeightTolerant(rotatedPieces, usableW, 100, true),
+          // Fill-Row tolerant
+          groupPiecesFillRowTolerant(pieces, usableW, 50),
+          groupPiecesFillRowTolerant(pieces, usableW, 100),
+          groupPiecesFillRowTolerant(rotatedPieces, usableW, 50),
+          groupPiecesFillRowTolerant(rotatedPieces, usableW, 100),
+          // Fill-Row tolerant RAW
+          groupPiecesFillRowTolerant(pieces, usableW, 100, true),
+          groupPiecesFillRowTolerant(rotatedPieces, usableW, 100, true),
+          // Band-First tolerant (widest tolerant bands first)
+          groupPiecesBandFirstTolerant(pieces, usableW, 50),
+          groupPiecesBandFirstTolerant(pieces, usableW, 100),
+          groupPiecesBandFirstTolerant(rotatedPieces, usableW, 50),
+          groupPiecesBandFirstTolerant(rotatedPieces, usableW, 100),
+          // Band-First tolerant RAW
+          groupPiecesBandFirstTolerant(pieces, usableW, 100, true),
+          groupPiecesBandFirstTolerant(rotatedPieces, usableW, 100, true),
         ];
 
   let bestTree: TreeNode | null = null;
@@ -1166,7 +1403,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight
+  groupingMode: number; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight, 9=heightTol50, 10=heightTol100, 11=fillRowTol50, 12=fillRowTol100, 13=bandFirstTol50, 14=bandFirstTol100
   transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
@@ -1269,7 +1506,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+      groupingMode: Math.floor(Math.random() * 15),
       transposed: Math.random() > 0.5,
     };
   }
@@ -1303,6 +1540,18 @@ export async function optimizeGeneticAsync(
       work = groupPiecesColumnWidth(work, usableW);
     } else if (ind.groupingMode === 8) {
       work = groupPiecesColumnHeight(work, usableH);
+    } else if (ind.groupingMode === 9) {
+      work = groupPiecesByHeightTolerant(work, usableW, 50);
+    } else if (ind.groupingMode === 10) {
+      work = groupPiecesByHeightTolerant(work, usableW, 100);
+    } else if (ind.groupingMode === 11) {
+      work = groupPiecesFillRowTolerant(work, usableW, 50);
+    } else if (ind.groupingMode === 12) {
+      work = groupPiecesFillRowTolerant(work, usableW, 100);
+    } else if (ind.groupingMode === 13) {
+      work = groupPiecesBandFirstTolerant(work, usableW, 50);
+    } else if (ind.groupingMode === 14) {
+      work = groupPiecesBandFirstTolerant(work, usableW, 100);
     }
 
     return work;
@@ -1349,7 +1598,7 @@ export async function optimizeGeneticAsync(
 
     // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
-    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    const childGrouping = Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode;
 
     // Enforce largest piece at position 0
     const lIdx = childGenome.indexOf(largestIdx);
@@ -1401,7 +1650,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+      c.groupingMode = Math.floor(Math.random() * 15);
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
