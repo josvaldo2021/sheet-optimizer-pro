@@ -285,67 +285,59 @@ export function calcPlacedArea(tree: TreeNode): number {
  * X(1210) -> Y(1296) -> Z(600) + Z(610)
  */
 function groupPiecesByHeight(pieces: Piece[]): Piece[] {
-  // Mapeia peças por altura (usando a menor dimensão como altura)
-  const heightGroups = new Map<number, Piece[]>();
+  // Normaliza peças: largura = max, altura = min
+  const normalized = pieces.map((p) => ({
+    ...p,
+    nw: Math.max(p.w, p.h),
+    nh: Math.min(p.w, p.h),
+  }));
 
-  pieces.forEach((p) => {
-    const h = Math.min(p.w, p.h);
-    if (!heightGroups.has(h)) heightGroups.set(h, []);
-    heightGroups.get(h)!.push(p);
-  });
+  // Ordena por altura crescente para facilitar agrupamento por proximidade
+  normalized.sort((a, b) => a.nh - b.nh || b.nw - a.nw);
 
+  const used = new Array(normalized.length).fill(false);
   const result: Piece[] = [];
 
-  heightGroups.forEach((group) => {
-    // Normaliza peças: largura = max, altura = min
-    const normalized = group
-      .map((p) => ({
-        ...p,
-        nw: Math.max(p.w, p.h),
-        nh: Math.min(p.w, p.h),
-      }))
-      .sort((a, b) => b.nw - a.nw); // Ordena por largura decrescente
+  for (let i = 0; i < normalized.length; i++) {
+    if (used[i]) continue;
 
-    // Agrupa o máximo de peças possível (sem limite fixo)
-    let i = 0;
-    while (i < normalized.length) {
-      const h = normalized[i].nh;
+    const baseH = normalized[i].nh;
+    const candidates: number[] = [i];
+    let sumW = normalized[i].nw;
 
-      // Coleta todas as peças consecutivas com mesma altura
-      const candidates: number[] = [i];
-      let sumW = normalized[i].nw;
-
-      for (let j = i + 1; j < normalized.length; j++) {
+    // Procura peças compatíveis: mesma altura OU diferença entre 30-100mm
+    for (let j = i + 1; j < normalized.length; j++) {
+      if (used[j]) continue;
+      const diff = Math.abs(normalized[j].nh - baseH);
+      // Aceita se igual (diff === 0) ou se diferença entre 30 e 100mm
+      if (diff === 0 || (diff >= 30 && diff <= 100)) {
         candidates.push(j);
         sumW += normalized[j].nw;
       }
+    }
 
-      // Agrupa se há 2+ peças
-      if (candidates.length >= 2) {
-        const groupedLabels: string[] = [];
-        for (let k = 0; k < candidates.length; k++) {
-          if (normalized[candidates[k]].label) {
-            groupedLabels.push(normalized[candidates[k]].label!);
-          }
-        }
-
-        result.push({
-          w: sumW,
-          h,
-          area: sumW * h,
-          count: candidates.length,
-          labels: groupedLabels.length > 0 ? groupedLabels : undefined,
-          groupedAxis: "w",
-        });
-
-        // Remove todos os itens agrupados (em ordem reversa)
-        for (let k = candidates.length - 1; k >= 0; k--) {
-          normalized.splice(candidates[k], 1);
-        }
-        continue;
+    // Agrupa se há 2+ peças
+    if (candidates.length >= 2) {
+      // Usa a maior altura do grupo como altura da faixa
+      let maxH = 0;
+      const groupedLabels: string[] = [];
+      for (const idx of candidates) {
+        used[idx] = true;
+        if (normalized[idx].nh > maxH) maxH = normalized[idx].nh;
+        if (normalized[idx].label) groupedLabels.push(normalized[idx].label!);
       }
 
+      result.push({
+        w: sumW,
+        h: maxH,
+        area: sumW * maxH,
+        count: candidates.length,
+        labels: groupedLabels.length > 0 ? groupedLabels : undefined,
+        groupedAxis: "w",
+      });
+    } else {
       // Peça individual
+      used[i] = true;
       result.push({
         w: normalized[i].nw,
         h: normalized[i].nh,
@@ -353,9 +345,8 @@ function groupPiecesByHeight(pieces: Piece[]): Piece[] {
         count: 1,
         label: normalized[i].label,
       });
-      i++;
     }
-  });
+  }
 
   return result;
 }
