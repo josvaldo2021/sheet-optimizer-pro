@@ -1540,6 +1540,18 @@ export async function optimizeGeneticAsync(
       work = groupPiecesColumnWidth(work, usableW);
     } else if (ind.groupingMode === 8) {
       work = groupPiecesColumnHeight(work, usableH);
+    } else if (ind.groupingMode === 9) {
+      work = groupPiecesByHeightTolerant(work, usableW, 50);
+    } else if (ind.groupingMode === 10) {
+      work = groupPiecesByHeightTolerant(work, usableW, 100);
+    } else if (ind.groupingMode === 11) {
+      work = groupPiecesFillRowTolerant(work, usableW, 50);
+    } else if (ind.groupingMode === 12) {
+      work = groupPiecesFillRowTolerant(work, usableW, 100);
+    } else if (ind.groupingMode === 13) {
+      work = groupPiecesBandFirstTolerant(work, usableW, 50);
+    } else if (ind.groupingMode === 14) {
+      work = groupPiecesBandFirstTolerant(work, usableW, 100);
     }
 
     return work;
