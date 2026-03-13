@@ -1305,6 +1305,31 @@ export function optimizeV6(
           // Band-last: large pieces first, bands fill remaining space
           groupPiecesBandLast(pieces, usableW),
           groupPiecesBandLast(rotatedPieces, usableW),
+          // === TOLERANT HEIGHT GROUPING (30-100mm tolerance) ===
+          // Height-tolerant grouping with different tolerances
+          groupPiecesByHeightTolerant(pieces, usableW, 50),
+          groupPiecesByHeightTolerant(pieces, usableW, 100),
+          groupPiecesByHeightTolerant(rotatedPieces, usableW, 50),
+          groupPiecesByHeightTolerant(rotatedPieces, usableW, 100),
+          // Raw variants (use original w/h without normalizing)
+          groupPiecesByHeightTolerant(pieces, usableW, 100, true),
+          groupPiecesByHeightTolerant(rotatedPieces, usableW, 100, true),
+          // Fill-Row tolerant
+          groupPiecesFillRowTolerant(pieces, usableW, 50),
+          groupPiecesFillRowTolerant(pieces, usableW, 100),
+          groupPiecesFillRowTolerant(rotatedPieces, usableW, 50),
+          groupPiecesFillRowTolerant(rotatedPieces, usableW, 100),
+          // Fill-Row tolerant RAW
+          groupPiecesFillRowTolerant(pieces, usableW, 100, true),
+          groupPiecesFillRowTolerant(rotatedPieces, usableW, 100, true),
+          // Band-First tolerant (widest tolerant bands first)
+          groupPiecesBandFirstTolerant(pieces, usableW, 50),
+          groupPiecesBandFirstTolerant(pieces, usableW, 100),
+          groupPiecesBandFirstTolerant(rotatedPieces, usableW, 50),
+          groupPiecesBandFirstTolerant(rotatedPieces, usableW, 100),
+          // Band-First tolerant RAW
+          groupPiecesBandFirstTolerant(pieces, usableW, 100, true),
+          groupPiecesBandFirstTolerant(rotatedPieces, usableW, 100, true),
         ];
 
   let bestTree: TreeNode | null = null;
