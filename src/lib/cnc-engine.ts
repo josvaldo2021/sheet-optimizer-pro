@@ -1650,7 +1650,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+      c.groupingMode = Math.floor(Math.random() * 15);
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
