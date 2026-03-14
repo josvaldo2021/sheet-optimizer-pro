@@ -1197,6 +1197,7 @@ interface GAIndividual {
 
 /**
  * Simulates multiple sheets to calculate a global fitness score.
+ * STRATEGY 1: Sheet-count-aware fitness — primary goal is fewer sheets.
  */
 function simulateSheets(
   workPieces: Piece[],
@@ -1207,6 +1208,7 @@ function simulateSheets(
 ): {
   fitness: number;
   firstTree: TreeNode;
+  sheetsUsed: number;
   stat_rejectedByMinBreak: number;
   stat_fragmentCount: number;
   stat_continuity: number;
@@ -1216,6 +1218,7 @@ function simulateSheets(
   let firstTree: TreeNode | null = null;
   let sheetsActuallySimulated = 0;
   const sheetArea = usableW * usableH;
+  const totalPieceArea = workPieces.reduce((s, p) => s + p.w * p.h * (p.count || 1), 0);
 
   let rejectedCount = 0;
   let continuityScore = 0;
@@ -1230,29 +1233,46 @@ function simulateSheets(
 
     totalUtil += res.area / sheetArea;
 
-    // Continuity logic: check for large usable spaces (Look at root's children)
     const usedW = res.tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
-    if (freeW > 50) continuityScore += freeW / usableW; // Simple bias for wider remnants
+    if (freeW > 50) continuityScore += freeW / usableW;
 
-    // Penalty for small fragments left behind
     const piecesPlaced = countBefore - res.remaining.length;
-    if (piecesPlaced === 0) rejectedCount++;
+    if (piecesPlaced === 0) {
+      rejectedCount++;
+      break; // No progress — stop simulating
+    }
 
     currentRemaining = res.remaining;
     sheetsActuallySimulated++;
   }
 
-  // Multiobjective Fitness
-  let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+  // === STRATEGY 1: Sheet-count-aware fitness ===
+  // Theoretical minimum sheets
+  const theoreticalMin = Math.max(1, Math.ceil(totalPieceArea / sheetArea));
+  const piecesRemaining = currentRemaining.length;
 
-  // Penalties and Bonuses
-  fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
-  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1); // Bonus for usable width
+  // Primary: penalize each sheet beyond theoretical minimum heavily
+  const sheetPenalty = Math.max(0, sheetsActuallySimulated - theoreticalMin) * 0.15;
+
+  // Secondary: average utilization per sheet (higher = better packing)
+  const avgUtil = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+
+  // Tertiary: penalize unplaced pieces very heavily
+  const unplacedPenalty = piecesRemaining * 0.1;
+
+  let fitness = avgUtil - sheetPenalty - unplacedPenalty - rejectedCount * 0.05;
+  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1);
+
+  // Bonus: if we match theoretical minimum, significant reward
+  if (sheetsActuallySimulated <= theoreticalMin && piecesRemaining === 0) {
+    fitness += 0.2;
+  }
 
   return {
     fitness: Math.max(0, fitness),
     firstTree: firstTree || createRoot(usableW, usableH),
+    sheetsUsed: sheetsActuallySimulated,
     stat_rejectedByMinBreak: rejectedCount,
     stat_fragmentCount: fragmentCount,
     stat_continuity: continuityScore,
