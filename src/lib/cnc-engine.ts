@@ -464,10 +464,14 @@ export async function optimizeGeneticAsync(
   pieces: Piece[],
   usableW: number,
   usableH: number,
-  options: OptimizationOptions,
+  minBreak: number,
   onProgress?: (p: any) => void,
+  priorityLabels?: string[],
+  gaPopulationSize: number = 40,
+  gaGenerations: number = 30,
 ): Promise<TreeNode> {
-  const { gaPopulationSize = 40, gaGenerations = 30, kerf, margin } = options;
+  const kerf = minBreak;
+  const margin = 0;
 
   // Ajustar dimensões úteis com base na margem
   const effW = usableW - margin * 2;
