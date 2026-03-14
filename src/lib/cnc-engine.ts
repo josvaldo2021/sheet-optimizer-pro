@@ -41,6 +41,103 @@ export interface OptimizationOptions {
   gaGenerations?: number;
 }
 
+export interface OptimizationProgress {
+  phase: string;
+  current: number;
+  total: number;
+  bestUtil?: number;
+}
+
+export function cloneTree(tree: TreeNode): TreeNode {
+  return JSON.parse(JSON.stringify(tree));
+}
+
+export function deleteNode(tree: TreeNode, nodeId: string): boolean {
+  function removeFromParent(parent: TreeNode, id: string): boolean {
+    const idx = parent.filhos.findIndex(f => f.id === id);
+    if (idx >= 0) {
+      parent.filhos.splice(idx, 1);
+      return true;
+    }
+    for (const f of parent.filhos) {
+      if (removeFromParent(f, id)) return true;
+    }
+    return false;
+  }
+  return removeFromParent(tree, nodeId);
+}
+
+export function calcAllocation(
+  tree: TreeNode,
+  selectedId: string,
+  tipo: NodeType,
+  valor: number,
+  multi: number,
+  sheetW: number,
+  sheetH: number,
+  minBreak: number,
+): { allocated: number; error?: string } {
+  // Validate that the piece can fit
+  const target = findNode(tree, selectedId);
+  if (!target) return { allocated: 0, error: 'Nó não encontrado' };
+
+  // Simple validation: check if value is positive
+  if (valor <= 0) return { allocated: 0, error: 'Valor deve ser positivo' };
+  if (multi <= 0) return { allocated: 0, error: 'Multiplicador deve ser positivo' };
+
+  // Check available space based on node type hierarchy
+  if (tipo === "X") {
+    const usedW = tree.filhos.reduce((sum, x) => sum + x.valor, 0);
+    const available = sheetW - usedW;
+    if (valor > available) return { allocated: 0, error: `Sem espaço horizontal (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "Y") {
+    const xParent = target.tipo === "X" ? target : findParentOfType(tree, selectedId, "X");
+    if (!xParent) return { allocated: 0, error: 'Coluna X não encontrada' };
+    const usedH = xParent.filhos.reduce((sum, y) => sum + y.valor, 0);
+    const available = sheetH - usedH;
+    if (valor > available) return { allocated: 0, error: `Sem espaço vertical (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "Z") {
+    const yParent = target.tipo === "Y" ? target : findParentOfType(tree, selectedId, "Y");
+    if (!yParent) return { allocated: 0, error: 'Faixa Y não encontrada' };
+    const xParent = findParentOfType(tree, yParent.id, "X");
+    if (!xParent) return { allocated: 0, error: 'Coluna X não encontrada' };
+    const usedW = yParent.filhos.reduce((sum, z) => sum + z.valor, 0);
+    const available = xParent.valor - usedW;
+    if (valor > available) return { allocated: 0, error: `Sem espaço na faixa (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "W") {
+    const zParent = target.tipo === "Z" ? target : findParentOfType(tree, selectedId, "Z");
+    if (!zParent) return { allocated: 0, error: 'Subdivisão Z não encontrada' };
+    const yParent = findParentOfType(tree, zParent.id, "Y");
+    if (!yParent) return { allocated: 0, error: 'Faixa Y não encontrada' };
+    const usedH = zParent.filhos.reduce((sum, w) => sum + w.valor, 0);
+    const available = yParent.valor - usedH;
+    if (valor > available) return { allocated: 0, error: `Sem espaço vertical (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "Q") {
+    const wParent = target.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
+    if (!wParent) return { allocated: 0, error: 'Nó W não encontrado' };
+    const zParent = findParentOfType(tree, wParent.id, "Z");
+    if (!zParent) return { allocated: 0, error: 'Subdivisão Z não encontrada' };
+    const usedW = wParent.filhos.reduce((sum, q) => sum + q.valor, 0);
+    const available = zParent.valor - usedW;
+    if (valor > available) return { allocated: 0, error: `Sem espaço (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  return { allocated: 0, error: 'Tipo de nó desconhecido' };
+}
+
 // ========== UTILITÁRIOS DE ESTRUTURA ==========
 
 let _c = 0;
@@ -363,14 +460,20 @@ function runPlacement(
 
 // ========== ALGORITMO GENÉTICO PROFISSIONAL ==========
 
+export const optimizeGeneticV1 = (...args: Parameters<typeof optimizeGeneticAsync>) => optimizeGeneticAsync(...args);
+
 export async function optimizeGeneticAsync(
   pieces: Piece[],
   usableW: number,
   usableH: number,
-  options: OptimizationOptions,
+  minBreak: number,
   onProgress?: (p: any) => void,
+  priorityLabels?: string[],
+  gaPopulationSize: number = 40,
+  gaGenerations: number = 30,
 ): Promise<TreeNode> {
-  const { gaPopulationSize = 40, gaGenerations = 30, kerf, margin } = options;
+  const kerf = minBreak;
+  const margin = 0;
 
   // Ajustar dimensões úteis com base na margem
   const effW = usableW - margin * 2;
@@ -394,7 +497,7 @@ export async function optimizeGeneticAsync(
     population.push({ genome: sorted, fitness: 0 });
 
     // Testar versão agrupada
-    if (options.useGrouping) {
+    if (true) { // Always try grouping
       const grouped = groupPiecesFillRowTolerant(pieces, effW, kerf, 50).sort(strategy);
       population.push({ genome: grouped, fitness: 0 });
     }
@@ -408,7 +511,8 @@ export async function optimizeGeneticAsync(
         const curW = transpose ? effH : effW;
         const curH = transpose ? effW : effH;
 
-        const result = runPlacement(individual.genome, curW, curH, options);
+        const placementOptions: OptimizationOptions = { kerf, margin, minBreak: kerf, useGrouping: true, gaPopulationSize, gaGenerations };
+        const result = runPlacement(individual.genome, curW, curH, placementOptions);
         const area = result.area;
 
         if (area > bestGlobalArea) {
