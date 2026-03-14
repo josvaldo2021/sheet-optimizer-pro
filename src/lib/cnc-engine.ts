@@ -460,6 +460,8 @@ function runPlacement(
 
 // ========== ALGORITMO GENÉTICO PROFISSIONAL ==========
 
+export const optimizeGeneticV1 = (...args: Parameters<typeof optimizeGeneticAsync>) => optimizeGeneticAsync(...args);
+
 export async function optimizeGeneticAsync(
   pieces: Piece[],
   usableW: number,
