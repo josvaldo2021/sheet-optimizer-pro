@@ -41,6 +41,38 @@ export interface OptimizationOptions {
   gaGenerations?: number;
 }
 
+export interface OptimizationProgress {
+  phase: string;
+  current: number;
+  total: number;
+  bestUtil?: number;
+}
+
+export function cloneTree(tree: TreeNode): TreeNode {
+  return JSON.parse(JSON.stringify(tree));
+}
+
+export function deleteNode(tree: TreeNode, nodeId: string): boolean {
+  function removeFromParent(parent: TreeNode, id: string): boolean {
+    const idx = parent.filhos.findIndex(f => f.id === id);
+    if (idx >= 0) {
+      parent.filhos.splice(idx, 1);
+      return true;
+    }
+    for (const f of parent.filhos) {
+      if (removeFromParent(f, id)) return true;
+    }
+    return false;
+  }
+  return removeFromParent(tree, nodeId);
+}
+
+export function calcAllocation(tree: TreeNode, sheetW: number, sheetH: number): { usedArea: number; totalArea: number; utilization: number } {
+  const usedArea = calcPlacedArea(tree);
+  const totalArea = sheetW * sheetH;
+  return { usedArea, totalArea, utilization: totalArea > 0 ? (usedArea / totalArea) * 100 : 0 };
+}
+
 // ========== UTILITÁRIOS DE ESTRUTURA ==========
 
 let _c = 0;
