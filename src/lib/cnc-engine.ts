@@ -67,10 +67,75 @@ export function deleteNode(tree: TreeNode, nodeId: string): boolean {
   return removeFromParent(tree, nodeId);
 }
 
-export function calcAllocation(tree: TreeNode, sheetW: number, sheetH: number): { usedArea: number; totalArea: number; utilization: number } {
-  const usedArea = calcPlacedArea(tree);
-  const totalArea = sheetW * sheetH;
-  return { usedArea, totalArea, utilization: totalArea > 0 ? (usedArea / totalArea) * 100 : 0 };
+export function calcAllocation(
+  tree: TreeNode,
+  selectedId: string,
+  tipo: NodeType,
+  valor: number,
+  multi: number,
+  sheetW: number,
+  sheetH: number,
+  minBreak: number,
+): { allocated: number; error?: string } {
+  // Validate that the piece can fit
+  const target = findNode(tree, selectedId);
+  if (!target) return { allocated: 0, error: 'Nó não encontrado' };
+
+  // Simple validation: check if value is positive
+  if (valor <= 0) return { allocated: 0, error: 'Valor deve ser positivo' };
+  if (multi <= 0) return { allocated: 0, error: 'Multiplicador deve ser positivo' };
+
+  // Check available space based on node type hierarchy
+  if (tipo === "X") {
+    const usedW = tree.filhos.reduce((sum, x) => sum + x.valor, 0);
+    const available = sheetW - usedW;
+    if (valor > available) return { allocated: 0, error: `Sem espaço horizontal (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "Y") {
+    const xParent = target.tipo === "X" ? target : findParentOfType(tree, selectedId, "X");
+    if (!xParent) return { allocated: 0, error: 'Coluna X não encontrada' };
+    const usedH = xParent.filhos.reduce((sum, y) => sum + y.valor, 0);
+    const available = sheetH - usedH;
+    if (valor > available) return { allocated: 0, error: `Sem espaço vertical (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "Z") {
+    const yParent = target.tipo === "Y" ? target : findParentOfType(tree, selectedId, "Y");
+    if (!yParent) return { allocated: 0, error: 'Faixa Y não encontrada' };
+    const xParent = findParentOfType(tree, yParent.id, "X");
+    if (!xParent) return { allocated: 0, error: 'Coluna X não encontrada' };
+    const usedW = yParent.filhos.reduce((sum, z) => sum + z.valor, 0);
+    const available = xParent.valor - usedW;
+    if (valor > available) return { allocated: 0, error: `Sem espaço na faixa (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "W") {
+    const zParent = target.tipo === "Z" ? target : findParentOfType(tree, selectedId, "Z");
+    if (!zParent) return { allocated: 0, error: 'Subdivisão Z não encontrada' };
+    const yParent = findParentOfType(tree, zParent.id, "Y");
+    if (!yParent) return { allocated: 0, error: 'Faixa Y não encontrada' };
+    const usedH = zParent.filhos.reduce((sum, w) => sum + w.valor, 0);
+    const available = yParent.valor - usedH;
+    if (valor > available) return { allocated: 0, error: `Sem espaço vertical (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  if (tipo === "Q") {
+    const wParent = target.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
+    if (!wParent) return { allocated: 0, error: 'Nó W não encontrado' };
+    const zParent = findParentOfType(tree, wParent.id, "Z");
+    if (!zParent) return { allocated: 0, error: 'Subdivisão Z não encontrada' };
+    const usedW = wParent.filhos.reduce((sum, q) => sum + q.valor, 0);
+    const available = zParent.valor - usedW;
+    if (valor > available) return { allocated: 0, error: `Sem espaço (${available}mm livres)` };
+    return { allocated: multi };
+  }
+
+  return { allocated: 0, error: 'Tipo de nó desconhecido' };
 }
 
 // ========== UTILITÁRIOS DE ESTRUTURA ==========
