@@ -495,7 +495,7 @@ export async function optimizeGeneticAsync(
     population.push({ genome: sorted, fitness: 0 });
 
     // Testar versão agrupada
-    if (options.useGrouping) {
+    if (true) { // Always try grouping
       const grouped = groupPiecesFillRowTolerant(pieces, effW, kerf, 50).sort(strategy);
       population.push({ genome: grouped, fitness: 0 });
     }
