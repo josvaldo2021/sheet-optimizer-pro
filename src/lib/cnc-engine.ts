@@ -509,7 +509,8 @@ export async function optimizeGeneticAsync(
         const curW = transpose ? effH : effW;
         const curH = transpose ? effW : effH;
 
-        const result = runPlacement(individual.genome, curW, curH, options);
+        const placementOptions: OptimizationOptions = { kerf, margin, minBreak: kerf, useGrouping: true, gaPopulationSize, gaGenerations };
+        const result = runPlacement(individual.genome, curW, curH, placementOptions);
         const area = result.area;
 
         if (area > bestGlobalArea) {
