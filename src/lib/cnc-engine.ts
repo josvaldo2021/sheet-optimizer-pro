@@ -1455,6 +1455,50 @@ export async function optimizeGeneticAsync(
     return c;
   }
 
+  // === STRATEGY 3: Local Search (Hill Climbing) on elite individuals ===
+  function localSearch(ind: GAIndividual, maxIter: number = 10): GAIndividual {
+    let best = ind;
+    let bestFit = evaluate(best).fitness;
+
+    for (let i = 0; i < maxIter && ind.genome.length > 3; i++) {
+      // Try swapping two adjacent pieces (skip pos 0 = largest piece)
+      const pos = 1 + Math.floor(Math.random() * (ind.genome.length - 2));
+      const candidate: GAIndividual = {
+        genome: [...best.genome],
+        rotations: [...best.rotations],
+        groupingMode: best.groupingMode,
+        transposed: best.transposed,
+      };
+      [candidate.genome[pos], candidate.genome[pos + 1]] = [candidate.genome[pos + 1], candidate.genome[pos]];
+      const fit = evaluate(candidate).fitness;
+      if (fit > bestFit) {
+        best = candidate;
+        bestFit = fit;
+      }
+    }
+    return best;
+  }
+
+  // === STRATEGY 4: Dimension-clustering seeds ===
+  function clusterByDimension(mode: 'width' | 'height' | 'ratio'): number[] {
+    const indices = Array.from({ length: numPieces }, (_, i) => i);
+    indices.sort((a, b) => {
+      const pA = pieces[a], pB = pieces[b];
+      if (mode === 'width') return Math.max(pB.w, pB.h) - Math.max(pA.w, pA.h);
+      if (mode === 'height') return Math.min(pB.w, pB.h) - Math.min(pA.w, pA.h);
+      // ratio: group similar aspect ratios together
+      const rA = Math.max(pA.w, pA.h) / Math.max(1, Math.min(pA.w, pA.h));
+      const rB = Math.max(pB.w, pB.h) / Math.max(1, Math.min(pB.w, pB.h));
+      return rA - rB;
+    });
+    // Enforce largest at pos 0
+    const lIdx = indices.indexOf(largestIdx);
+    if (lIdx > 0) {
+      [indices[0], indices[lIdx]] = [indices[lIdx], indices[0]];
+    }
+    return indices;
+  }
+
   // --- Seeding ---
   const initialPop: GAIndividual[] = [];
   const strategies = getSortStrategies();
@@ -1479,6 +1523,25 @@ export async function optimizeGeneticAsync(
       transposed: true,
     });
   });
+
+  // STRATEGY 4: Add dimension-clustered seeds
+  for (const mode of ['width', 'height', 'ratio'] as const) {
+    const clustered = clusterByDimension(mode);
+    for (const gm of [0, 1, 2, 3, 7, 8] as const) {
+      initialPop.push({
+        genome: [...clustered],
+        rotations: Array.from({ length: numPieces }, () => false),
+        groupingMode: gm as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+        transposed: false,
+      });
+      initialPop.push({
+        genome: [...clustered],
+        rotations: Array.from({ length: numPieces }, () => false),
+        groupingMode: gm as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+        transposed: true,
+      });
+    }
+  }
 
   // Trim if seeds exceed population size, or fill with random
   if (initialPop.length > populationSize) {
@@ -1536,6 +1599,11 @@ export async function optimizeGeneticAsync(
     return finalTree;
   }
 
+  // === STRATEGY 2: Adaptive mutation rate ===
+  let currentMutationRate = mutationRate;
+  let stagnationCounter = 0;
+  let lastBestFitness = bestFitness;
+
   for (let g = 0; g < generations; g++) {
     // Dynamic settings
     const currentLookahead = Math.min(8, 3 + Math.floor(g / 20));
@@ -1555,11 +1623,39 @@ export async function optimizeGeneticAsync(
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
       bestTransposed = evaluated[0].ind.transposed;
+      stagnationCounter = 0;
+      currentMutationRate = mutationRate; // Reset mutation rate on improvement
+    } else {
+      stagnationCounter++;
+    }
+
+    // STRATEGY 2: Adaptive mutation — increase rate when stagnant
+    if (stagnationCounter > 3) {
+      currentMutationRate = Math.min(0.5, mutationRate + stagnationCounter * 0.02);
+    }
+
+    // STRATEGY 3: Local search on top 2 elites every 5 generations
+    if (g > 0 && g % 5 === 0 && evaluated.length >= 2) {
+      for (let e = 0; e < Math.min(2, evaluated.length); e++) {
+        const improved = localSearch(evaluated[e].ind, 8);
+        evaluated[e].ind = improved;
+        const res = evaluate(improved);
+        evaluated[e].fitness = res.fitness;
+        evaluated[e].tree = res.tree;
+        if (res.fitness > bestFitness) {
+          bestFitness = res.fitness;
+          bestTree = JSON.parse(JSON.stringify(res.tree));
+          bestTransposed = res.transposed;
+          stagnationCounter = 0;
+          currentMutationRate = mutationRate;
+        }
+      }
+      evaluated.sort((a, b) => b.fitness - a.fitness);
     }
 
     if (onProgress) {
       onProgress({
-        phase: "Otimização Evolutiva Global",
+        phase: `Evolução GA${stagnationCounter > 5 ? ' (diversificando)' : ''}`,
         current: g + 1,
         total: generations,
         bestUtil: bestFitness * 100,
@@ -1572,22 +1668,33 @@ export async function optimizeGeneticAsync(
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
     const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + (i.transposed ? "T" : "N")));
 
+    // === STRATEGY 5: Catastrophic restart — replace bottom 50% when stagnant ===
+    if (stagnationCounter >= 8 && stagnationCounter % 8 === 0) {
+      const freshCount = Math.floor(populationSize * 0.5);
+      for (let f = 0; f < freshCount && nextPop.length < populationSize; f++) {
+        nextPop.push(randomIndividual());
+      }
+      stagnationCounter = 0; // Reset counter after restart
+      currentMutationRate = mutationRate;
+    }
+
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
       const pB = tournament(evaluated);
       let child = crossover(pA, pB);
-      if (Math.random() < mutationRate) child = mutate(child);
+      if (Math.random() < currentMutationRate) child = mutate(child);
 
       const key = child.genome.join(",") + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
-      } else if (Math.random() < 0.2) {
-        // Allow some duplicates or push random for diversity
+      } else if (Math.random() < 0.3) {
+        // Higher chance of random injection for diversity
         nextPop.push(randomIndividual());
       }
     }
     population = nextPop;
+    lastBestFitness = bestFitness;
   }
 
   let finalTree = bestTree || createRoot(usableW, usableH);
