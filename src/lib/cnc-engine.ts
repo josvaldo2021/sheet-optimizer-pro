@@ -389,6 +389,7 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
     return wB - wA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
