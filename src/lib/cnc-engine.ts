@@ -267,6 +267,38 @@ export function calcPlacedArea(tree: TreeNode): number {
   tree.filhos.forEach(procX);
   return area;
 }
+/**
+ * REGRA ABSOLUTA: A peça com maior área INDIVIDUAL sempre inicia o layout (índice 0).
+ * Grupos nunca podem ultrapassar uma peça individual grande.
+ * Chamada após qualquer ordenação para garantir a regra.
+ */
+function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
+  if (pieces.length <= 1) return pieces;
+  
+  // Encontra a peça INDIVIDUAL (count === 1 ou undefined) com maior área
+  let bestIdx = -1;
+  let bestArea = 0;
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i];
+    const isIndividual = !p.count || p.count === 1;
+    if (isIndividual) {
+      const area = p.w * p.h;
+      if (area > bestArea) {
+        bestArea = area;
+        bestIdx = i;
+      }
+    }
+  }
+  
+  // Se encontrou uma peça individual e ela não está no índice 0, move para lá
+  if (bestIdx > 0) {
+    const largest = pieces[bestIdx];
+    pieces.splice(bestIdx, 1);
+    pieces.unshift(largest);
+  }
+  
+  return pieces;
+}
 
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
