@@ -730,6 +730,7 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
     return 0;
   });
 
+  ensureLargestIndividualFirst(grouped);
   return grouped;
 }
 
