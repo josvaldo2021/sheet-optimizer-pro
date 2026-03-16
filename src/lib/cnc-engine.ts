@@ -1499,7 +1499,23 @@ export async function optimizeGeneticAsync(
       return sortFn(pA, pB);
     });
 
-    // Always seed BOTH normal and transposed for each strategy
+    // REGRA ABSOLUTA: peça de maior área individual sempre no índice 0
+    let bestIdx = 0;
+    let bestArea = 0;
+    for (let i = 0; i < sortedIndices.length; i++) {
+      const p = pieces[sortedIndices[i]];
+      const area = p.w * p.h;
+      if (area > bestArea) {
+        bestArea = area;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx > 0) {
+      const tmp = sortedIndices[bestIdx];
+      sortedIndices.splice(bestIdx, 1);
+      sortedIndices.unshift(tmp);
+    }
+
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
