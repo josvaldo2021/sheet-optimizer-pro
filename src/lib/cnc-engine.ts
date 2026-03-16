@@ -468,6 +468,7 @@ function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piec
     return hB - hA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
