@@ -698,14 +698,15 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
 function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
   const grouped = groupPiecesByWidth(pieces);
 
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
     if (aIsGrouped && bIsGrouped) return b.h - a.h || b.w - a.w;
     if (aIsGrouped && !bIsGrouped) return -1;
     if (!aIsGrouped && bIsGrouped) return 1;
-    return b.area - a.area;
+    return 0;
   });
 
   return grouped.filter((p) => p.h <= usableH);
