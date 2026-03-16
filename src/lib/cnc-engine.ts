@@ -678,17 +678,15 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
   const grouped = groupPiecesFillRow(pieces, usableW, raw);
 
   // Sort: individuals first by area, then grouped bands (widest last)
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
-    // Individual pieces first
     if (!aIsGrouped && bIsGrouped) return -1;
     if (aIsGrouped && !bIsGrouped) return 1;
-    // Both grouped: wider first
     if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
-    // Both individual: larger area first
-    return b.area - a.area;
+    return 0;
   });
 
   return grouped;
