@@ -427,11 +427,12 @@ function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piec
     }
   });
 
+  // Sort by individual area descending — largest pieces always start the layout
   result.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const hA = a.count && a.count > 1 ? a.h : Math.min(a.w, a.h);
     const hB = b.count && b.count > 1 ? b.h : Math.min(b.w, b.h);
-    if (hB !== hA) return hB - hA;
-    return b.area - a.area;
+    return hB - hA;
   });
 
   return result;
