@@ -643,7 +643,7 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
   });
 
   // Filter out groups wider than usableW (can't fit)
-  return grouped.filter(p => p.w <= usableW);
+  return grouped.filter((p) => p.w <= usableW);
 }
 
 /**
@@ -699,8 +699,6 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
   return grouped;
 }
 
-
-
 /**
  * Same as groupPiecesColumnWidth but groups by width (sum heights).
  */
@@ -717,7 +715,7 @@ function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
     return b.area - a.area;
   });
 
-  return grouped.filter(p => p.h <= usableH);
+  return grouped.filter((p) => p.h <= usableH);
 }
 
 function oris(p: Piece): { w: number; h: number }[] {
@@ -1272,7 +1270,7 @@ export async function optimizeGeneticAsync(
   const populationSize = Math.max(10, gaPopulationSize);
   const generations = Math.max(0, gaGenerations);
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
-  const mutationRate = 0.03;
+  const mutationRate = 0.1;
 
   const numPieces = pieces.length;
 
@@ -1285,7 +1283,7 @@ export async function optimizeGeneticAsync(
 
   function randomIndividual(): GAIndividual {
     // Largest piece always first; shuffle the rest
-    const rest = Array.from({ length: numPieces }, (_, i) => i).filter(i => i !== largestIdx);
+    const rest = Array.from({ length: numPieces }, (_, i) => i).filter((i) => i !== largestIdx);
     for (let i = rest.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [rest[i], rest[j]] = [rest[j], rest[i]];
@@ -1294,7 +1292,16 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as
+        | 0
+        | 1
+        | 2
+        | 3
+        | 4
+        | 5
+        | 6
+        | 7
+        | 8,
       transposed: Math.random() > 0.5,
     };
   }
@@ -1426,7 +1433,16 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as
+        | 0
+        | 1
+        | 2
+        | 3
+        | 4
+        | 5
+        | 6
+        | 7
+        | 8;
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
@@ -1506,11 +1522,25 @@ export async function optimizeGeneticAsync(
     if (bestTransposed) finalTree.transposed = true;
 
     // Pós-análise automática
-    if (onProgress) onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestFitness * 100 });
-    const postResult = postOptimizeRegroup(finalTree, bestFitness * usableW * usableH, pieces, usableW, usableH, minBreak);
+    if (onProgress)
+      onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestFitness * 100 });
+    const postResult = postOptimizeRegroup(
+      finalTree,
+      bestFitness * usableW * usableH,
+      pieces,
+      usableW,
+      usableH,
+      minBreak,
+    );
     if (postResult.improved) {
       finalTree = postResult.tree;
-      if (onProgress) onProgress({ phase: "Pós-análise: layout melhorado!", current: 1, total: 1, bestUtil: (postResult.area / (usableW * usableH)) * 100 });
+      if (onProgress)
+        onProgress({
+          phase: "Pós-análise: layout melhorado!",
+          current: 1,
+          total: 1,
+          bestUtil: (postResult.area / (usableW * usableH)) * 100,
+        });
     }
 
     return finalTree;
@@ -1574,11 +1604,30 @@ export async function optimizeGeneticAsync(
   if (bestTransposed) finalTree.transposed = true;
 
   // Pós-análise automática de reagrupamento
-  if (onProgress) onProgress({ phase: "Pós-análise de reagrupamento...", current: generations, total: generations, bestUtil: bestFitness * 100 });
-  const postResult = postOptimizeRegroup(finalTree, bestFitness * usableW * usableH, pieces, usableW, usableH, minBreak);
+  if (onProgress)
+    onProgress({
+      phase: "Pós-análise de reagrupamento...",
+      current: generations,
+      total: generations,
+      bestUtil: bestFitness * 100,
+    });
+  const postResult = postOptimizeRegroup(
+    finalTree,
+    bestFitness * usableW * usableH,
+    pieces,
+    usableW,
+    usableH,
+    minBreak,
+  );
   if (postResult.improved) {
     finalTree = postResult.tree;
-    if (onProgress) onProgress({ phase: "Pós-análise: layout melhorado!", current: generations, total: generations, bestUtil: (postResult.area / (usableW * usableH)) * 100 });
+    if (onProgress)
+      onProgress({
+        phase: "Pós-análise: layout melhorado!",
+        current: generations,
+        total: generations,
+        bestUtil: (postResult.area / (usableW * usableH)) * 100,
+      });
   }
 
   return finalTree;
@@ -1828,7 +1877,9 @@ function runPlacement(
     {
       const currentUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
       if (currentUsedH + bestFit.h > usableH + 0.5) {
-        console.warn(`[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`);
+        console.warn(
+          `[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`,
+        );
         remaining.shift();
         continue;
       }
@@ -2068,7 +2119,8 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
 
     for (const yNode of colX.filhos) {
       const yHeight = yNode.valor * yNode.multi;
-      if (totalH + yHeight <= usableH + 0.5) { // 0.5 tolerance for rounding
+      if (totalH + yHeight <= usableH + 0.5) {
+        // 0.5 tolerance for rounding
         validChildren.push(yNode);
         totalH += yHeight;
       } else {
@@ -2087,7 +2139,9 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
         // Log overflow for debugging
         if (validChildren.length < colX.filhos.length) {
           const originalTotal = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-          console.warn(`[CNC-ENGINE] Column overflow detected: ${originalTotal.toFixed(0)}mm > ${usableH}mm usableH. Clamped to ${totalH.toFixed(0)}mm.`);
+          console.warn(
+            `[CNC-ENGINE] Column overflow detected: ${originalTotal.toFixed(0)}mm > ${usableH}mm usableH. Clamped to ${totalH.toFixed(0)}mm.`,
+          );
         }
         // Don't break - check remaining Y strips too (in case later ones are smaller)
       }
@@ -2095,7 +2149,7 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
 
     if (validChildren.length < colX.filhos.length) {
       // Recalculate placed area for removed Y strips
-      const removedYNodes = colX.filhos.filter(y => !validChildren.includes(y));
+      const removedYNodes = colX.filhos.filter((y) => !validChildren.includes(y));
       for (const ry of removedYNodes) {
         placedArea -= calculateNodeArea(ry);
       }
@@ -2127,7 +2181,9 @@ function calculateNodeArea(node: TreeNode): number {
  * Extrai todas as peças posicionadas de uma árvore de corte,
  * retornando suas dimensões reais (considerando transposição).
  */
-function extractPlacedPieces(tree: TreeNode): Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> {
+function extractPlacedPieces(
+  tree: TreeNode,
+): Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> {
   const pieces: Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> = [];
   const T = tree.transposed || false;
 
@@ -2200,7 +2256,7 @@ function postOptimizeRegroup(
   const regroupOpportunities: Array<{ height: number; pieces: typeof placedPieces }> = [];
   for (const [h, group] of heightMap) {
     // Verifica se há peças em colunas diferentes
-    const cols = new Set(group.map(p => p.colIndex));
+    const cols = new Set(group.map((p) => p.colIndex));
     if (cols.size > 1 && group.length >= 2) {
       // Verifica se a soma das larguras caberia na chapa
       const totalW = group.reduce((sum, p) => sum + Math.max(p.w, p.h), 0);
@@ -2214,9 +2270,13 @@ function postOptimizeRegroup(
     return { tree: originalTree, area: originalArea, improved: false };
   }
 
-  console.log(`[CNC-ENGINE] Pós-análise: ${regroupOpportunities.length} oportunidade(s) de reagrupamento encontrada(s)`);
+  console.log(
+    `[CNC-ENGINE] Pós-análise: ${regroupOpportunities.length} oportunidade(s) de reagrupamento encontrada(s)`,
+  );
   for (const opp of regroupOpportunities) {
-    console.log(`  → Altura ${opp.height}mm: ${opp.pieces.length} peças em ${new Set(opp.pieces.map(p => p.colIndex)).size} colunas diferentes`);
+    console.log(
+      `  → Altura ${opp.height}mm: ${opp.pieces.length} peças em ${new Set(opp.pieces.map((p) => p.colIndex)).size} colunas diferentes`,
+    );
   }
 
   // Para cada oportunidade, cria um agrupamento forçado e re-otimiza
@@ -2276,7 +2336,9 @@ function postOptimizeRegroup(
           bestTree = result.tree;
           if (transposed) bestTree.transposed = true;
           improved = true;
-          console.log(`[CNC-ENGINE] Pós-análise: Reagrupamento melhorou! ${(originalArea / (usableW * usableH) * 100).toFixed(1)}% → ${(bestArea / (usableW * usableH) * 100).toFixed(1)}%`);
+          console.log(
+            `[CNC-ENGINE] Pós-análise: Reagrupamento melhorou! ${((originalArea / (usableW * usableH)) * 100).toFixed(1)}% → ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
+          );
         }
       }
     }
@@ -2319,8 +2381,8 @@ function postOptimizeRegroup(
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
       for (const sortFn of strategies) {
-        const grouped = forcedPieces.filter(p => (p.count || 1) > 1);
-        const rest = forcedPieces.filter(p => (p.count || 1) <= 1).sort(sortFn);
+        const grouped = forcedPieces.filter((p) => (p.count || 1) > 1);
+        const rest = forcedPieces.filter((p) => (p.count || 1) <= 1).sort(sortFn);
         const sorted = [...grouped, ...rest];
         const result = runPlacement(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
@@ -2328,7 +2390,9 @@ function postOptimizeRegroup(
           bestTree = result.tree;
           if (transposed) bestTree.transposed = true;
           improved = true;
-          console.log(`[CNC-ENGINE] Pós-análise combinada melhorou! → ${(bestArea / (usableW * usableH) * 100).toFixed(1)}%`);
+          console.log(
+            `[CNC-ENGINE] Pós-análise combinada melhorou! → ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
+          );
         }
       }
     }
