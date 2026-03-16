@@ -751,7 +751,9 @@ function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
     return 0;
   });
 
-  return grouped.filter((p) => p.h <= usableH);
+  const filtered = grouped.filter((p) => p.h <= usableH);
+  ensureLargestIndividualFirst(filtered);
+  return filtered;
 }
 
 function oris(p: Piece): { w: number; h: number }[] {
