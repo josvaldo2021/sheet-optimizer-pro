@@ -647,6 +647,7 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
     return wB - wA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
