@@ -604,12 +604,12 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
     }
   });
 
-  // Ordena resultado: grupos com peças de maior largura individual primeiro
+  // Sort by individual area descending — largest pieces always start the layout
   result.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const wA = a.count && a.count > 1 ? a.w : Math.max(a.w, a.h);
     const wB = b.count && b.count > 1 ? b.w : Math.max(b.w, b.h);
-    if (wB !== wA) return wB - wA;
-    return b.area - a.area;
+    return wB - wA;
   });
 
   return result;
