@@ -628,18 +628,15 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
 
   // Sort by combined width descending (grouped pieces with wider sums first)
   // This ensures the widest group sets the X column width
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
-    // Prioritize grouped pieces (count > 1) over individuals
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
-    // Both grouped: wider combined width first
     if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
-    // Grouped pieces come first
     if (aIsGrouped && !bIsGrouped) return -1;
     if (!aIsGrouped && bIsGrouped) return 1;
-    // Both individual: larger area first
-    return b.area - a.area;
+    return 0;
   });
 
   // Filter out groups wider than usableW (can't fit)
