@@ -656,17 +656,15 @@ function groupPiecesBandFirst(pieces: Piece[], usableW: number, raw: boolean = f
   const grouped = groupPiecesFillRow(pieces, usableW, raw);
 
   // Sort: widest groups first (highest width coverage), then by area for individuals
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
-    // Both grouped: wider first (closer to full sheet width)
     if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
-    // Grouped bands come first
     if (aIsGrouped && !bIsGrouped) return -1;
     if (!aIsGrouped && bIsGrouped) return 1;
-    // Both individual: larger area first
-    return b.area - a.area;
+    return 0;
   });
 
   return grouped;
