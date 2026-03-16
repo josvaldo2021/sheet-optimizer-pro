@@ -349,11 +349,12 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
     }
   });
 
+  // Sort by individual area descending — largest pieces always start the layout
   result.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const wA = a.count && a.count > 1 ? a.w : Math.max(a.w, a.h);
     const wB = b.count && b.count > 1 ? b.w : Math.max(b.w, b.h);
-    if (wB !== wA) return wB - wA;
-    return b.area - a.area;
+    return wB - wA;
   });
 
   return result;
@@ -426,11 +427,12 @@ function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piec
     }
   });
 
+  // Sort by individual area descending — largest pieces always start the layout
   result.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const hA = a.count && a.count > 1 ? a.h : Math.min(a.w, a.h);
     const hB = b.count && b.count > 1 ? b.h : Math.min(b.w, b.h);
-    if (hB !== hA) return hB - hA;
-    return b.area - a.area;
+    return hB - hA;
   });
 
   return result;
@@ -521,12 +523,12 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
     }
   });
 
-  // Ordena resultado: grupos com peças de maior altura individual primeiro
+  // Sort by individual area descending — largest pieces always start the layout
   result.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const hA = a.count && a.count > 1 ? a.h : Math.min(a.w, a.h);
     const hB = b.count && b.count > 1 ? b.h : Math.min(b.w, b.h);
-    if (hB !== hA) return hB - hA;
-    return b.area - a.area;
+    return hB - hA;
   });
 
   return result;
@@ -602,12 +604,12 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
     }
   });
 
-  // Ordena resultado: grupos com peças de maior largura individual primeiro
+  // Sort by individual area descending — largest pieces always start the layout
   result.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const wA = a.count && a.count > 1 ? a.w : Math.max(a.w, a.h);
     const wB = b.count && b.count > 1 ? b.w : Math.max(b.w, b.h);
-    if (wB !== wA) return wB - wA;
-    return b.area - a.area;
+    return wB - wA;
   });
 
   return result;
@@ -628,18 +630,15 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
 
   // Sort by combined width descending (grouped pieces with wider sums first)
   // This ensures the widest group sets the X column width
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
-    // Prioritize grouped pieces (count > 1) over individuals
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
-    // Both grouped: wider combined width first
     if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
-    // Grouped pieces come first
     if (aIsGrouped && !bIsGrouped) return -1;
     if (!aIsGrouped && bIsGrouped) return 1;
-    // Both individual: larger area first
-    return b.area - a.area;
+    return 0;
   });
 
   // Filter out groups wider than usableW (can't fit)
@@ -659,17 +658,15 @@ function groupPiecesBandFirst(pieces: Piece[], usableW: number, raw: boolean = f
   const grouped = groupPiecesFillRow(pieces, usableW, raw);
 
   // Sort: widest groups first (highest width coverage), then by area for individuals
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
-    // Both grouped: wider first (closer to full sheet width)
     if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
-    // Grouped bands come first
     if (aIsGrouped && !bIsGrouped) return -1;
     if (!aIsGrouped && bIsGrouped) return 1;
-    // Both individual: larger area first
-    return b.area - a.area;
+    return 0;
   });
 
   return grouped;
@@ -683,17 +680,15 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
   const grouped = groupPiecesFillRow(pieces, usableW, raw);
 
   // Sort: individuals first by area, then grouped bands (widest last)
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
-    // Individual pieces first
     if (!aIsGrouped && bIsGrouped) return -1;
     if (aIsGrouped && !bIsGrouped) return 1;
-    // Both grouped: wider first
     if (aIsGrouped && bIsGrouped) return b.w - a.w || b.h - a.h;
-    // Both individual: larger area first
-    return b.area - a.area;
+    return 0;
   });
 
   return grouped;
@@ -705,14 +700,15 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
 function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
   const grouped = groupPiecesByWidth(pieces);
 
+  // Sort by individual area descending — largest pieces always start the layout
   grouped.sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
     const aIsGrouped = (a.count || 1) > 1;
     const bIsGrouped = (b.count || 1) > 1;
-
     if (aIsGrouped && bIsGrouped) return b.h - a.h || b.w - a.w;
     if (aIsGrouped && !bIsGrouped) return -1;
     if (!aIsGrouped && bIsGrouped) return 1;
-    return b.area - a.area;
+    return 0;
   });
 
   return grouped.filter((p) => p.h <= usableH);
