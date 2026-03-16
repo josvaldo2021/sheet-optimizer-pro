@@ -678,7 +678,9 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
   });
 
   // Filter out groups wider than usableW (can't fit)
-  return grouped.filter((p) => p.w <= usableW);
+  const filtered = grouped.filter((p) => p.w <= usableW);
+  ensureLargestIndividualFirst(filtered);
+  return filtered;
 }
 
 /**
