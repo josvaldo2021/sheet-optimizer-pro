@@ -565,6 +565,7 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
     return hB - hA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
