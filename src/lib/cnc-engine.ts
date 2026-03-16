@@ -267,6 +267,38 @@ export function calcPlacedArea(tree: TreeNode): number {
   tree.filhos.forEach(procX);
   return area;
 }
+/**
+ * REGRA ABSOLUTA: A peça com maior área INDIVIDUAL sempre inicia o layout (índice 0).
+ * Grupos nunca podem ultrapassar uma peça individual grande.
+ * Chamada após qualquer ordenação para garantir a regra.
+ */
+function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
+  if (pieces.length <= 1) return pieces;
+  
+  // Encontra a peça INDIVIDUAL (count === 1 ou undefined) com maior área
+  let bestIdx = -1;
+  let bestArea = 0;
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i];
+    const isIndividual = !p.count || p.count === 1;
+    if (isIndividual) {
+      const area = p.w * p.h;
+      if (area > bestArea) {
+        bestArea = area;
+        bestIdx = i;
+      }
+    }
+  }
+  
+  // Se encontrou uma peça individual e ela não está no índice 0, move para lá
+  if (bestIdx > 0) {
+    const largest = pieces[bestIdx];
+    pieces.splice(bestIdx, 1);
+    pieces.unshift(largest);
+  }
+  
+  return pieces;
+}
 
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
@@ -357,6 +389,7 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
     return wB - wA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -435,6 +468,7 @@ function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piec
     return hB - hA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -531,6 +565,7 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
     return hB - hA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -612,6 +647,7 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
     return wB - wA;
   });
 
+  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -642,7 +678,9 @@ function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[] {
   });
 
   // Filter out groups wider than usableW (can't fit)
-  return grouped.filter((p) => p.w <= usableW);
+  const filtered = grouped.filter((p) => p.w <= usableW);
+  ensureLargestIndividualFirst(filtered);
+  return filtered;
 }
 
 /**
@@ -669,6 +707,7 @@ function groupPiecesBandFirst(pieces: Piece[], usableW: number, raw: boolean = f
     return 0;
   });
 
+  ensureLargestIndividualFirst(grouped);
   return grouped;
 }
 
@@ -691,6 +730,7 @@ function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boolean = fa
     return 0;
   });
 
+  ensureLargestIndividualFirst(grouped);
   return grouped;
 }
 
@@ -711,7 +751,9 @@ function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece[] {
     return 0;
   });
 
-  return grouped.filter((p) => p.h <= usableH);
+  const filtered = grouped.filter((p) => p.h <= usableH);
+  ensureLargestIndividualFirst(filtered);
+  return filtered;
 }
 
 function oris(p: Piece): { w: number; h: number }[] {
@@ -1457,7 +1499,23 @@ export async function optimizeGeneticAsync(
       return sortFn(pA, pB);
     });
 
-    // Always seed BOTH normal and transposed for each strategy
+    // REGRA ABSOLUTA: peça de maior área individual sempre no índice 0
+    let bestIdx = 0;
+    let bestArea = 0;
+    for (let i = 0; i < sortedIndices.length; i++) {
+      const p = pieces[sortedIndices[i]];
+      const area = p.w * p.h;
+      if (area > bestArea) {
+        bestArea = area;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx > 0) {
+      const tmp = sortedIndices[bestIdx];
+      sortedIndices.splice(bestIdx, 1);
+      sortedIndices.unshift(tmp);
+    }
+
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
