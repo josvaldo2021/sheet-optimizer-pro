@@ -1804,6 +1804,7 @@ function runPlacement(
   usableW: number,
   usableH: number,
   minBreak: number = 0,
+  priorityX: boolean = false,
 ): { tree: TreeNode; area: number; remaining: Piece[] } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
