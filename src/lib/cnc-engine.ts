@@ -1396,10 +1396,12 @@ export async function optimizeGeneticAsync(
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
     const work = buildPieces(ind);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    const eW = ind.transposed ? usableH : usableW;
-    const eH = ind.transposed ? usableW : usableH;
-    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
+    // When priorityX, skip transposed individuals
+    const effectiveTransposed = priorityX ? false : ind.transposed;
+    const eW = effectiveTransposed ? usableH : usableW;
+    const eH = effectiveTransposed ? usableW : usableH;
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1, priorityX);
+    return { tree: result.firstTree, fitness: result.fitness, transposed: effectiveTransposed };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
