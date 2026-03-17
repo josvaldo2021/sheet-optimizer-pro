@@ -253,6 +253,7 @@ const Index = () => {
       priorityLabels.length > 0 ? priorityLabels : undefined,
       gaPopSize,
       gaGens,
+      priorityX,
     );
     setTree(result);
     setChapas([{ tree: result, usedArea: calcPlacedArea(result), manual: false }]);
