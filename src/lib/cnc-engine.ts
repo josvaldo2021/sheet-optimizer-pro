@@ -1301,8 +1301,21 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
-  // Multiobjective Fitness
+  // Refined cost function: sheets * 1000 + waste_last_sheet (lower = better)
+  // Converted to fitness (higher = better) with granular tiebreaking
   let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+
+  // Penalize more sheets used (refined cost — fewer sheets is dramatically better)
+  if (sheetsActuallySimulated > 1) {
+    fitness -= (sheetsActuallySimulated - 1) * 0.05;
+  }
+
+  // Granular tiebreaker: bonus for minimal waste on last sheet
+  // When two solutions have same avg utilization, prefer less waste on last
+  if (sheetsActuallySimulated > 0) {
+    const lastSheetUtilFraction = totalUtil % 1; // fractional utilization of last sheet
+    fitness += lastSheetUtilFraction * 0.002; // small bonus for fuller last sheet
+  }
 
   // Penalties and Bonuses
   fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
