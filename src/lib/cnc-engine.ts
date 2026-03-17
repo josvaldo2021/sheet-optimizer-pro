@@ -797,6 +797,28 @@ function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number
   return score;
 }
 
+// ========== MLARSA: Maximize Largest Remaining Sub-Area ==========
+
+/**
+ * Calcula o score MLARSA para um posicionamento.
+ * Compara corte horizontal vs vertical e retorna a maior sub-área
+ * restante possível — quanto maior, melhor o posicionamento.
+ */
+function mlarsaScore(spaceW: number, spaceH: number, pieceW: number, pieceH: number): number {
+  const remW = spaceW - pieceW;
+  const remH = spaceH - pieceH;
+  if (remW <= 0 && remH <= 0) return 0; // perfect fit
+
+  // Horizontal cut: right = (remW × pieceH), bottom = (spaceW × remH)
+  const hLargest = Math.max(remW * pieceH, spaceW * remH);
+
+  // Vertical cut: right = (remW × spaceH), bottom = (pieceW × remH)
+  const vLargest = Math.max(remW * spaceH, pieceW * remH);
+
+  // Return the best achievable largest sub-area
+  return Math.max(hLargest, vLargest);
+}
+
 // ========== RESIDUAL DOMINANCE CHECK ==========
 
 /**
