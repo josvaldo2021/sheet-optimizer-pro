@@ -1819,6 +1819,7 @@ function runPlacement(
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
+  const orisFn = priorityX ? orisX : oris;
 
   while (remaining.length > 0) {
     const piece = remaining[0];
@@ -1838,7 +1839,7 @@ function runPlacement(
       const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
       const freeH = usableH - usedH;
 
-      for (const o of oris(piece)) {
+      for (const o of orisFn(piece)) {
         // Check min break distance for Y values in this column
         if (minBreak > 0) {
           if (o.h < minBreak) continue;
@@ -1858,7 +1859,19 @@ function runPlacement(
             }
           }
           const widthRatio = o.w / colX.valor;
-          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
+          let baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
+
+          // PriorityX: heavily penalize stacking in existing columns (horizontal cuts)
+          // Only accept existing column if piece width matches column exactly
+          if (priorityX) {
+            if (o.w === colX.valor) {
+              // Perfect width match — acceptable, small penalty
+              baseScore += 5;
+            } else {
+              // Width mismatch — strongly penalize to prefer new column
+              baseScore += 50;
+            }
+          }
 
           // Light lookahead
           let lookBonus = 0;
@@ -1866,7 +1879,7 @@ function runPlacement(
           const remW = colX.valor - o.w;
 
           for (const r of remaining.slice(1)) {
-            for (const ro of oris(r)) {
+            for (const ro of orisFn(r)) {
               if (ro.w <= colX.valor && ro.h <= remH) {
                 lookBonus -= 0.5;
                 break;
@@ -1901,7 +1914,7 @@ function runPlacement(
     const freeW = usableW - usedW;
 
     if (freeW > 0) {
-      for (const o of oris(piece)) {
+      for (const o of orisFn(piece)) {
         // Check min break distance for X values
         if (minBreak > 0) {
           const violatesX = tree.filhos.some((x) => {
@@ -1920,7 +1933,10 @@ function runPlacement(
               effectiveW = freeW;
             }
           }
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          // PriorityX: bonus for new columns (prefer vertical cuts)
+          const score = priorityX
+            ? -1 + ((freeW - effectiveW) / usableW) * 0.1
+            : ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
