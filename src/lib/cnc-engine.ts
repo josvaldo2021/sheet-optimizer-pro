@@ -797,28 +797,6 @@ function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number
   return score;
 }
 
-// ========== MLARSA: Maximize Largest Remaining Sub-Area ==========
-
-/**
- * Calcula o score MLARSA para um posicionamento.
- * Compara corte horizontal vs vertical e retorna a maior sub-área
- * restante possível — quanto maior, melhor o posicionamento.
- */
-function mlarsaScore(spaceW: number, spaceH: number, pieceW: number, pieceH: number): number {
-  const remW = spaceW - pieceW;
-  const remH = spaceH - pieceH;
-  if (remW <= 0 && remH <= 0) return 0; // perfect fit
-
-  // Horizontal cut: right = (remW × pieceH), bottom = (spaceW × remH)
-  const hLargest = Math.max(remW * pieceH, spaceW * remH);
-
-  // Vertical cut: right = (remW × spaceH), bottom = (pieceW × remH)
-  const vLargest = Math.max(remW * spaceH, pieceW * remH);
-
-  // Return the best achievable largest sub-area
-  return Math.max(hLargest, vLargest);
-}
-
 // ========== RESIDUAL DOMINANCE CHECK ==========
 
 /**
@@ -1301,21 +1279,8 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
-  // Refined cost function: sheets * 1000 + waste_last_sheet (lower = better)
-  // Converted to fitness (higher = better) with granular tiebreaking
+  // Multiobjective Fitness
   let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
-
-  // Penalize more sheets used (refined cost — fewer sheets is dramatically better)
-  if (sheetsActuallySimulated > 1) {
-    fitness -= (sheetsActuallySimulated - 1) * 0.05;
-  }
-
-  // Granular tiebreaker: bonus for minimal waste on last sheet
-  // When two solutions have same avg utilization, prefer less waste on last
-  if (sheetsActuallySimulated > 0) {
-    const lastSheetUtilFraction = totalUtil % 1; // fractional utilization of last sheet
-    fitness += lastSheetUtilFraction * 0.002; // small bonus for fuller last sheet
-  }
 
   // Penalties and Bonuses
   fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
@@ -1689,83 +1654,6 @@ export async function optimizeGeneticAsync(
     population = nextPop;
   }
 
-  // ========== SIMULATED ANNEALING POLISHING ==========
-  // Takes the best GA solution and tries to improve it with local search moves
-  if (generations > 0 && bestTree) {
-    if (onProgress)
-      onProgress({
-        phase: "Polimento SA...",
-        current: generations,
-        total: generations,
-        bestUtil: bestFitness * 100,
-      });
-
-    // Find the best individual from the last population
-    const lastEval = population.map((ind) => {
-      const res = evaluate(ind);
-      return { ind, fitness: res.fitness };
-    });
-    lastEval.sort((a, b) => b.fitness - a.fitness);
-    let saInd = { ...lastEval[0].ind, genome: [...lastEval[0].ind.genome], rotations: [...lastEval[0].ind.rotations] };
-    let saFitness = lastEval[0].fitness;
-
-    const saIterations = Math.min(3000, numPieces * 50);
-    let temp = 1000;
-    const coolingRate = 0.995;
-    const minTemp = 0.1;
-
-    for (let iter = 0; iter < saIterations && temp > minTemp; iter++) {
-      // Create neighbor
-      const neighbor = { ...saInd, genome: [...saInd.genome], rotations: [...saInd.rotations] };
-      const moveType = Math.random();
-
-      if (moveType < 0.4 && neighbor.genome.length > 2) {
-        // Swap two pieces (positions 1+, keep largest at 0)
-        const a = 1 + Math.floor(Math.random() * (neighbor.genome.length - 1));
-        const b = 1 + Math.floor(Math.random() * (neighbor.genome.length - 1));
-        [neighbor.genome[a], neighbor.genome[b]] = [neighbor.genome[b], neighbor.genome[a]];
-      } else if (moveType < 0.7 && neighbor.genome.length > 3) {
-        // Reverse segment (positions 1+)
-        const start = 1 + Math.floor(Math.random() * (neighbor.genome.length - 2));
-        const len = 2 + Math.floor(Math.random() * Math.min(5, neighbor.genome.length - start));
-        const end = Math.min(start + len, neighbor.genome.length);
-        const segment = neighbor.genome.slice(start, end);
-        segment.reverse();
-        for (let k = 0; k < segment.length; k++) {
-          neighbor.genome[start + k] = segment[k];
-        }
-      } else {
-        // Rotate a random piece
-        const idx = Math.floor(Math.random() * neighbor.rotations.length);
-        neighbor.rotations[idx] = !neighbor.rotations[idx];
-      }
-
-      const neighborResult = evaluate(neighbor);
-      const delta = neighborResult.fitness - saFitness;
-
-      if (delta > 0 || Math.random() < Math.exp(delta / (temp / 1000))) {
-        saInd = neighbor;
-        saFitness = neighborResult.fitness;
-
-        if (saFitness > bestFitness) {
-          bestFitness = saFitness;
-          bestTree = JSON.parse(JSON.stringify(neighborResult.tree));
-          bestTransposed = neighborResult.transposed;
-        }
-      }
-
-      temp *= coolingRate;
-    }
-
-    if (onProgress)
-      onProgress({
-        phase: "Polimento SA concluído",
-        current: generations,
-        total: generations,
-        bestUtil: bestFitness * 100,
-      });
-  }
-
   let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) finalTree.transposed = true;
 
@@ -1956,10 +1844,7 @@ function runPlacement(
             }
           }
           const widthRatio = o.w / colX.valor;
-          // MLARSA: prefer orientations that maximize the largest remaining sub-area
-          const mlarsa = mlarsaScore(colX.valor, freeH, o.w, o.h);
-          const mlarsaNorm = mlarsa / (colX.valor * freeH || 1);
-          const baseScore = (1 - widthRatio) * 2 + (1 - o.h / freeH) * 0.5 - mlarsaNorm * 1.5;
+          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
 
           // Light lookahead
           let lookBonus = 0;
@@ -2021,10 +1906,7 @@ function runPlacement(
               effectiveW = freeW;
             }
           }
-          // MLARSA: prefer orientations that maximize the largest remaining sub-area
-          const mlarsa = mlarsaScore(freeW, usableH, o.w, o.h);
-          const mlarsaNorm = mlarsa / (freeW * usableH || 1);
-          const score = ((freeW - effectiveW) / usableW) * 0.5 - mlarsaNorm * 0.5;
+          const score = ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
