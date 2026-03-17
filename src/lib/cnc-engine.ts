@@ -1564,20 +1564,22 @@ export async function optimizeGeneticAsync(
   if (onProgress) {
     onProgress({ phase: "Rodando heurísticas V6...", current: 0, total: Math.max(1, generations) });
   }
-  const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
+  const v6Result = optimizeV6(pieces, usableW, usableH, minBreak, undefined, priorityX);
   const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
   if (v6Util > bestFitness) {
     bestFitness = v6Util;
     bestTree = JSON.parse(JSON.stringify(v6Result.tree));
     bestTransposed = false;
   }
-  // Also test transposed V6
-  const v6T = optimizeV6(pieces, usableH, usableW, minBreak);
-  const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
-  if (v6TUtil > bestFitness) {
-    bestFitness = v6TUtil;
-    bestTree = JSON.parse(JSON.stringify(v6T.tree));
-    bestTransposed = true;
+  // Also test transposed V6 (skip when priorityX)
+  if (!priorityX) {
+    const v6T = optimizeV6(pieces, usableH, usableW, minBreak, undefined, priorityX);
+    const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
+    if (v6TUtil > bestFitness) {
+      bestFitness = v6TUtil;
+      bestTree = JSON.parse(JSON.stringify(v6T.tree));
+      bestTransposed = true;
+    }
   }
 
   if (onProgress && generations > 0) {
