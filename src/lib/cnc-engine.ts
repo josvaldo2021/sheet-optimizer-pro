@@ -1317,6 +1317,7 @@ export async function optimizeGeneticAsync(
   priorityLabels?: string[],
   gaPopulationSize: number = 10,
   gaGenerations: number = 10,
+  priorityX: boolean = false,
 ): Promise<TreeNode> {
   const populationSize = Math.max(10, gaPopulationSize);
   const generations = Math.max(0, gaGenerations);
