@@ -1625,9 +1625,10 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const eW = ind.transposed ? usableH : usableW;
-      const eH = ind.transposed ? usableW : usableH;
-      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
+      const effectiveTransposed = priorityX ? false : ind.transposed;
+      const eW = effectiveTransposed ? usableH : usableW;
+      const eH = effectiveTransposed ? usableW : usableH;
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead, priorityX);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
