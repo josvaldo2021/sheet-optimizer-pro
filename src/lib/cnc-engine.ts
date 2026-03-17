@@ -2069,7 +2069,7 @@ function runPlacement(
         for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
           if (j === i) continue;
           const pw = remaining[j];
-          for (const wo of oris(pw)) {
+          for (const wo of orisFn(pw)) {
             if (minBreak > 0) {
               const violatesW = zNodeCurrent.filhos.some((w) => {
                 const diff = Math.abs(w.valor - wo.h);
