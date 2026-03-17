@@ -1931,7 +1931,10 @@ function runPlacement(
               effectiveW = freeW;
             }
           }
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          // MLARSA: prefer orientations that maximize the largest remaining sub-area
+          const mlarsa = mlarsaScore(freeW, usableH, o.w, o.h);
+          const mlarsaNorm = mlarsa / (freeW * usableH || 1);
+          const score = ((freeW - effectiveW) / usableW) * 0.5 - mlarsaNorm * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
