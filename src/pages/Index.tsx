@@ -1202,6 +1202,26 @@ const Index = () => {
                 />
               </div>
             </div>
+            <div
+              className="flex items-center gap-2 mb-3 p-2 rounded cursor-pointer"
+              style={{ background: priorityX ? "hsl(200 60% 15%)" : "hsl(0 0% 8%)", border: `1px solid ${priorityX ? "hsl(200 80% 40%)" : "hsl(0 0% 20%)"}` }}
+              onClick={() => setPriorityX(!priorityX)}
+            >
+              <input
+                type="checkbox"
+                checked={priorityX}
+                onChange={(e) => setPriorityX(e.target.checked)}
+                style={{ accentColor: "hsl(200 80% 50%)", cursor: "pointer", width: "14px", height: "14px" }}
+              />
+              <div>
+                <div className="text-[10px] font-bold" style={{ color: priorityX ? "hsl(200 80% 60%)" : "hsl(0 0% 60%)" }}>
+                  🔀 Prioridade X (Cortes Verticais)
+                </div>
+                <div className="text-[8px]" style={{ color: "hsl(0 0% 45%)" }}>
+                  Prioriza cortes no eixo X, evitando guilhotina horizontal
+                </div>
+              </div>
+            </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
               ⚡ OTIMIZAR (1 CHAPA)
             </button>
