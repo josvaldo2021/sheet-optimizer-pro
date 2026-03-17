@@ -2108,7 +2108,7 @@ function runPlacement(
         const candidates: number[] = [];
         for (let i = 0; i < remaining.length; i++) {
           const pc = remaining[i];
-          const matchesOriginal = oris(pc).some((o) => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
+          const matchesOriginal = orisFn(pc).some((o) => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
           if (matchesOriginal) candidates.push(i);
         }
 
