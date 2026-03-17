@@ -1986,7 +1986,7 @@ function runPlacement(
       let bestOri: { w: number; h: number } | null = null;
       let bestScore = Infinity;
 
-      for (const o of oris(pc)) {
+      for (const o of orisFn(pc)) {
         if (o.h !== bestFit.pieceH) continue; // Only exact height matches
         if (minBreak > 0) {
           const allZPositions = getAllZCutPositionsInColumn(col);
