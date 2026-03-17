@@ -1275,7 +1275,7 @@ function simulateSheets(
     if (currentRemaining.length === 0) break;
 
     const countBefore = currentRemaining.length;
-    const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
+    const res = runPlacement(currentRemaining, usableW, usableH, minBreak, priorityX);
     if (s === 0) firstTree = res.tree;
 
     totalUtil += res.area / sheetArea;
