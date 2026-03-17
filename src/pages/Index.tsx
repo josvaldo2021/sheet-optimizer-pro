@@ -51,6 +51,7 @@ const Index = () => {
   } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
+  const [priorityX, setPriorityX] = useState(false);
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
