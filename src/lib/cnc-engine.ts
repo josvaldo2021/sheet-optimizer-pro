@@ -1689,6 +1689,83 @@ export async function optimizeGeneticAsync(
     population = nextPop;
   }
 
+  // ========== SIMULATED ANNEALING POLISHING ==========
+  // Takes the best GA solution and tries to improve it with local search moves
+  if (generations > 0 && bestTree) {
+    if (onProgress)
+      onProgress({
+        phase: "Polimento SA...",
+        current: generations,
+        total: generations,
+        bestUtil: bestFitness * 100,
+      });
+
+    // Find the best individual from the last population
+    const lastEval = population.map((ind) => {
+      const res = evaluate(ind);
+      return { ind, fitness: res.fitness };
+    });
+    lastEval.sort((a, b) => b.fitness - a.fitness);
+    let saInd = { ...lastEval[0].ind, genome: [...lastEval[0].ind.genome], rotations: [...lastEval[0].ind.rotations] };
+    let saFitness = lastEval[0].fitness;
+
+    const saIterations = Math.min(3000, numPieces * 50);
+    let temp = 1000;
+    const coolingRate = 0.995;
+    const minTemp = 0.1;
+
+    for (let iter = 0; iter < saIterations && temp > minTemp; iter++) {
+      // Create neighbor
+      const neighbor = { ...saInd, genome: [...saInd.genome], rotations: [...saInd.rotations] };
+      const moveType = Math.random();
+
+      if (moveType < 0.4 && neighbor.genome.length > 2) {
+        // Swap two pieces (positions 1+, keep largest at 0)
+        const a = 1 + Math.floor(Math.random() * (neighbor.genome.length - 1));
+        const b = 1 + Math.floor(Math.random() * (neighbor.genome.length - 1));
+        [neighbor.genome[a], neighbor.genome[b]] = [neighbor.genome[b], neighbor.genome[a]];
+      } else if (moveType < 0.7 && neighbor.genome.length > 3) {
+        // Reverse segment (positions 1+)
+        const start = 1 + Math.floor(Math.random() * (neighbor.genome.length - 2));
+        const len = 2 + Math.floor(Math.random() * Math.min(5, neighbor.genome.length - start));
+        const end = Math.min(start + len, neighbor.genome.length);
+        const segment = neighbor.genome.slice(start, end);
+        segment.reverse();
+        for (let k = 0; k < segment.length; k++) {
+          neighbor.genome[start + k] = segment[k];
+        }
+      } else {
+        // Rotate a random piece
+        const idx = Math.floor(Math.random() * neighbor.rotations.length);
+        neighbor.rotations[idx] = !neighbor.rotations[idx];
+      }
+
+      const neighborResult = evaluate(neighbor);
+      const delta = neighborResult.fitness - saFitness;
+
+      if (delta > 0 || Math.random() < Math.exp(delta / (temp / 1000))) {
+        saInd = neighbor;
+        saFitness = neighborResult.fitness;
+
+        if (saFitness > bestFitness) {
+          bestFitness = saFitness;
+          bestTree = JSON.parse(JSON.stringify(neighborResult.tree));
+          bestTransposed = neighborResult.transposed;
+        }
+      }
+
+      temp *= coolingRate;
+    }
+
+    if (onProgress)
+      onProgress({
+        phase: "Polimento SA concluído",
+        current: generations,
+        total: generations,
+        bestUtil: bestFitness * 100,
+      });
+  }
+
   let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) finalTree.transposed = true;
 
