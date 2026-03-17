@@ -1253,6 +1253,7 @@ function simulateSheets(
   usableH: number,
   minBreak: number,
   maxSheets: number,
+  priorityX: boolean = false,
 ): {
   fitness: number;
   firstTree: TreeNode;
