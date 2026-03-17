@@ -1866,7 +1866,10 @@ function runPlacement(
             }
           }
           const widthRatio = o.w / colX.valor;
-          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
+          // MLARSA: prefer orientations that maximize the largest remaining sub-area
+          const mlarsa = mlarsaScore(colX.valor, freeH, o.w, o.h);
+          const mlarsaNorm = mlarsa / (colX.valor * freeH || 1);
+          const baseScore = (1 - widthRatio) * 2 + (1 - o.h / freeH) * 0.5 - mlarsaNorm * 1.5;
 
           // Light lookahead
           let lookBonus = 0;
