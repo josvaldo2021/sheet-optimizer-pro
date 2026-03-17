@@ -317,6 +317,7 @@ const Index = () => {
           priorityLabels.length > 0 ? priorityLabels : undefined,
           gaPopSize,
           gaGens,
+          priorityX,
         );
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea, manual: false });
