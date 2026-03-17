@@ -2152,7 +2152,7 @@ function runPlacement(
           const pc = remaining[i];
           let matchOri: { w: number; h: number } | null = null;
 
-          for (const o of oris(pc)) {
+          for (const o of orisFn(pc)) {
             if (o.h !== bestFit.pieceH) continue;
             if (o.w > newFreeZW) continue;
             if (minBreak > 0) {
