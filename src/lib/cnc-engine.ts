@@ -1104,6 +1104,7 @@ export function optimizeV6(
   usableH: number,
   minBreak: number = 0,
   useGrouping?: boolean,
+  priorityX: boolean = false,
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
@@ -1161,15 +1162,17 @@ export function optimizeV6(
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
 
-  // Test both normal and transposed orientations
-  for (const transposed of [false, true]) {
+  // When priorityX is active, skip transposed orientation (would swap axes)
+  const transposedOptions = priorityX ? [false] : [false, true];
+
+  for (const transposed of transposedOptions) {
     const eW = transposed ? usableH : usableW;
     const eH = transposed ? usableW : usableH;
 
     for (const variant of pieceVariants) {
       for (const sortFn of strategies) {
         const sorted = [...variant].sort(sortFn);
-        const result = runPlacement(sorted, eW, eH, minBreak);
+        const result = runPlacement(sorted, eW, eH, minBreak, priorityX);
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
