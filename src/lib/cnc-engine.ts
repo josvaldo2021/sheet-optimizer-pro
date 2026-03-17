@@ -764,6 +764,16 @@ function oris(p: Piece): { w: number; h: number }[] {
   ];
 }
 
+/**
+ * Orientações com prioridade X: força a maior dimensão como largura (X).
+ * Isso garante que os cortes principais sejam verticais, evitando guilhotina horizontal.
+ */
+function orisX(p: Piece): { w: number; h: number }[] {
+  const maxD = Math.max(p.w, p.h);
+  const minD = Math.min(p.w, p.h);
+  return [{ w: maxD, h: minD }];
+}
+
 // ========== SCORING WITH LOOKAHEAD ==========
 
 function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number, remaining: Piece[]): number {
