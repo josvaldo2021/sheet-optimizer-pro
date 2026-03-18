@@ -2336,11 +2336,10 @@ function postOptimizeRegroup(
   usableW: number,
   usableH: number,
   minBreak: number,
+  priorityX: boolean = false,
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree);
 
-  // Identifica peças em colunas diferentes com mesma altura
-  // Agrupa por altura (menor dimensão)
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
     const h = Math.min(p.w, p.h);
@@ -2348,13 +2347,10 @@ function postOptimizeRegroup(
     heightMap.get(h)!.push(p);
   }
 
-  // Encontra oportunidades: peças de mesma altura em colunas diferentes
   const regroupOpportunities: Array<{ height: number; pieces: typeof placedPieces }> = [];
   for (const [h, group] of heightMap) {
-    // Verifica se há peças em colunas diferentes
     const cols = new Set(group.map((p) => p.colIndex));
     if (cols.size > 1 && group.length >= 2) {
-      // Verifica se a soma das larguras caberia na chapa
       const totalW = group.reduce((sum, p) => sum + Math.max(p.w, p.h), 0);
       if (totalW <= usableW) {
         regroupOpportunities.push({ height: h, pieces: group });
@@ -2375,18 +2371,15 @@ function postOptimizeRegroup(
     );
   }
 
-  // Para cada oportunidade, cria um agrupamento forçado e re-otimiza
   let bestTree = originalTree;
   let bestArea = originalArea;
   let improved = false;
+  const transposeOptions = priorityX ? [false] : [false, true];
 
-  // Estratégia: criar variantes de peças com agrupamentos forçados
   for (const opp of regroupOpportunities) {
-    // Cria uma cópia das peças originais
     const forcedPieces: Piece[] = [];
     const usedLabels = new Set<string>();
 
-    // Cria o grupo forçado
     const groupLabels: string[] = [];
     let sumW = 0;
     for (const p of opp.pieces) {
@@ -2398,7 +2391,6 @@ function postOptimizeRegroup(
       }
     }
 
-    // Adiciona o grupo forçado como primeira peça (prioridade)
     forcedPieces.unshift({
       w: sumW,
       h: opp.height,
@@ -2408,25 +2400,22 @@ function postOptimizeRegroup(
       groupedAxis: "w",
     });
 
-    // Adiciona as demais peças (não agrupadas)
     for (const p of allPieces) {
       if (p.label && usedLabels.has(p.label)) continue;
       forcedPieces.push({ ...p });
     }
 
-    // Re-otimiza com as peças reagrupadas
     const strategies = getSortStrategies();
-    for (const transposed of [false, true]) {
+    for (const transposed of transposeOptions) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
 
       for (const sortFn of strategies) {
-        // Mantém o grupo forçado no início, ordena o resto
         const grouped = forcedPieces.slice(0, 1);
         const rest = [...forcedPieces.slice(1)].sort(sortFn);
         const sorted = [...grouped, ...rest];
 
-        const result = runPlacement(sorted, eW, eH, minBreak);
+        const result = runPlacement(sorted, eW, eH, minBreak, priorityX);
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
@@ -2440,7 +2429,6 @@ function postOptimizeRegroup(
     }
   }
 
-  // Tenta também combinar MÚLTIPLAS oportunidades simultaneamente
   if (regroupOpportunities.length >= 2) {
     const forcedPieces: Piece[] = [];
     const usedLabels = new Set<string>();
@@ -2473,14 +2461,14 @@ function postOptimizeRegroup(
     }
 
     const strategies = getSortStrategies();
-    for (const transposed of [false, true]) {
+    for (const transposed of transposeOptions) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
       for (const sortFn of strategies) {
         const grouped = forcedPieces.filter((p) => (p.count || 1) > 1);
         const rest = forcedPieces.filter((p) => (p.count || 1) <= 1).sort(sortFn);
         const sorted = [...grouped, ...rest];
-        const result = runPlacement(sorted, eW, eH, minBreak);
+        const result = runPlacement(sorted, eW, eH, minBreak, priorityX);
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
