@@ -764,16 +764,6 @@ function oris(p: Piece): { w: number; h: number }[] {
   ];
 }
 
-/**
- * Orientações com prioridade X: força a maior dimensão como largura (X).
- * Isso garante que os cortes principais sejam verticais, evitando guilhotina horizontal.
- */
-function orisX(p: Piece): { w: number; h: number }[] {
-  const maxD = Math.max(p.w, p.h);
-  const minD = Math.min(p.w, p.h);
-  return [{ w: maxD, h: minD }];
-}
-
 // ========== SCORING WITH LOOKAHEAD ==========
 
 function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number, remaining: Piece[]): number {
@@ -1114,7 +1104,6 @@ export function optimizeV6(
   usableH: number,
   minBreak: number = 0,
   useGrouping?: boolean,
-  priorityX: boolean = false,
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
@@ -1172,17 +1161,15 @@ export function optimizeV6(
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
 
-  // When priorityX is active, skip transposed orientation (would swap axes)
-  const transposedOptions = priorityX ? [false] : [false, true];
-
-  for (const transposed of transposedOptions) {
+  // Test both normal and transposed orientations
+  for (const transposed of [false, true]) {
     const eW = transposed ? usableH : usableW;
     const eH = transposed ? usableW : usableH;
 
     for (const variant of pieceVariants) {
       for (const sortFn of strategies) {
         const sorted = [...variant].sort(sortFn);
-        const result = runPlacement(sorted, eW, eH, minBreak, priorityX);
+        const result = runPlacement(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
@@ -1253,7 +1240,6 @@ function simulateSheets(
   usableH: number,
   minBreak: number,
   maxSheets: number,
-  priorityX: boolean = false,
 ): {
   fitness: number;
   firstTree: TreeNode;
@@ -1275,7 +1261,7 @@ function simulateSheets(
     if (currentRemaining.length === 0) break;
 
     const countBefore = currentRemaining.length;
-    const res = runPlacement(currentRemaining, usableW, usableH, minBreak, priorityX);
+    const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
     if (s === 0) firstTree = res.tree;
 
     totalUtil += res.area / sheetArea;
@@ -1318,7 +1304,6 @@ export async function optimizeGeneticAsync(
   priorityLabels?: string[],
   gaPopulationSize: number = 10,
   gaGenerations: number = 10,
-  priorityX: boolean = false,
 ): Promise<TreeNode> {
   const populationSize = Math.max(10, gaPopulationSize);
   const generations = Math.max(0, gaGenerations);
@@ -1396,12 +1381,10 @@ export async function optimizeGeneticAsync(
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
     const work = buildPieces(ind);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
-    // When priorityX, skip transposed individuals
-    const effectiveTransposed = priorityX ? false : ind.transposed;
-    const eW = effectiveTransposed ? usableH : usableW;
-    const eH = effectiveTransposed ? usableW : usableH;
-    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1, priorityX);
-    return { tree: result.firstTree, fitness: result.fitness, transposed: effectiveTransposed };
+    const eW = ind.transposed ? usableH : usableW;
+    const eH = ind.transposed ? usableW : usableH;
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
+    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
@@ -1564,22 +1547,20 @@ export async function optimizeGeneticAsync(
   if (onProgress) {
     onProgress({ phase: "Rodando heurísticas V6...", current: 0, total: Math.max(1, generations) });
   }
-  const v6Result = optimizeV6(pieces, usableW, usableH, minBreak, undefined, priorityX);
+  const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
   const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
   if (v6Util > bestFitness) {
     bestFitness = v6Util;
     bestTree = JSON.parse(JSON.stringify(v6Result.tree));
     bestTransposed = false;
   }
-  // Also test transposed V6 (skip when priorityX)
-  if (!priorityX) {
-    const v6T = optimizeV6(pieces, usableH, usableW, minBreak, undefined, priorityX);
-    const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
-    if (v6TUtil > bestFitness) {
-      bestFitness = v6TUtil;
-      bestTree = JSON.parse(JSON.stringify(v6T.tree));
-      bestTransposed = true;
-    }
+  // Also test transposed V6
+  const v6T = optimizeV6(pieces, usableH, usableW, minBreak);
+  const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
+  if (v6TUtil > bestFitness) {
+    bestFitness = v6TUtil;
+    bestTree = JSON.parse(JSON.stringify(v6T.tree));
+    bestTransposed = true;
   }
 
   if (onProgress && generations > 0) {
@@ -1625,10 +1606,9 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
-      const effectiveTransposed = priorityX ? false : ind.transposed;
-      const eW = effectiveTransposed ? usableH : usableW;
-      const eH = effectiveTransposed ? usableW : usableH;
-      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead, priorityX);
+      const eW = ind.transposed ? usableH : usableW;
+      const eH = ind.transposed ? usableW : usableH;
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -1821,12 +1801,10 @@ function runPlacement(
   usableW: number,
   usableH: number,
   minBreak: number = 0,
-  priorityX: boolean = false,
 ): { tree: TreeNode; area: number; remaining: Piece[] } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
-  const orisFn = priorityX ? orisX : oris;
 
   while (remaining.length > 0) {
     const piece = remaining[0];
@@ -1846,7 +1824,7 @@ function runPlacement(
       const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
       const freeH = usableH - usedH;
 
-      for (const o of orisFn(piece)) {
+      for (const o of oris(piece)) {
         // Check min break distance for Y values in this column
         if (minBreak > 0) {
           if (o.h < minBreak) continue;
@@ -1866,19 +1844,7 @@ function runPlacement(
             }
           }
           const widthRatio = o.w / colX.valor;
-          let baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
-
-          // PriorityX: heavily penalize stacking in existing columns (horizontal cuts)
-          // Only accept existing column if piece width matches column exactly
-          if (priorityX) {
-            if (o.w === colX.valor) {
-              // Perfect width match — acceptable, small penalty
-              baseScore += 5;
-            } else {
-              // Width mismatch — strongly penalize to prefer new column
-              baseScore += 50;
-            }
-          }
+          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
 
           // Light lookahead
           let lookBonus = 0;
@@ -1886,7 +1852,7 @@ function runPlacement(
           const remW = colX.valor - o.w;
 
           for (const r of remaining.slice(1)) {
-            for (const ro of orisFn(r)) {
+            for (const ro of oris(r)) {
               if (ro.w <= colX.valor && ro.h <= remH) {
                 lookBonus -= 0.5;
                 break;
@@ -1921,7 +1887,7 @@ function runPlacement(
     const freeW = usableW - usedW;
 
     if (freeW > 0) {
-      for (const o of orisFn(piece)) {
+      for (const o of oris(piece)) {
         // Check min break distance for X values
         if (minBreak > 0) {
           const violatesX = tree.filhos.some((x) => {
@@ -1940,10 +1906,7 @@ function runPlacement(
               effectiveW = freeW;
             }
           }
-          // PriorityX: bonus for new columns (prefer vertical cuts)
-          const score = priorityX
-            ? -1 + ((freeW - effectiveW) / usableW) * 0.1
-            : ((freeW - effectiveW) / usableW) * 0.5;
+          const score = ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
@@ -1993,7 +1956,7 @@ function runPlacement(
       let bestOri: { w: number; h: number } | null = null;
       let bestScore = Infinity;
 
-      for (const o of orisFn(pc)) {
+      for (const o of oris(pc)) {
         if (o.h !== bestFit.pieceH) continue; // Only exact height matches
         if (minBreak > 0) {
           const allZPositions = getAllZCutPositionsInColumn(col);
@@ -2025,7 +1988,7 @@ function runPlacement(
       let bestOri: { w: number; h: number } | null = null;
       let bestScore = Infinity;
 
-      for (const o of orisFn(pc)) {
+      for (const o of oris(pc)) {
         if (minBreak > 0) {
           const allZPositions = getAllZCutPositionsInColumn(col);
           const yIndex = col.filhos.indexOf(yNode);
@@ -2076,7 +2039,7 @@ function runPlacement(
         for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
           if (j === i) continue;
           const pw = remaining[j];
-          for (const wo of orisFn(pw)) {
+          for (const wo of oris(pw)) {
             if (minBreak > 0) {
               const violatesW = zNodeCurrent.filhos.some((w) => {
                 const diff = Math.abs(w.valor - wo.h);
@@ -2115,7 +2078,7 @@ function runPlacement(
         const candidates: number[] = [];
         for (let i = 0; i < remaining.length; i++) {
           const pc = remaining[i];
-          const matchesOriginal = orisFn(pc).some((o) => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
+          const matchesOriginal = oris(pc).some((o) => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
           if (matchesOriginal) candidates.push(i);
         }
 
@@ -2159,7 +2122,7 @@ function runPlacement(
           const pc = remaining[i];
           let matchOri: { w: number; h: number } | null = null;
 
-          for (const o of orisFn(pc)) {
+          for (const o of oris(pc)) {
             if (o.h !== bestFit.pieceH) continue;
             if (o.w > newFreeZW) continue;
             if (minBreak > 0) {

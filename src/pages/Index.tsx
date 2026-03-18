@@ -51,7 +51,6 @@ const Index = () => {
   } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
-  const [priorityX, setPriorityX] = useState(false);
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
@@ -253,7 +252,6 @@ const Index = () => {
       priorityLabels.length > 0 ? priorityLabels : undefined,
       gaPopSize,
       gaGens,
-      priorityX,
     );
     setTree(result);
     setChapas([{ tree: result, usedArea: calcPlacedArea(result), manual: false }]);
@@ -262,7 +260,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: "Plano de Corte Otimizado!", type: "success" });
-  }, [pieces, usableW, usableH, minBreak, priorityIds, gaPopSize, gaGens, priorityX]);
+  }, [pieces, usableW, usableH, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const optimizeAllSheets = useCallback(async () => {
     if (pieces.length === 0) {
@@ -317,7 +315,6 @@ const Index = () => {
           priorityLabels.length > 0 ? priorityLabels : undefined,
           gaPopSize,
           gaGens,
-          priorityX,
         );
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea, manual: false });
@@ -431,7 +428,7 @@ const Index = () => {
     setProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: "success" });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens, priorityX]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1200,26 +1197,6 @@ const Index = () => {
                   min={0}
                   style={{ fontSize: "10px" }}
                 />
-              </div>
-            </div>
-            <div
-              className="flex items-center gap-2 mb-3 p-2 rounded cursor-pointer"
-              style={{ background: priorityX ? "hsl(200 60% 15%)" : "hsl(0 0% 8%)", border: `1px solid ${priorityX ? "hsl(200 80% 40%)" : "hsl(0 0% 20%)"}` }}
-              onClick={() => setPriorityX(!priorityX)}
-            >
-              <input
-                type="checkbox"
-                checked={priorityX}
-                onChange={(e) => setPriorityX(e.target.checked)}
-                style={{ accentColor: "hsl(200 80% 50%)", cursor: "pointer", width: "14px", height: "14px" }}
-              />
-              <div>
-                <div className="text-[10px] font-bold" style={{ color: priorityX ? "hsl(200 80% 60%)" : "hsl(0 0% 60%)" }}>
-                  🔀 Prioridade X (Cortes Verticais)
-                </div>
-                <div className="text-[8px]" style={{ color: "hsl(0 0% 45%)" }}>
-                  Prioriza cortes no eixo X, evitando guilhotina horizontal
-                </div>
               </div>
             </div>
             <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
