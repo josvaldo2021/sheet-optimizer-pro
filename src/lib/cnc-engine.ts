@@ -1607,6 +1607,7 @@ export async function optimizeGeneticAsync(
       usableW,
       usableH,
       minBreak,
+      priorityX,
     );
     if (postResult.improved) {
       finalTree = postResult.tree;
@@ -1695,6 +1696,7 @@ export async function optimizeGeneticAsync(
     usableW,
     usableH,
     minBreak,
+    priorityX,
   );
   if (postResult.improved) {
     finalTree = postResult.tree;
