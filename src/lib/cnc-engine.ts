@@ -765,13 +765,16 @@ function oris(p: Piece): { w: number; h: number }[] {
 }
 
 /**
- * Orientações com prioridade X: força a maior dimensão como largura (X).
- * Isso garante que os cortes principais sejam verticais, evitando guilhotina horizontal.
+ * Orientações com prioridade X: retorna ambas orientações, mas coloca
+ * a orientação paisagem (maior dim como largura) primeiro para ser preferida.
+ * Isso favorece cortes verticais sem bloquear a orientação retrato quando necessária.
  */
 function orisX(p: Piece): { w: number; h: number }[] {
   const maxD = Math.max(p.w, p.h);
   const minD = Math.min(p.w, p.h);
-  return [{ w: maxD, h: minD }];
+  if (p.w === p.h) return [{ w: p.w, h: p.h }];
+  // Landscape first (preferred), portrait second (fallback)
+  return [{ w: maxD, h: minD }, { w: minD, h: maxD }];
 }
 
 // ========== SCORING WITH LOOKAHEAD ==========
