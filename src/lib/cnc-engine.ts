@@ -274,7 +274,7 @@ export function calcPlacedArea(tree: TreeNode): number {
  */
 function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
   if (pieces.length <= 1) return pieces;
-
+  
   // Encontra a peça INDIVIDUAL (count === 1 ou undefined) com maior área
   let bestIdx = -1;
   let bestArea = 0;
@@ -289,14 +289,14 @@ function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
       }
     }
   }
-
+  
   // Se encontrou uma peça individual e ela não está no índice 0, move para lá
   if (bestIdx > 0) {
     const largest = pieces[bestIdx];
     pieces.splice(bestIdx, 1);
     pieces.unshift(largest);
   }
-
+  
   return pieces;
 }
 
@@ -765,19 +765,13 @@ function oris(p: Piece): { w: number; h: number }[] {
 }
 
 /**
- * Orientações com prioridade X: retorna ambas orientações, mas coloca
- * a orientação paisagem (maior dim como largura) primeiro para ser preferida.
- * Isso favorece cortes verticais sem bloquear a orientação retrato quando necessária.
+ * Orientações com prioridade X: força a maior dimensão como largura (X).
+ * Isso garante que os cortes principais sejam verticais, evitando guilhotina horizontal.
  */
 function orisX(p: Piece): { w: number; h: number }[] {
   const maxD = Math.max(p.w, p.h);
   const minD = Math.min(p.w, p.h);
-  if (p.w === p.h) return [{ w: p.w, h: p.h }];
-  // Landscape first (preferred), portrait second (fallback)
-  return [
-    { w: maxD, h: minD },
-    { w: minD, h: maxD },
-  ];
+  return [{ w: maxD, h: minD }];
 }
 
 // ========== SCORING WITH LOOKAHEAD ==========
@@ -1610,7 +1604,6 @@ export async function optimizeGeneticAsync(
       usableW,
       usableH,
       minBreak,
-      priorityX,
     );
     if (postResult.improved) {
       finalTree = postResult.tree;
@@ -1699,7 +1692,6 @@ export async function optimizeGeneticAsync(
     usableW,
     usableH,
     minBreak,
-    priorityX,
   );
   if (postResult.improved) {
     finalTree = postResult.tree;
@@ -1869,10 +1861,9 @@ function runPlacement(
           const residualH = freeH - o.h;
           if (residualH > 0) {
             const ySibValues = colX.filhos.map((y) => y.valor);
-            // Se o espaço residual não puder acomodar nenhuma peça, não expandir effectiveH para freeH.
-            // Isso evita sobras desnecessárias ao forçar o preenchimento de um espaço inútil.
-            // A lógica de `clampTreeHeights` já garante que nada ultrapasse usableH.
-            // effectiveH = freeH; // Removido para evitar expansão desnecessária
+            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h")) {
+              effectiveH = freeH;
+            }
           }
           const widthRatio = o.w / colX.valor;
           let baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
@@ -1945,10 +1936,9 @@ function runPlacement(
           const residualW = freeW - o.w;
           if (residualW > 0) {
             const xSibValues = tree.filhos.map((x) => x.valor);
-            // Se o espaço residual não puder acomodar nenhuma peça, não expandir effectiveW para freeW.
-            // Isso evita sobras desnecessárias ao forçar o preenchimento de um espaço inútil.
-            // A lógica de `clampTreeHeights` já garante que nada ultrapasse usableW.
-            // effectiveW = freeW; // Removido para evitar expansão desnecessária
+            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
+              effectiveW = freeW;
+            }
           }
           // PriorityX: bonus for new columns (prefer vertical cuts)
           const score = priorityX
@@ -2030,67 +2020,87 @@ function runPlacement(
     }
 
     // Pass 2: shorter pieces (with W subdivision for remaining width)
-    if (!priorityX) {
-      for (let i = 0; i < remaining.length && freeZW > 0; i++) {
-        const pc = remaining[i];
-        let bestOri: { w: number; h: number } | null = null;
-        let bestScore = Infinity;
+    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+      const pc = remaining[i];
+      let bestOri: { w: number; h: number } | null = null;
+      let bestScore = Infinity;
 
-        for (const o of orisFn(pc)) {
-          if (minBreak > 0) {
-            const allZPositions = getAllZCutPositionsInColumn(col);
-            const yIndex = col.filhos.indexOf(yNode);
-            const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-            const newCutPos = currentOffset + o.w;
-            if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+      for (const o of orisFn(pc)) {
+        if (minBreak > 0) {
+          const allZPositions = getAllZCutPositionsInColumn(col);
+          const yIndex = col.filhos.indexOf(yNode);
+          const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+          const newCutPos = currentOffset + o.w;
+          if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+        }
+        if (o.w <= freeZW && o.h <= bestFit.h) {
+          const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
+          if (score < bestScore) {
+            bestScore = score;
+            bestOri = o;
           }
-          if (o.w <= freeZW && o.h <= bestFit.h) {
-            const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
-            if (score < bestScore) {
-              bestScore = score;
-              bestOri = o;
+        }
+      }
+
+      if (bestOri) {
+        // Create the container Z for this lateral piece
+        const zId = insertNode(tree, yNode.id, "Z", bestOri.w, 1);
+        const zNode2 = findNode(tree, zId)!;
+
+        // Sub-fill vertically within this Z width
+        let freeWH = bestFit.h;
+
+        // This is a nested loop to fill vertically inside the Z strip and we should use createPieceNodes inside it.
+        // But first, we need a way to pass a Z node to createPieceNodes as a parent or refactor createPieceNodes to handle Z parents.
+        // Actually, createPieceNodes creates the Z if we pass it a Y.
+        // If we have a Z, we might need a variant.
+        // Looking at createPieceNodes: it creates Z then W.
+        // For Pass 2, we want to stack multiple pieces vertically in the SAME Z.
+        // So we might need to manually handle the W/Q creation inside the vertical fill.
+
+        // Actually, let's refactor createPieceNodes to take a generic parent and a target type?
+        // No, let's keep it simple: createPieceNodes handles the "create a piece at this location" logic.
+
+        // Refactoring createPieceNodes to take parent and optionally skip Z creation?
+        // Or just use it as is for the FIRST piece and then manually for subsequent?
+
+        // Let's use it as is for the Pass 2 main piece:
+        placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+        // Wait, Pass 2 needs to fill the FULL height bestFit.h.
+        // createPieceNodes will create a Z of bestOri.w and a W of bestOri.h.
+        // The remaining height is bestFit.h - bestOri.h.
+
+        const zNodeCurrent = yNode.filhos[yNode.filhos.length - 1]; // The Z created by createPieceNodes
+        let freeWH_remaining = bestFit.h - bestOri.h;
+
+        for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
+          if (j === i) continue;
+          const pw = remaining[j];
+          for (const wo of orisFn(pw)) {
+            if (minBreak > 0) {
+              const violatesW = zNodeCurrent.filhos.some((w) => {
+                const diff = Math.abs(w.valor - wo.h);
+                return diff > 0 && diff < minBreak;
+              });
+              if (violatesW) continue;
+            }
+            if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
+              const actualRotated = wo.w !== pw.w;
+              createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
+
+              placedArea += zNodeCurrent.valor * wo.h;
+              freeWH_remaining -= wo.h;
+              remaining.splice(j, 1);
+              if (j < i) i--;
+              j--;
+              break;
             }
           }
         }
 
-        if (bestOri) {
-          const zId = insertNode(tree, yNode.id, "Z", bestOri.w, 1);
-          const zNode2 = findNode(tree, zId)!;
-
-          placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-
-          const zNodeCurrent = yNode.filhos[yNode.filhos.length - 1];
-          let freeWH_remaining = bestFit.h - bestOri.h;
-
-          for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
-            if (j === i) continue;
-            const pw = remaining[j];
-            for (const wo of orisFn(pw)) {
-              if (minBreak > 0) {
-                const violatesW = zNodeCurrent.filhos.some((w) => {
-                  const diff = Math.abs(w.valor - wo.h);
-                  return diff > 0 && diff < minBreak;
-                });
-                if (violatesW) continue;
-              }
-              if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
-                const actualRotated = wo.w !== pw.w;
-                createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
-
-                placedArea += zNodeCurrent.valor * wo.h;
-                freeWH_remaining -= wo.h;
-                remaining.splice(j, 1);
-                if (j < i) i--;
-                j--;
-                break;
-              }
-            }
-          }
-
-          freeZW -= bestOri.w;
-          remaining.splice(i, 1);
-          i--;
-        }
+        freeZW -= bestOri.w;
+        remaining.splice(i, 1);
+        i--;
       }
     }
 
@@ -2171,13 +2181,14 @@ function runPlacement(
           }
         }
 
+        // Recalculate freeHRemain from actual tree state (safer than decrementing)
         const actualUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
         freeHRemain = usableH - actualUsedH;
       }
     }
 
     // Void filling
-    if (!priorityX && remaining.length > 0) {
+    if (remaining.length > 0) {
       placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
     }
   }
@@ -2199,7 +2210,7 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
 
     for (const yNode of colX.filhos) {
       const yHeight = yNode.valor * yNode.multi;
-      if (totalH + yHeight <= usableH) {
+      if (totalH + yHeight <= usableH + 0.5) {
         // 0.5 tolerance for rounding
         validChildren.push(yNode);
         totalH += yHeight;
@@ -2212,7 +2223,7 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
             validChildren.push(yNode);
             totalH += yNode.valor * canFit;
           }
-        } else if (totalH + yNode.valor <= usableH) {
+        } else if (totalH + yNode.valor <= usableH + 0.5) {
           validChildren.push(yNode);
           totalH += yNode.valor;
         }
@@ -2320,10 +2331,11 @@ function postOptimizeRegroup(
   usableW: number,
   usableH: number,
   minBreak: number,
-  priorityX: boolean = false,
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree);
 
+  // Identifica peças em colunas diferentes com mesma altura
+  // Agrupa por altura (menor dimensão)
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
     const h = Math.min(p.w, p.h);
@@ -2331,10 +2343,13 @@ function postOptimizeRegroup(
     heightMap.get(h)!.push(p);
   }
 
+  // Encontra oportunidades: peças de mesma altura em colunas diferentes
   const regroupOpportunities: Array<{ height: number; pieces: typeof placedPieces }> = [];
   for (const [h, group] of heightMap) {
+    // Verifica se há peças em colunas diferentes
     const cols = new Set(group.map((p) => p.colIndex));
     if (cols.size > 1 && group.length >= 2) {
+      // Verifica se a soma das larguras caberia na chapa
       const totalW = group.reduce((sum, p) => sum + Math.max(p.w, p.h), 0);
       if (totalW <= usableW) {
         regroupOpportunities.push({ height: h, pieces: group });
@@ -2355,15 +2370,18 @@ function postOptimizeRegroup(
     );
   }
 
+  // Para cada oportunidade, cria um agrupamento forçado e re-otimiza
   let bestTree = originalTree;
   let bestArea = originalArea;
   let improved = false;
-  const transposeOptions = priorityX ? [false] : [false, true];
 
+  // Estratégia: criar variantes de peças com agrupamentos forçados
   for (const opp of regroupOpportunities) {
+    // Cria uma cópia das peças originais
     const forcedPieces: Piece[] = [];
     const usedLabels = new Set<string>();
 
+    // Cria o grupo forçado
     const groupLabels: string[] = [];
     let sumW = 0;
     for (const p of opp.pieces) {
@@ -2375,6 +2393,7 @@ function postOptimizeRegroup(
       }
     }
 
+    // Adiciona o grupo forçado como primeira peça (prioridade)
     forcedPieces.unshift({
       w: sumW,
       h: opp.height,
@@ -2384,22 +2403,25 @@ function postOptimizeRegroup(
       groupedAxis: "w",
     });
 
+    // Adiciona as demais peças (não agrupadas)
     for (const p of allPieces) {
       if (p.label && usedLabels.has(p.label)) continue;
       forcedPieces.push({ ...p });
     }
 
+    // Re-otimiza com as peças reagrupadas
     const strategies = getSortStrategies();
-    for (const transposed of transposeOptions) {
+    for (const transposed of [false, true]) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
 
       for (const sortFn of strategies) {
+        // Mantém o grupo forçado no início, ordena o resto
         const grouped = forcedPieces.slice(0, 1);
         const rest = [...forcedPieces.slice(1)].sort(sortFn);
         const sorted = [...grouped, ...rest];
 
-        const result = runPlacement(sorted, eW, eH, minBreak, priorityX);
+        const result = runPlacement(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
@@ -2413,6 +2435,7 @@ function postOptimizeRegroup(
     }
   }
 
+  // Tenta também combinar MÚLTIPLAS oportunidades simultaneamente
   if (regroupOpportunities.length >= 2) {
     const forcedPieces: Piece[] = [];
     const usedLabels = new Set<string>();
@@ -2445,14 +2468,14 @@ function postOptimizeRegroup(
     }
 
     const strategies = getSortStrategies();
-    for (const transposed of transposeOptions) {
+    for (const transposed of [false, true]) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
       for (const sortFn of strategies) {
         const grouped = forcedPieces.filter((p) => (p.count || 1) > 1);
         const rest = forcedPieces.filter((p) => (p.count || 1) <= 1).sort(sortFn);
         const sorted = [...grouped, ...rest];
-        const result = runPlacement(sorted, eW, eH, minBreak, priorityX);
+        const result = runPlacement(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
