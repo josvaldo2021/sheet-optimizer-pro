@@ -2025,87 +2025,67 @@ function runPlacement(
     }
 
     // Pass 2: shorter pieces (with W subdivision for remaining width)
-    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
-      const pc = remaining[i];
-      let bestOri: { w: number; h: number } | null = null;
-      let bestScore = Infinity;
+    if (!priorityX) {
+      for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+        const pc = remaining[i];
+        let bestOri: { w: number; h: number } | null = null;
+        let bestScore = Infinity;
 
-      for (const o of orisFn(pc)) {
-        if (minBreak > 0) {
-          const allZPositions = getAllZCutPositionsInColumn(col);
-          const yIndex = col.filhos.indexOf(yNode);
-          const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-          const newCutPos = currentOffset + o.w;
-          if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
-        }
-        if (o.w <= freeZW && o.h <= bestFit.h) {
-          const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
-          if (score < bestScore) {
-            bestScore = score;
-            bestOri = o;
+        for (const o of orisFn(pc)) {
+          if (minBreak > 0) {
+            const allZPositions = getAllZCutPositionsInColumn(col);
+            const yIndex = col.filhos.indexOf(yNode);
+            const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+            const newCutPos = currentOffset + o.w;
+            if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
           }
-        }
-      }
-
-      if (bestOri) {
-        // Create the container Z for this lateral piece
-        const zId = insertNode(tree, yNode.id, "Z", bestOri.w, 1);
-        const zNode2 = findNode(tree, zId)!;
-
-        // Sub-fill vertically within this Z width
-        let freeWH = bestFit.h;
-
-        // This is a nested loop to fill vertically inside the Z strip and we should use createPieceNodes inside it.
-        // But first, we need a way to pass a Z node to createPieceNodes as a parent or refactor createPieceNodes to handle Z parents.
-        // Actually, createPieceNodes creates the Z if we pass it a Y.
-        // If we have a Z, we might need a variant.
-        // Looking at createPieceNodes: it creates Z then W.
-        // For Pass 2, we want to stack multiple pieces vertically in the SAME Z.
-        // So we might need to manually handle the W/Q creation inside the vertical fill.
-
-        // Actually, let's refactor createPieceNodes to take a generic parent and a target type?
-        // No, let's keep it simple: createPieceNodes handles the "create a piece at this location" logic.
-
-        // Refactoring createPieceNodes to take parent and optionally skip Z creation?
-        // Or just use it as is for the FIRST piece and then manually for subsequent?
-
-        // Let's use it as is for the Pass 2 main piece:
-        placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-        // Wait, Pass 2 needs to fill the FULL height bestFit.h.
-        // createPieceNodes will create a Z of bestOri.w and a W of bestOri.h.
-        // The remaining height is bestFit.h - bestOri.h.
-
-        const zNodeCurrent = yNode.filhos[yNode.filhos.length - 1]; // The Z created by createPieceNodes
-        let freeWH_remaining = bestFit.h - bestOri.h;
-
-        for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
-          if (j === i) continue;
-          const pw = remaining[j];
-          for (const wo of orisFn(pw)) {
-            if (minBreak > 0) {
-              const violatesW = zNodeCurrent.filhos.some((w) => {
-                const diff = Math.abs(w.valor - wo.h);
-                return diff > 0 && diff < minBreak;
-              });
-              if (violatesW) continue;
-            }
-            if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
-              const actualRotated = wo.w !== pw.w;
-              createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
-
-              placedArea += zNodeCurrent.valor * wo.h;
-              freeWH_remaining -= wo.h;
-              remaining.splice(j, 1);
-              if (j < i) i--;
-              j--;
-              break;
+          if (o.w <= freeZW && o.h <= bestFit.h) {
+            const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
+            if (score < bestScore) {
+              bestScore = score;
+              bestOri = o;
             }
           }
         }
 
-        freeZW -= bestOri.w;
-        remaining.splice(i, 1);
-        i--;
+        if (bestOri) {
+          const zId = insertNode(tree, yNode.id, "Z", bestOri.w, 1);
+          const zNode2 = findNode(tree, zId)!;
+
+          placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+
+          const zNodeCurrent = yNode.filhos[yNode.filhos.length - 1];
+          let freeWH_remaining = bestFit.h - bestOri.h;
+
+          for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
+            if (j === i) continue;
+            const pw = remaining[j];
+            for (const wo of orisFn(pw)) {
+              if (minBreak > 0) {
+                const violatesW = zNodeCurrent.filhos.some((w) => {
+                  const diff = Math.abs(w.valor - wo.h);
+                  return diff > 0 && diff < minBreak;
+                });
+                if (violatesW) continue;
+              }
+              if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
+                const actualRotated = wo.w !== pw.w;
+                createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
+
+                placedArea += zNodeCurrent.valor * wo.h;
+                freeWH_remaining -= wo.h;
+                remaining.splice(j, 1);
+                if (j < i) i--;
+                j--;
+                break;
+              }
+            }
+          }
+
+          freeZW -= bestOri.w;
+          remaining.splice(i, 1);
+          i--;
+        }
       }
     }
 
@@ -2186,14 +2166,13 @@ function runPlacement(
           }
         }
 
-        // Recalculate freeHRemain from actual tree state (safer than decrementing)
         const actualUsedH = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
         freeHRemain = usableH - actualUsedH;
       }
     }
 
     // Void filling
-    if (remaining.length > 0) {
+    if (!priorityX && remaining.length > 0) {
       placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
     }
   }
