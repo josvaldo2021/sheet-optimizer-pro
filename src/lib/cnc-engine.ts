@@ -274,7 +274,7 @@ export function calcPlacedArea(tree: TreeNode): number {
  */
 function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
   if (pieces.length <= 1) return pieces;
-  
+
   // Encontra a peça INDIVIDUAL (count === 1 ou undefined) com maior área
   let bestIdx = -1;
   let bestArea = 0;
@@ -289,14 +289,14 @@ function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
       }
     }
   }
-  
+
   // Se encontrou uma peça individual e ela não está no índice 0, move para lá
   if (bestIdx > 0) {
     const largest = pieces[bestIdx];
     pieces.splice(bestIdx, 1);
     pieces.unshift(largest);
   }
-  
+
   return pieces;
 }
 
@@ -1308,7 +1308,7 @@ export async function optimizeGeneticAsync(
   const populationSize = Math.max(10, gaPopulationSize);
   const generations = Math.max(0, gaGenerations);
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
-  const mutationRate = 0.1;
+  const mutationRate = 0.05;
 
   const numPieces = pieces.length;
 
