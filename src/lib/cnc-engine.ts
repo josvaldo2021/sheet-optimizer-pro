@@ -274,7 +274,7 @@ export function calcPlacedArea(tree: TreeNode): number {
  */
 function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
   if (pieces.length <= 1) return pieces;
-  
+
   // Encontra a peça INDIVIDUAL (count === 1 ou undefined) com maior área
   let bestIdx = -1;
   let bestArea = 0;
@@ -289,14 +289,14 @@ function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
       }
     }
   }
-  
+
   // Se encontrou uma peça individual e ela não está no índice 0, move para lá
   if (bestIdx > 0) {
     const largest = pieces[bestIdx];
     pieces.splice(bestIdx, 1);
     pieces.unshift(largest);
   }
-  
+
   return pieces;
 }
 
@@ -774,7 +774,10 @@ function orisX(p: Piece): { w: number; h: number }[] {
   const minD = Math.min(p.w, p.h);
   if (p.w === p.h) return [{ w: p.w, h: p.h }];
   // Landscape first (preferred), portrait second (fallback)
-  return [{ w: maxD, h: minD }, { w: minD, h: maxD }];
+  return [
+    { w: maxD, h: minD },
+    { w: minD, h: maxD },
+  ];
 }
 
 // ========== SCORING WITH LOOKAHEAD ==========
@@ -1866,9 +1869,10 @@ function runPlacement(
           const residualH = freeH - o.h;
           if (residualH > 0) {
             const ySibValues = colX.filhos.map((y) => y.valor);
-            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h")) {
-              effectiveH = freeH;
-            }
+            // Se o espaço residual não puder acomodar nenhuma peça, não expandir effectiveH para freeH.
+            // Isso evita sobras desnecessárias ao forçar o preenchimento de um espaço inútil.
+            // A lógica de `clampTreeHeights` já garante que nada ultrapasse usableH.
+            // effectiveH = freeH; // Removido para evitar expansão desnecessária
           }
           const widthRatio = o.w / colX.valor;
           let baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
@@ -1941,9 +1945,10 @@ function runPlacement(
           const residualW = freeW - o.w;
           if (residualW > 0) {
             const xSibValues = tree.filhos.map((x) => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
-              effectiveW = freeW;
-            }
+            // Se o espaço residual não puder acomodar nenhuma peça, não expandir effectiveW para freeW.
+            // Isso evita sobras desnecessárias ao forçar o preenchimento de um espaço inútil.
+            // A lógica de `clampTreeHeights` já garante que nada ultrapasse usableW.
+            // effectiveW = freeW; // Removido para evitar expansão desnecessária
           }
           // PriorityX: bonus for new columns (prefer vertical cuts)
           const score = priorityX
@@ -2194,7 +2199,7 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
 
     for (const yNode of colX.filhos) {
       const yHeight = yNode.valor * yNode.multi;
-      if (totalH + yHeight <= usableH + 0.5) {
+      if (totalH + yHeight <= usableH) {
         // 0.5 tolerance for rounding
         validChildren.push(yNode);
         totalH += yHeight;
@@ -2207,7 +2212,7 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
             validChildren.push(yNode);
             totalH += yNode.valor * canFit;
           }
-        } else if (totalH + yNode.valor <= usableH + 0.5) {
+        } else if (totalH + yNode.valor <= usableH) {
           validChildren.push(yNode);
           totalH += yNode.valor;
         }
