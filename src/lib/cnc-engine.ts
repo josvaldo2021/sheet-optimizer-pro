@@ -1585,6 +1585,10 @@ export async function optimizeGeneticAsync(
       work = groupPiecesColumnWidth(work, usableW);
     } else if (ind.groupingMode === 8) {
       work = groupPiecesColumnHeight(work, usableH);
+    } else if (ind.groupingMode === 9) {
+      work = groupByCommonDimension(work, usableW, usableH);
+    } else if (ind.groupingMode === 10) {
+      work = groupByCommonDimensionTransposed(work, usableW, usableH);
     }
 
     return work;
