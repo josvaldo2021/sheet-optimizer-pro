@@ -1737,9 +1737,9 @@ function createPieceNodes(
     if (zNodeToUse && splitAxis === "Z") splitAxis = "W";
 
     if (splitAxis === "Z") {
-      const individualWidth = Math.round(placedW / piece.count!);
       for (let i = 0; i < piece.count!; i++) {
-        const zId = insertNode(tree, yNode.id, "Z", individualWidth, 1);
+        const dimW = piece.individualDims ? piece.individualDims[i] : Math.round(placedW / piece.count!);
+        const zId = insertNode(tree, yNode.id, "Z", dimW, 1);
         const zNode = findNode(tree, zId)!;
         if (piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
         const wId = insertNode(tree, zId, "W", placedH, 1);
@@ -1747,21 +1747,21 @@ function createPieceNodes(
         if (piece.labels && piece.labels[i]) wNode.label = piece.labels[i];
       }
     } else if (splitAxis === "W") {
-      const individualHeight = Math.round(placedH / piece.count!);
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       for (let i = 0; i < piece.count!; i++) {
-        const wId = insertNode(tree, zNode.id, "W", individualHeight, 1);
+        const dimH = piece.individualDims ? piece.individualDims[i] : Math.round(placedH / piece.count!);
+        const wId = insertNode(tree, zNode.id, "W", dimH, 1);
         const wNode_f = findNode(tree, wId)!;
         if (piece.labels && piece.labels[i]) wNode_f.label = piece.labels[i];
         if (i === 0 && piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
       }
     } else {
-      const individualWidth = Math.round(placedW / piece.count!);
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       const wId = insertNode(tree, zNode.id, "W", placedH, 1);
       const wNode = findNode(tree, wId)!;
       for (let i = 0; i < piece.count!; i++) {
-        const qId = insertNode(tree, wId, "Q", individualWidth, 1);
+        const dimW = piece.individualDims ? piece.individualDims[i] : Math.round(placedW / piece.count!);
+        const qId = insertNode(tree, wId, "Q", dimW, 1);
         const qNode = findNode(tree, qId)!;
         if (piece.labels && piece.labels[i]) {
           qNode.label = piece.labels[i];
