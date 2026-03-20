@@ -22,6 +22,8 @@ export interface Piece {
   labels?: string[];
   /** Axis along which pieces were grouped */
   groupedAxis?: "w" | "h";
+  /** Individual dimensions of each piece in the group (widths if groupedAxis="w", heights if groupedAxis="h") */
+  individualDims?: number[];
 }
 
 export interface PieceItem {
@@ -362,6 +364,7 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
           count: stack.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "h",
+          individualDims: stack.map(p => p.nh),
         });
 
         for (const used of stack) {
@@ -441,6 +444,7 @@ function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piec
           count: row.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "w",
+          individualDims: row.map(p => p.nw),
         });
 
         for (const used of row) {
@@ -536,6 +540,7 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
           count: row.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "w",
+          individualDims: row.map(p => p.nw),
         });
 
         // Remove peças usadas
@@ -620,6 +625,7 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
           count: col.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "h",
+          individualDims: col.map(p => p.nh),
         });
 
         for (const used of col) {
@@ -1096,6 +1102,214 @@ function fillRectW(
   return filled;
 }
 
+// ========== GROUP BY COMMON DIMENSION ==========
+
+/**
+ * AGRUPAMENTO POR DIMENSÃO COMUM (Estratégia para peças de larguras diferentes mas mesma altura)
+ *
+ * Detecta a dimensão mais frequente entre todas as peças (verificando tanto w quanto h).
+ * Orienta todas as peças para que a dimensão comum seja a altura.
+ * Empacota peças lado a lado (somando larguras) usando FFD (First Fit Decreasing).
+ *
+ * Exemplo: peças 818×951, 763×951, 734×951 → todas têm h=951 em comum.
+ * Cria faixas de altura 951 com peças de larguras variadas lado a lado.
+ *
+ * @param threshold - Fração mínima de peças que devem compartilhar a dimensão (default 0.4 = 40%)
+ */
+function groupByCommonDimension(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  threshold: number = 0.4,
+): Piece[] {
+  if (pieces.length < 2) return pieces;
+
+  // 1. Count frequency of each dimension value (both w and h)
+  const dimCount = new Map<number, number>();
+  for (const p of pieces) {
+    dimCount.set(p.w, (dimCount.get(p.w) || 0) + 1);
+    if (p.h !== p.w) {
+      dimCount.set(p.h, (dimCount.get(p.h) || 0) + 1);
+    }
+  }
+
+  // 2. Find the most common dimension
+  let bestDim = 0, bestCount = 0;
+  for (const [dim, count] of dimCount) {
+    if (count > bestCount) { bestCount = count; bestDim = dim; }
+  }
+
+  // Only proceed if enough pieces share this dimension
+  if (bestCount < Math.max(2, Math.floor(pieces.length * threshold))) return pieces;
+
+  // 3. Orient pieces so the common dimension is the height
+  const oriented: Array<Piece & { origW: number }> = [];
+  const others: Piece[] = [];
+  for (const p of pieces) {
+    if (p.h === bestDim) {
+      oriented.push({ ...p, origW: p.w });
+    } else if (p.w === bestDim) {
+      oriented.push({ ...p, w: p.h, h: p.w, origW: p.h });
+    } else {
+      others.push(p);
+    }
+  }
+
+  // 4. Sort by width descending (FFD)
+  oriented.sort((a, b) => b.origW - a.origW);
+
+  // 5. Pack into rows using Best Fit Decreasing
+  const rows: Array<typeof oriented> = [];
+  const rowWidths: number[] = [];
+
+  for (const p of oriented) {
+    // Best Fit: find the row with least remaining space that still fits
+    let bestRowIdx = -1;
+    let bestRemaining = Infinity;
+    for (let r = 0; r < rows.length; r++) {
+      const remaining = usableW - rowWidths[r];
+      if (p.origW <= remaining && remaining < bestRemaining) {
+        bestRemaining = remaining;
+        bestRowIdx = r;
+      }
+    }
+
+    if (bestRowIdx >= 0) {
+      rows[bestRowIdx].push(p);
+      rowWidths[bestRowIdx] += p.origW;
+    } else {
+      rows.push([p]);
+      rowWidths.push(p.origW);
+    }
+  }
+
+  // 6. Convert rows to grouped pieces
+  const result: Piece[] = [];
+  for (let r = 0; r < rows.length; r++) {
+    if (rows[r].length >= 2) {
+      const groupLabels = rows[r].filter(p => p.label).map(p => p.label!);
+      result.push({
+        w: rowWidths[r],
+        h: bestDim,
+        area: rows[r][0].origW * bestDim,
+        count: rows[r].length,
+        labels: groupLabels.length > 0 ? groupLabels : undefined,
+        groupedAxis: "w",
+        individualDims: rows[r].map(p => p.origW),
+      });
+    } else {
+      const p = rows[r][0];
+      result.push({
+        w: p.origW,
+        h: bestDim,
+        area: p.origW * bestDim,
+        count: 1,
+        label: p.label,
+      });
+    }
+  }
+
+  // Add non-matching pieces
+  result.push(...others);
+  result.sort((a, b) => b.area - a.area);
+  ensureLargestIndividualFirst(result);
+  return result;
+}
+
+/**
+ * Variante com orientação invertida: a dimensão comum vira a LARGURA (não a altura).
+ * Isso permite testar layouts onde a dimensão comum define colunas em vez de faixas.
+ */
+function groupByCommonDimensionTransposed(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  threshold: number = 0.4,
+): Piece[] {
+  if (pieces.length < 2) return pieces;
+
+  const dimCount = new Map<number, number>();
+  for (const p of pieces) {
+    dimCount.set(p.w, (dimCount.get(p.w) || 0) + 1);
+    if (p.h !== p.w) dimCount.set(p.h, (dimCount.get(p.h) || 0) + 1);
+  }
+
+  let bestDim = 0, bestCount = 0;
+  for (const [dim, count] of dimCount) {
+    if (count > bestCount) { bestCount = count; bestDim = dim; }
+  }
+
+  if (bestCount < Math.max(2, Math.floor(pieces.length * threshold))) return pieces;
+
+  // Orient so common dimension is the WIDTH, pack heights vertically
+  const oriented: Array<Piece & { origH: number }> = [];
+  const others: Piece[] = [];
+  for (const p of pieces) {
+    if (p.w === bestDim) {
+      oriented.push({ ...p, origH: p.h });
+    } else if (p.h === bestDim) {
+      oriented.push({ ...p, w: p.h, h: p.w, origH: p.w });
+    } else {
+      others.push(p);
+    }
+  }
+
+  oriented.sort((a, b) => b.origH - a.origH);
+
+  // Pack into columns using BFD (stack heights up to usableH)
+  const cols: Array<typeof oriented> = [];
+  const colHeights: number[] = [];
+
+  for (const p of oriented) {
+    let bestColIdx = -1;
+    let bestRemaining = Infinity;
+    for (let c = 0; c < cols.length; c++) {
+      const rem = usableH - colHeights[c];
+      if (p.origH <= rem && rem < bestRemaining) {
+        bestRemaining = rem;
+        bestColIdx = c;
+      }
+    }
+    if (bestColIdx >= 0) {
+      cols[bestColIdx].push(p);
+      colHeights[bestColIdx] += p.origH;
+    } else {
+      cols.push([p]);
+      colHeights.push(p.origH);
+    }
+  }
+
+  const result: Piece[] = [];
+  for (let c = 0; c < cols.length; c++) {
+    if (cols[c].length >= 2) {
+      const groupLabels = cols[c].filter(p => p.label).map(p => p.label!);
+      result.push({
+        w: bestDim,
+        h: colHeights[c],
+        area: bestDim * cols[c][0].origH,
+        count: cols[c].length,
+        labels: groupLabels.length > 0 ? groupLabels : undefined,
+        groupedAxis: "h",
+        individualDims: cols[c].map(p => p.origH),
+      });
+    } else {
+      const p = cols[c][0];
+      result.push({
+        w: bestDim,
+        h: p.origH,
+        area: bestDim * p.origH,
+        count: 1,
+        label: p.label,
+      });
+    }
+  }
+
+  result.push(...others);
+  result.sort((a, b) => b.area - a.area);
+  ensureLargestIndividualFirst(result);
+  return result;
+}
+
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export function optimizeV6(
@@ -1154,6 +1368,13 @@ export function optimizeV6(
           groupPiecesBandFirst(rotatedPieces, usableW, true),
           groupPiecesBandLast(pieces, usableW),
           groupPiecesBandLast(rotatedPieces, usableW),
+          // NOVO: Agrupamento por dimensão comum (peças de larguras diferentes mas mesma altura)
+          groupByCommonDimension(pieces, usableW, usableH),
+          groupByCommonDimension(rotatedPieces, usableW, usableH),
+          groupByCommonDimension(pieces, usableW, usableH, 0.3),
+          groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
+          groupByCommonDimensionTransposed(pieces, usableW, usableH),
+          groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
         ];
 
   let bestTree: TreeNode | null = null;
@@ -1227,7 +1448,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight
+  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight, 9=commonDim, 10=commonDimT
   transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
@@ -1330,16 +1551,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as
-        | 0
-        | 1
-        | 2
-        | 3
-        | 4
-        | 5
-        | 6
-        | 7
-        | 8,
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)[Math.floor(Math.random() * 11)] as GAIndividual['groupingMode'],
       transposed: Math.random() > 0.5,
     };
   }
@@ -1373,6 +1585,10 @@ export async function optimizeGeneticAsync(
       work = groupPiecesColumnWidth(work, usableW);
     } else if (ind.groupingMode === 8) {
       work = groupPiecesColumnHeight(work, usableH);
+    } else if (ind.groupingMode === 9) {
+      work = groupByCommonDimension(work, usableW, usableH);
+    } else if (ind.groupingMode === 10) {
+      work = groupByCommonDimensionTransposed(work, usableW, usableH);
     }
 
     return work;
@@ -1419,7 +1635,7 @@ export async function optimizeGeneticAsync(
 
     // 2. Uniform crossover for rotations and grouping
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
-    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as GAIndividual['groupingMode'];
 
     // Enforce largest piece at position 0
     const lIdx = childGenome.indexOf(largestIdx);
@@ -1471,16 +1687,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8] as const)[Math.floor(Math.random() * 9)] as
-        | 0
-        | 1
-        | 2
-        | 3
-        | 4
-        | 5
-        | 6
-        | 7
-        | 8;
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)[Math.floor(Math.random() * 11)] as GAIndividual['groupingMode'];
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
@@ -1733,9 +1940,9 @@ function createPieceNodes(
     if (zNodeToUse && splitAxis === "Z") splitAxis = "W";
 
     if (splitAxis === "Z") {
-      const individualWidth = Math.round(placedW / piece.count!);
       for (let i = 0; i < piece.count!; i++) {
-        const zId = insertNode(tree, yNode.id, "Z", individualWidth, 1);
+        const dimW = piece.individualDims ? piece.individualDims[i] : Math.round(placedW / piece.count!);
+        const zId = insertNode(tree, yNode.id, "Z", dimW, 1);
         const zNode = findNode(tree, zId)!;
         if (piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
         const wId = insertNode(tree, zId, "W", placedH, 1);
@@ -1743,21 +1950,21 @@ function createPieceNodes(
         if (piece.labels && piece.labels[i]) wNode.label = piece.labels[i];
       }
     } else if (splitAxis === "W") {
-      const individualHeight = Math.round(placedH / piece.count!);
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       for (let i = 0; i < piece.count!; i++) {
-        const wId = insertNode(tree, zNode.id, "W", individualHeight, 1);
+        const dimH = piece.individualDims ? piece.individualDims[i] : Math.round(placedH / piece.count!);
+        const wId = insertNode(tree, zNode.id, "W", dimH, 1);
         const wNode_f = findNode(tree, wId)!;
         if (piece.labels && piece.labels[i]) wNode_f.label = piece.labels[i];
         if (i === 0 && piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
       }
     } else {
-      const individualWidth = Math.round(placedW / piece.count!);
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       const wId = insertNode(tree, zNode.id, "W", placedH, 1);
       const wNode = findNode(tree, wId)!;
       for (let i = 0; i < piece.count!; i++) {
-        const qId = insertNode(tree, wId, "Q", individualWidth, 1);
+        const dimW = piece.individualDims ? piece.individualDims[i] : Math.round(placedW / piece.count!);
+        const qId = insertNode(tree, wId, "Q", dimW, 1);
         const qNode = findNode(tree, qId)!;
         if (piece.labels && piece.labels[i]) {
           qNode.label = piece.labels[i];
