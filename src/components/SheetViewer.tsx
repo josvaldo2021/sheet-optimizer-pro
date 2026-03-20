@@ -445,7 +445,7 @@ export default function SheetViewer({
       {/* Sheet tabs removed - navigation via layout summary in sidebar */}
 
       {/* Sheet viewport */}
-      <div ref={containerRef} className="flex-1 flex justify-center items-center overflow-hidden p-4">
+      <div ref={containerRef} className="flex-1 flex justify-center items-center overflow-hidden p-4" style={{ background: 'hsl(0 0% 18%)' }}>
         {tree ? (
           <div
             className="sv-sheet"
