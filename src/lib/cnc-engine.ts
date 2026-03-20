@@ -444,6 +444,7 @@ function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piec
           count: row.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "w",
+          individualDims: row.map(p => p.nw),
         });
 
         for (const used of row) {
