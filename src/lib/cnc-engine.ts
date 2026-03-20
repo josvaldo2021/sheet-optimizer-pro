@@ -22,6 +22,8 @@ export interface Piece {
   labels?: string[];
   /** Axis along which pieces were grouped */
   groupedAxis?: "w" | "h";
+  /** Individual dimensions of each piece in the group (widths if groupedAxis="w", heights if groupedAxis="h") */
+  individualDims?: number[];
 }
 
 export interface PieceItem {
