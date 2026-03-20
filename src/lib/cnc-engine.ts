@@ -540,6 +540,7 @@ function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = fal
           count: row.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "w",
+          individualDims: row.map(p => p.nw),
         });
 
         // Remove peças usadas
