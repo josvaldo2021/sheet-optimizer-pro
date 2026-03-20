@@ -625,6 +625,7 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
           count: col.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "h",
+          individualDims: col.map(p => p.nh),
         });
 
         for (const used of col) {
