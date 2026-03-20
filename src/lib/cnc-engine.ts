@@ -364,6 +364,7 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
           count: stack.length,
           labels: groupedLabels.length > 0 ? groupedLabels : undefined,
           groupedAxis: "h",
+          individualDims: stack.map(p => p.nh),
         });
 
         for (const used of stack) {
