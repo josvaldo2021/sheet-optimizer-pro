@@ -369,7 +369,7 @@ export default function SheetViewer({
           <div key={`yw-merged-${mi}`} className="sv-waste sv-waste-large" style={{
             position: 'absolute',
             ...(T
-              ? { bottom: 0, left: m.yStart * scale, width: m.wasteH * scale, height: m.totalWidth * scale, top: (usableH - m.xStart - m.totalWidth) * scale }
+              ? { bottom: m.xStart * scale, left: m.yStart * scale, width: m.wasteH * scale, height: m.totalWidth * scale }
               : { left: m.xStart * scale, bottom: m.yStart * scale, width: m.totalWidth * scale, height: m.wasteH * scale }
             ),
           }}>
