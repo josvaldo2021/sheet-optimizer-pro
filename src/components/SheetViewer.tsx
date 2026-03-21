@@ -153,8 +153,8 @@ export default function SheetViewer({
                             className={`${selectedId === wNode.id ? 'sv-selected' : ''}`}
                             style={{
                               ...(T
-                                ? { width: wNode.valor * scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid hsl(0 0% 75%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
-                                : { width: '100%', height: wNode.valor * scale, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid hsl(0 0% 75%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                                ? { width: wNode.valor * scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                                : { width: '100%', height: wNode.valor * scale, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
                               ),
                             }}
                             onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
@@ -190,7 +190,7 @@ export default function SheetViewer({
                                     : { left: qOff * scale, bottom: 0, width: qNode.valor * scale, height: wNode.valor * scale }
                                   ),
                                   background: PIECE_BG,
-                                  border: '1px solid hsl(0 0% 75%)',
+                                  border: '0.5px solid hsl(0 0% 40%)',
                                   boxSizing: 'border-box' as const,
                                   cursor: 'pointer',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -231,8 +231,8 @@ export default function SheetViewer({
                             style={{
                               position: 'relative', overflow: 'hidden',
                               ...(T
-                                ? { width: wNode.valor * scale, height: '100%', borderRight: '1px solid hsl(0 0% 75%)' }
-                                : { width: '100%', height: wNode.valor * scale, borderTop: '1px solid hsl(0 0% 75%)' }
+                                ? { width: wNode.valor * scale, height: '100%', borderRight: '0.5px solid hsl(0 0% 40%)' }
+                                : { width: '100%', height: wNode.valor * scale, borderTop: '0.5px solid hsl(0 0% 40%)' }
                               ),
                               background: PIECE_BG, boxSizing: 'border-box' as const,
                             }}
@@ -269,8 +269,8 @@ export default function SheetViewer({
                     style={{
                       position: 'relative', boxSizing: 'border-box' as const,
                       ...(T
-                        ? { width: '100%', height: zNode.valor * scale, display: 'flex', flexDirection: 'row' as const, borderTop: '1px solid hsla(0 0% 100% / 0.12)' }
-                        : { height: '100%', width: zNode.valor * scale, display: 'flex', flexDirection: 'column-reverse' as const, borderRight: '1px solid hsla(0 0% 100% / 0.12)' }
+                        ? { width: '100%', height: zNode.valor * scale, display: 'flex', flexDirection: 'row' as const, borderTop: '0.5px solid hsl(0 0% 40%)' }
+                        : { height: '100%', width: zNode.valor * scale, display: 'flex', flexDirection: 'column-reverse' as const, borderRight: '0.5px solid hsl(0 0% 40%)' }
                       ),
                     }}
                     onClick={e => { e.stopPropagation(); onSelectNode(zNode.id); }}
