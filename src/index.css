@@ -225,7 +225,7 @@
   position: absolute;
   background: hsl(0 0% 92%);
   overflow: hidden;
-  border: 2px solid hsl(0 0% 50%);
+  border: 1px solid hsl(0 0% 55%);
 }
 .sv-col {
   position: absolute;
