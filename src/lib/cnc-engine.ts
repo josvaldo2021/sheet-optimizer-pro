@@ -2381,11 +2381,9 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
     for (const yNode of colX.filhos) {
       const yHeight = yNode.valor * yNode.multi;
       if (totalH + yHeight <= usableH + 0.5) {
-        // 0.5 tolerance for rounding
         validChildren.push(yNode);
         totalH += yHeight;
       } else {
-        // Check if we can partially keep this Y (reduce multi)
         if (yNode.multi > 1) {
           const canFit = Math.floor((usableH - totalH) / yNode.valor);
           if (canFit > 0) {
@@ -2397,28 +2395,151 @@ function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, plac
           validChildren.push(yNode);
           totalH += yNode.valor;
         }
-        // Log overflow for debugging
         if (validChildren.length < colX.filhos.length) {
           const originalTotal = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
           console.warn(
             `[CNC-ENGINE] Column overflow detected: ${originalTotal.toFixed(0)}mm > ${usableH}mm usableH. Clamped to ${totalH.toFixed(0)}mm.`,
           );
         }
-        // Don't break - check remaining Y strips too (in case later ones are smaller)
       }
     }
 
     if (validChildren.length < colX.filhos.length) {
-      // Recalculate placed area for removed Y strips
       const removedYNodes = colX.filhos.filter((y) => !validChildren.includes(y));
       for (const ry of removedYNodes) {
         placedArea -= calculateNodeArea(ry);
       }
       colX.filhos = validChildren;
     }
+
+    // --- CLAMP Z widths: ensure sum of Z values doesn't exceed X column width ---
+    for (const yNode of colX.filhos) {
+      let totalZ = 0;
+      const validZ: TreeNode[] = [];
+      for (const zNode of yNode.filhos) {
+        const zWidth = zNode.valor * zNode.multi;
+        if (totalZ + zWidth <= colX.valor + 0.5) {
+          validZ.push(zNode);
+          totalZ += zWidth;
+        } else {
+          // Try to partially fit
+          if (zNode.multi > 1) {
+            const canFit = Math.floor((colX.valor - totalZ) / zNode.valor);
+            if (canFit > 0) {
+              zNode.multi = canFit;
+              validZ.push(zNode);
+              totalZ += zNode.valor * canFit;
+            }
+          } else if (totalZ + zNode.valor <= colX.valor + 0.5) {
+            validZ.push(zNode);
+            totalZ += zNode.valor;
+          }
+        }
+      }
+      if (validZ.length < yNode.filhos.length) {
+        const removedZ = yNode.filhos.filter((z) => !validZ.includes(z));
+        for (const rz of removedZ) {
+          placedArea -= calculateZArea(rz, yNode.valor);
+        }
+        yNode.filhos = validZ;
+        console.warn(`[CNC-ENGINE] Z overflow in Y strip: clamped to ${totalZ.toFixed(0)}mm / ${colX.valor}mm`);
+      }
+
+      // --- CLAMP W heights: ensure sum of W values doesn't exceed Y strip height ---
+      for (const zNode of yNode.filhos) {
+        let totalW = 0;
+        const validW: TreeNode[] = [];
+        for (const wNode of zNode.filhos) {
+          const wHeight = wNode.valor * wNode.multi;
+          if (totalW + wHeight <= yNode.valor + 0.5) {
+            validW.push(wNode);
+            totalW += wHeight;
+          } else {
+            if (wNode.multi > 1) {
+              const canFit = Math.floor((yNode.valor - totalW) / wNode.valor);
+              if (canFit > 0) {
+                wNode.multi = canFit;
+                validW.push(wNode);
+                totalW += wNode.valor * canFit;
+              }
+            } else if (totalW + wNode.valor <= yNode.valor + 0.5) {
+              validW.push(wNode);
+              totalW += wNode.valor;
+            }
+          }
+        }
+        if (validW.length < zNode.filhos.length) {
+          const removedW = zNode.filhos.filter((w) => !validW.includes(w));
+          for (const rw of removedW) {
+            placedArea -= calculateWArea(rw, zNode.valor);
+          }
+          zNode.filhos = validW;
+          console.warn(`[CNC-ENGINE] W overflow in Z node: clamped to ${totalW.toFixed(0)}mm / ${yNode.valor}mm`);
+        }
+
+        // --- CLAMP Q widths: ensure sum of Q values doesn't exceed Z width ---
+        for (const wNode of zNode.filhos) {
+          let totalQ = 0;
+          const validQ: TreeNode[] = [];
+          for (const qNode of wNode.filhos) {
+            const qWidth = qNode.valor * qNode.multi;
+            if (totalQ + qWidth <= zNode.valor + 0.5) {
+              validQ.push(qNode);
+              totalQ += qWidth;
+            } else {
+              if (qNode.multi > 1) {
+                const canFit = Math.floor((zNode.valor - totalQ) / qNode.valor);
+                if (canFit > 0) {
+                  qNode.multi = canFit;
+                  validQ.push(qNode);
+                  totalQ += qNode.valor * canFit;
+                }
+              } else if (totalQ + qNode.valor <= zNode.valor + 0.5) {
+                validQ.push(qNode);
+                totalQ += qNode.valor;
+              }
+            }
+          }
+          if (validQ.length < wNode.filhos.length) {
+            const removedQ = wNode.filhos.filter((q) => !validQ.includes(q));
+            for (const rq of removedQ) {
+              placedArea -= rq.valor * wNode.valor * rq.multi;
+            }
+            wNode.filhos = validQ;
+            console.warn(`[CNC-ENGINE] Q overflow in W node: clamped to ${totalQ.toFixed(0)}mm / ${zNode.valor}mm`);
+          }
+        }
+      }
+    }
   }
 
   return placedArea;
+}
+
+/** Calculate area of a Z subtree (Z.valor × parent Y height for leaves, or sum of W children) */
+function calculateZArea(zNode: TreeNode, yHeight: number): number {
+  if (zNode.filhos.length === 0) return zNode.valor * yHeight * zNode.multi;
+  let area = 0;
+  for (const w of zNode.filhos) {
+    if (w.filhos.length === 0) {
+      area += zNode.valor * w.valor * w.multi;
+    } else {
+      for (const q of w.filhos) {
+        area += q.valor * w.valor * q.multi;
+      }
+    }
+  }
+  return area * zNode.multi;
+}
+
+/** Calculate area of a W subtree */
+function calculateWArea(wNode: TreeNode, zWidth: number): number {
+  if (wNode.filhos.length === 0) return zWidth * wNode.valor * wNode.multi;
+  let area = 0;
+  for (const q of wNode.filhos) {
+    area += q.valor * wNode.valor * q.multi;
+  }
+  return area * wNode.multi;
 }
 
 /**
