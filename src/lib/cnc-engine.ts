@@ -1500,16 +1500,12 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
-  // Multiobjective Fitness: PRIMARY = minimize sheet count, SECONDARY = maximize total utilization
-  // Using inverse sheet count as the dominant factor ensures fewer sheets always wins,
-  // even if per-sheet utilization is lower (e.g., 50 sheets at 76% beats 55 sheets at 86%)
-  const sheetPenalty = sheetsActuallySimulated > 0 ? 1000 / sheetsActuallySimulated : 0;
-  const utilBonus = totalUtil * 0.01; // small tiebreaker for same sheet count
-  let fitness = sheetPenalty + utilBonus;
+  // Multiobjective Fitness
+  let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
 
   // Penalties and Bonuses
-  fitness -= rejectedCount * 5; // Heavy penalize "stuck" pieces (they force extra sheets)
-  fitness += (continuityScore * 0.001) / (sheetsActuallySimulated || 1);
+  fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
+  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1); // Bonus for usable width
 
   return {
     fitness: Math.max(0, fitness),
