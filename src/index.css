@@ -318,20 +318,31 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: hsl(35 100% 92%);
-  border: 0.5px solid hsl(35 80% 55%);
+  background-color: hsl(0 0% 90%);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    hsla(0, 0%, 0%, 0.05) 10px,
+    hsla(0, 0%, 0%, 0.05) 20px
+  );
+  border: 0.5px solid hsl(0 0% 60%);
   box-sizing: border-box;
 }
 .sv-waste-large {
   position: absolute;
+  z-index: 5;
 }
 .sv-waste-label {
-  color: hsl(35 60% 30%);
+  color: hsl(0 0% 30%);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 700;
   text-align: center;
   pointer-events: none;
   white-space: nowrap;
+  background: hsla(0, 0%, 100%, 0.8);
+  padding: 1px 3px;
+  border-radius: 2px;
 }
 .sv-selected {
   outline: 2px solid hsl(50 100% 60%) !important;

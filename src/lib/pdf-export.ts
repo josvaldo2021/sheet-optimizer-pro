@@ -14,6 +14,7 @@ interface PdfExportOptions {
   mt: number;
   mb: number;
   utilization: number;
+  filename?: string;
 }
 
 interface ExtractedPiece {
@@ -138,6 +139,70 @@ function drawTreePieces(
       } else {
         doc.text(pieceLabel ? `${pieceLabel} ${dim}` : dim, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
       }
+    }
+  };
+
+  const drawWaste = (
+    localX: number,
+    localY: number,
+    localW: number,
+    localH: number,
+    label: string,
+  ) => {
+    const px = baseX + localX * scale;
+    const py = baseY - (localY + localH) * scale;
+    const pw = localW * scale;
+    const ph = localH * scale;
+
+    // Gray background
+    doc.setFillColor(240, 240, 240);
+    doc.setDrawColor(150, 150, 150);
+    doc.rect(px, py, pw, ph, 'FD');
+
+    // Hatching lines (diagonal)
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.1);
+    const step = 2; // mm
+    for (let i = -ph; i < pw; i += step) {
+      const x1 = px + Math.max(0, i);
+      const y1 = py + Math.max(0, -i);
+      const x2 = px + Math.min(pw, i + ph);
+      const y2 = py + Math.min(ph, ph - (i + ph - pw));
+      
+      // Basic diagonal line clipping logic
+      // Line: x - x0 = y0 - y  => x + y = x0 + y0
+      // Let's use a simpler fixed-length segment clipping for the rectangle
+      const lineX1 = Math.max(px, px + i);
+      const lineY1 = Math.max(py, py + (pw - (px+i-px)) ); // Wrong logic, let's simplify
+    }
+    
+    // Simpler hatching: vertical/horizontal stripes or just diagonal lines with bounding box check
+    for (let d = step; d < pw + ph; d += step) {
+        let x1 = px + d;
+        let y1 = py;
+        let x2 = px;
+        let y2 = py + d;
+        
+        // Clip to rectangle
+        if (x1 > px + pw) {
+            y1 = py + (x1 - (px + pw));
+            x1 = px + pw;
+        }
+        if (y2 > py + ph) {
+            x2 = px + (y2 - (py + ph));
+            y2 = py + ph;
+        }
+        
+        if (x1 >= px && x1 <= px + pw && x2 >= px && x2 <= px + pw &&
+            y1 >= py && y1 <= py + ph && y2 >= py && y2 <= py + ph) {
+            doc.line(x1, y1, x2, y2);
+        }
+    }
+
+    if (pw > 10 && ph > 5) {
+      doc.setFontSize(6);
+      doc.setTextColor(80, 80, 80);
+      doc.text(label, px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
     }
   };
 
@@ -267,20 +332,13 @@ function drawTreePieces(
     const localW = T ? usableW : xWaste;
     const localH = T ? xWaste : usableH;
 
-    const px = baseX + localX * scale;
-    const py = baseY - (localY + localH) * scale;
-    const pw = localW * scale;
-    const ph = localH * scale;
-
-    doc.setFillColor(200, 220, 240);
-    doc.setDrawColor(150, 180, 210);
-    doc.rect(px, py, pw, ph, 'FD');
-
-    if (pw > 10 && ph > 5) {
-      doc.setFontSize(5);
-      doc.setTextColor(100, 140, 180);
-      doc.text('SOBRA', px + pw / 2, py + ph / 2, { align: 'center', baseline: 'middle' });
-    }
+    drawWaste(
+      localX,
+      localY,
+      localW,
+      localH,
+      `SOBRA ${T ? `${Math.round(usableW)}×${Math.round(xWaste)}` : `${Math.round(xWaste)}×${Math.round(usableH)}`}`
+    );
   }
 }
 
@@ -398,5 +456,5 @@ export function exportPdf(options: PdfExportOptions) {
     });
   });
 
-  doc.save('plano-de-corte.pdf');
+  doc.save(`${options.filename || 'plano-de-corte'}.pdf`);
 }

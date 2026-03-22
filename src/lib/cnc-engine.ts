@@ -776,8 +776,13 @@ function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number
   const wasteW = spaceW - pieceW;
   const wasteH = spaceH - pieceH;
 
-  // Base score: prefer less total waste
+  // Base score: total wasted area (lower is better)
   let score = wasteW * spaceH + wasteH * pieceW;
+
+  // Piece Size Bonus: prioritize larger pieces to be placed first
+  // This helps avoid leaving large "awkward" pieces for the end.
+  const pieceArea = pieceW * pieceH;
+  score -= pieceArea * 0.5;
 
   // Lookahead: check if leftover spaces can fit at least one remaining piece
   let wFits = false;
@@ -792,13 +797,13 @@ function scoreFit(spaceW: number, spaceH: number, pieceW: number, pieceH: number
     if (wFits && hFits) break;
   }
 
-  // Penalize unusable waste
-  if (wasteW > 0 && !wFits) score += wasteW * spaceH * 2;
-  if (wasteH > 0 && !hFits) score += wasteH * pieceW * 2;
+  // Heavy penalty for "sealed" waste that won't fit any remaining piece
+  if (wasteW > 10 && !wFits) score += wasteW * spaceH * 4;
+  if (wasteH > 10 && !hFits) score += wasteH * pieceW * 4;
 
-  // Bonus for exact fits
-  if (wasteW === 0) score -= spaceH * 10;
-  if (wasteH === 0) score -= pieceW * 10;
+  // Bonus for exact fits (perfect utilization of one dimension)
+  if (wasteW === 0) score -= spaceH * 20;
+  if (wasteH === 0) score -= pieceW * 20;
 
   return score;
 }
@@ -1474,6 +1479,16 @@ function simulateSheets(
   let sheetsActuallySimulated = 0;
   const sheetArea = usableW * usableH;
 
+  const initialLargeArea = workPieces
+    .filter(p => !p.count || p.count === 1)
+    .filter(p => (p.w * p.h) > (sheetArea * 0.2))
+    .reduce((a, b) => a + b.w * b.h, 0);
+
+  const initialSmallArea = workPieces
+    .reduce((a, b) => a + b.area * (b.count || 1), 0) - initialLargeArea;
+
+  let largeAreaPlaced = 0;
+  let smallAreaPlaced = 0;
   let rejectedCount = 0;
   let continuityScore = 0;
   let fragmentCount = 0;
@@ -1485,14 +1500,25 @@ function simulateSheets(
     const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
     if (s === 0) firstTree = res.tree;
 
-    totalUtil += res.area / sheetArea;
+    const placedArea = res.area;
+    totalUtil += placedArea / sheetArea;
+
+    // Track what kind of pieces we placed
+    // (This is an approximation based on area change)
+    const largeRemaining = res.remaining
+      .filter(p => !p.count || p.count === 1)
+      .filter(p => (p.w * p.h) > (sheetArea * 0.2))
+      .reduce((a, b) => a + b.w * b.h, 0);
+
+    const currentLargePlaced = Math.max(0, (initialLargeArea - largeAreaPlaced) - largeRemaining);
+    largeAreaPlaced += currentLargePlaced;
+    smallAreaPlaced += Math.max(0, placedArea - currentLargePlaced);
 
     // Continuity logic: check for large usable spaces (Look at root's children)
     const usedW = res.tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
     const freeW = usableW - usedW;
-    if (freeW > 50) continuityScore += freeW / usableW; // Simple bias for wider remnants
+    if (freeW > 50) continuityScore += freeW / usableW;
 
-    // Penalty for small fragments left behind
     const piecesPlaced = countBefore - res.remaining.length;
     if (piecesPlaced === 0) rejectedCount++;
 
@@ -1503,9 +1529,25 @@ function simulateSheets(
   // Multiobjective Fitness
   let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
 
+  // GLOBAL BALANCE BONUS/PENALTY
+  // We want to encourage placing Large Pieces early.
+  // If we placed a lot of small area but very little large area, it's a "greedy trap".
+  if (initialLargeArea > 0) {
+    const largePlacementRatio = largeAreaPlaced / initialLargeArea;
+    const smallPlacementRatio = initialSmallArea > 0 ? smallAreaPlaced / initialSmallArea : 1;
+
+    // If small pieces are being consumed much faster than large ones, penalize.
+    if (smallPlacementRatio > largePlacementRatio * 1.5) {
+      fitness *= 0.8; // Heavy penalty for cherry-picking small pieces
+    } else {
+      // Bonus for candidates that manage to chip away at the large piece backlog
+      fitness += largePlacementRatio * 0.1;
+    }
+  }
+
   // Penalties and Bonuses
-  fitness -= rejectedCount * 0.05; // Penalize "stuck" pieces
-  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1); // Bonus for usable width
+  fitness -= rejectedCount * 0.05;
+  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1);
 
   return {
     fitness: Math.max(0, fitness),

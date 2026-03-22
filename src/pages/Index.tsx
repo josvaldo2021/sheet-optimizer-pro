@@ -51,6 +51,7 @@ const Index = () => {
   } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
+  const [pdfFilename, setPdfFilename] = useState("plano-de-corte");
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
@@ -1253,27 +1254,40 @@ const Index = () => {
             )}
 
             {layoutGroups.length > 0 && (
-              <button
-                className="cnc-btn-secondary w-full mt-2"
-                style={{ background: "hsl(0 0% 20%)", padding: "10px", fontSize: "12px", fontWeight: "bold" }}
-                onClick={() =>
-                  exportPdf({
-                    chapas,
-                    layoutGroups,
-                    chapaW,
-                    chapaH,
-                    usableW,
-                    usableH,
-                    ml,
-                    mr,
-                    mt,
-                    mb,
-                    utilization,
-                  })
-                }
-              >
-                📄 EXPORTAR PDF
-              </button>
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-zinc-500 uppercase font-bold px-1">Nome do PDF</label>
+                  <input
+                    type="text"
+                    className="cnc-input bg-zinc-900 border-zinc-800 text-zinc-300 h-9"
+                    value={pdfFilename}
+                    onChange={(e) => setPdfFilename(e.target.value)}
+                    placeholder="Nome do arquivo..."
+                  />
+                </div>
+                <button
+                  className="cnc-btn-secondary w-full"
+                  style={{ background: "hsl(0 0% 20%)", padding: "10px", fontSize: "12px", fontWeight: "bold" }}
+                  onClick={() =>
+                    exportPdf({
+                      chapas,
+                      layoutGroups,
+                      chapaW,
+                      chapaH,
+                      usableW,
+                      usableH,
+                      ml,
+                      mr,
+                      mt,
+                      mb,
+                      utilization,
+                      filename: pdfFilename,
+                    })
+                  }
+                >
+                  📄 EXPORTAR PDF
+                </button>
+              </div>
             )}
 
             {/* Layout summary */}
