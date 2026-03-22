@@ -17,6 +17,7 @@ import {
 } from "@/lib/cnc-engine";
 import { groupIdenticalLayouts, LayoutGroup } from "@/lib/layout-utils";
 import { exportPdf } from "@/lib/pdf-export";
+import { exportLayoutsToExcel } from "@/lib/excel-export";
 import SheetViewer from "@/components/SheetViewer";
 import SidebarSection from "@/components/SidebarSection";
 
@@ -52,6 +53,7 @@ const Index = () => {
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
   const [pdfFilename, setPdfFilename] = useState("plano-de-corte");
+  const [pieceFilter, setPieceFilter] = useState("");
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
@@ -896,26 +898,77 @@ const Index = () => {
   );
 
   // ─── Render helpers ───
-  const renderActionTree = (node: TreeNode, depth = 0): JSX.Element[] =>
-    node.filhos.map((child) => (
-      <div key={child.id}>
+  type ActionItem = { id: string; tipo: string; valor: number; multi: number; depth: number; label?: string; active: boolean };
+
+  const getDescendantLabel = (n: TreeNode): string | undefined => {
+    if (n.label) return n.label;
+    if (n.filhos.length === 1 && n.multi === 1) return getDescendantLabel(n.filhos[0]);
+    return undefined;
+  };
+
+  const buildActionItems = (node: TreeNode, depth: number, items: ActionItem[], pX?: TreeNode, pY?: TreeNode) => {
+    const nextPX = node.tipo === "X" ? node : pX;
+    const nextPY = node.tipo === "Y" ? node : pY;
+
+    for (const child of node.filhos) {
+      let isHidden = false;
+
+      // Z é redundante se preenche toda a largura da coluna X
+      if (child.tipo === "Z" && nextPX && child.valor === nextPX.valor && child.filhos.length <= 1) {
+        isHidden = true;
+      }
+      // W é redundante se preenche toda a altura da faixa Y
+      if (child.tipo === "W" && nextPY && child.valor === nextPY.valor && child.filhos.length <= 1) {
+        isHidden = true;
+      }
+      // Q é redundante se preenche toda a largura da coluna X
+      if (child.tipo === "Q" && child.filhos.length === 0 && nextPX && child.valor === nextPX.valor) {
+        isHidden = true;
+      }
+
+      const labelToDisplay = getDescendantLabel(child);
+
+      if (!isHidden) {
+        items.push({
+          id: child.id,
+          tipo: child.tipo,
+          valor: child.valor,
+          multi: child.multi,
+          depth: depth,
+          label: labelToDisplay,
+          active: selectedId === child.id
+        });
+        buildActionItems(child, depth + 1, items, nextPX, nextPY);
+      } else {
+        // Se escondido, passamos para os filhos sem aumentar a profundidade visual
+        buildActionItems(child, depth, items, nextPX, nextPY);
+      }
+    }
+  };
+
+  const renderActionTree = (node: TreeNode): JSX.Element[] => {
+    const items: ActionItem[] = [];
+    buildActionItems(node, 0, items);
+    
+    return items.map((item, idx) => (
+      <div key={item.id + idx}>
         <div
-          className={`cnc-action-item ${selectedId === child.id ? "cnc-action-active" : ""}`}
-          style={{ paddingLeft: depth * 12 + 6 }}
+          className={`cnc-action-item ${item.active ? "cnc-action-active" : ""}`}
+          style={{ paddingLeft: item.depth * 12 + 6 }}
           onClick={(e) => {
             e.stopPropagation();
-            setSelectedId(child.id);
+            setSelectedId(item.id);
           }}
         >
           <b>
-            {child.tipo}
-            {child.valor}
+            {item.tipo}
+            {item.valor}
           </b>{" "}
-          (x{child.multi})
+          (x{item.multi}) {item.label && <span style={{ color: "hsl(120 70% 55%)", marginLeft: "4px" }}>[{item.label}]</span>}
         </div>
-        {renderActionTree(child, depth + 1)}
       </div>
     ));
+  };
 
   const totalPieces = useMemo(() => pieces.reduce((sum, p) => sum + p.qty, 0), [pieces]);
 
@@ -985,20 +1038,50 @@ const Index = () => {
         <SidebarSection title={`Lista de Peças (${totalPieces})`} icon="📦" defaultOpen={true}>
           <div className="flex flex-col" style={{ background: "hsl(0 0% 7%)" }}>
             <div
-              className="p-2.5 flex-shrink-0"
+              className="p-2.5 flex-shrink-0 space-y-2"
               style={{ background: "hsl(0 0% 10%)", borderBottom: "1px solid hsl(0 0% 20%)" }}
             >
               <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcel} />
               <button
-                className="cnc-btn-excel w-full mb-2"
+                className="cnc-btn-excel w-full"
                 onClick={() => document.getElementById("excelInput")?.click()}
               >
                 📂 IMPORTAR EXCEL
               </button>
-              <div style={{ fontSize: "9px", color: "hsl(0 0% 60%)", marginBottom: "8px", lineHeight: "1.3" }}>
-                Colunas: Qtd, Largura, Altura, ID (opcional)
+              
+              <div className="flex flex-col gap-1 mt-2">
+                <input
+                  type="text"
+                  placeholder="Filtrar peças (ID, L ou A)..."
+                  className="cnc-input w-full bg-zinc-900 border-zinc-800 text-xs h-8"
+                  value={pieceFilter}
+                  onChange={(e) => setPieceFilter(e.target.value)}
+                />
+                <div className="flex gap-1">
+                  <button
+                    className="text-[9px] uppercase font-bold py-1 px-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors flex-1"
+                    onClick={() => {
+                      const lower = pieceFilter.toLowerCase();
+                      setPieces(ps => ps.map(p => {
+                        const matches = p.label?.toLowerCase().includes(lower) || 
+                                       String(p.w).includes(lower) || 
+                                       String(p.h).includes(lower);
+                        return matches ? { ...p, priority: true } : p;
+                      }));
+                    }}
+                  >
+                    Marcar Visíveis
+                  </button>
+                  <button
+                    className="text-[9px] uppercase font-bold py-1 px-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors flex-1"
+                    onClick={() => setPieces(ps => ps.map(p => ({ ...p, priority: false })))}
+                  >
+                    Desmarcar Todos
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
+
+              <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setPieces((p) => [...p, { id: `p${Date.now()}`, qty: 1, w: 1000, h: 1000 }])}
                   className="cnc-btn-secondary flex-1"
@@ -1007,11 +1090,14 @@ const Index = () => {
                 </button>
                 {pieces.length > 0 && (
                   <button
-                    onClick={() => setPieces([])}
+                    onClick={() => {
+                      setPieces([]);
+                      setPieceFilter("");
+                    }}
                     className="cnc-btn-secondary flex-1"
                     style={{ background: "hsl(0 40% 25%)" }}
                   >
-                    LIMPAR
+                    LIMPAR LISTA
                   </button>
                 )}
               </div>
@@ -1035,12 +1121,20 @@ const Index = () => {
                   <span></span>
                 </div>
               )}
-              {pieces.map((p) => (
-                <div
-                  key={p.id}
-                  className="cnc-inv-item"
-                  style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px" }}
-                >
+              {pieces
+                .filter(p => {
+                  if (!pieceFilter) return true;
+                  const lower = pieceFilter.toLowerCase();
+                  return p.label?.toLowerCase().includes(lower) || 
+                         String(p.w).includes(lower) || 
+                         String(p.h).includes(lower);
+                })
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    className="cnc-inv-item"
+                    style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px" }}
+                  >
                   <div className="flex items-center justify-center">
                     <input
                       type="checkbox"
@@ -1266,9 +1360,10 @@ const Index = () => {
                   />
                 </div>
                 <button
-                  className="cnc-btn-secondary w-full"
-                  style={{ background: "hsl(0 0% 20%)", padding: "10px", fontSize: "12px", fontWeight: "bold" }}
-                  onClick={() =>
+                  className="cnc-btn-success w-full"
+                  style={{ background: "hsl(211 60% 35%)", border: "1px solid hsl(211 60% 45%)", padding: "12px", fontSize: "14px", fontWeight: "bold" }}
+                  onClick={() => {
+                    // Export PDF
                     exportPdf({
                       chapas,
                       layoutGroups,
@@ -1282,10 +1377,12 @@ const Index = () => {
                       mb,
                       utilization,
                       filename: pdfFilename,
-                    })
-                  }
+                    });
+                    // Export Excel
+                    exportLayoutsToExcel(layoutGroups, pdfFilename);
+                  }}
                 >
-                  📄 EXPORTAR PDF
+                  📥 EXPORTAR ARQUIVOS
                 </button>
               </div>
             )}
