@@ -1266,7 +1266,7 @@ const Index = () => {
                 </button>
               </div>
               <div style={{ fontSize: "8px", color: "hsl(0 0% 45%)", marginTop: "3px" }}>
-                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Botão remove chapas sem esses IDs.
+                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Filtro visual — não remove layouts.
               </div>
             </div>
             <div className="flex gap-2 mb-3">
