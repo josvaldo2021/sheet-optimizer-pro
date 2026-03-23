@@ -227,6 +227,16 @@ const Index = () => {
     [],
   );
 
+  // ─── Filtered layout groups (visual filter by priority IDs) ───
+  const filteredLayoutGroups = useMemo(() => {
+    if (!filterActiveLabels || filterActiveLabels.length === 0) return layoutGroups;
+    return layoutGroups.filter((group) => {
+      const chapaIdx = group.indices[0];
+      const usedPieces = extractUsedPiecesWithContext(chapas[chapaIdx].tree);
+      return usedPieces.some((p) => p.label && filterActiveLabels.includes(p.label.toUpperCase()));
+    });
+  }, [layoutGroups, filterActiveLabels, chapas, extractUsedPiecesWithContext]);
+
   const optimize = useCallback(async () => {
     const hasPriority = pieces.some((p) => p.priority);
     const activePieces = hasPriority ? pieces.filter((p) => p.priority) : pieces;
