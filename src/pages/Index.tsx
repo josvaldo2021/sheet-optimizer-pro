@@ -86,7 +86,7 @@ const Index = () => {
     return groupIdenticalLayouts(chapas);
   }, [chapas]);
 
-  // filteredLayoutGroups moved after extractUsedPiecesWithContext
+  
 
   // ─── Actions ───
   const applySetup = useCallback(() => {
