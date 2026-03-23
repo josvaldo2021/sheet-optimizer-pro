@@ -46,6 +46,7 @@ const Index = () => {
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [priorityIds, setPriorityIds] = useState("");
+  const [filterActiveLabels, setFilterActiveLabels] = useState<string[] | null>(null);
   const [replicationInfo, setReplicationInfo] = useState<{
     count: number;
     bom: Array<{ w: number; h: number; need: number; available: number }>;
@@ -85,11 +86,14 @@ const Index = () => {
     return groupIdenticalLayouts(chapas);
   }, [chapas]);
 
+  
+
   // ─── Actions ───
   const applySetup = useCallback(() => {
     setTree(createRoot(usableW, usableH));
     setSelectedId("root");
     setChapas([]);
+    setFilterActiveLabels(null);
     setActiveChapa(0);
     setStatus({ msg: "Setup aplicado", type: "success" });
   }, [usableW, usableH]);
@@ -223,6 +227,16 @@ const Index = () => {
     },
     [],
   );
+
+  // ─── Filtered layout groups (visual filter by priority IDs) ───
+  const filteredLayoutGroups = useMemo(() => {
+    if (!filterActiveLabels || filterActiveLabels.length === 0) return layoutGroups;
+    return layoutGroups.filter((group) => {
+      const chapaIdx = group.indices[0];
+      const usedPieces = extractUsedPiecesWithContext(chapas[chapaIdx].tree);
+      return usedPieces.some((p) => p.label && filterActiveLabels.includes(p.label.toUpperCase()));
+    });
+  }, [layoutGroups, filterActiveLabels, chapas, extractUsedPiecesWithContext]);
 
   const optimize = useCallback(async () => {
     const hasPriority = pieces.some((p) => p.priority);
@@ -423,6 +437,7 @@ const Index = () => {
 
     const best = candidates[0] || [];
     setChapas(best);
+    setFilterActiveLabels(null);
     if (best.length > 0) {
       setTree(best[0].tree);
       setSelectedId("root");
@@ -1224,6 +1239,11 @@ const Index = () => {
                 />
                 <button
                   onClick={() => {
+                    if (filterActiveLabels) {
+                      setFilterActiveLabels(null);
+                      setStatus({ msg: "Filtro removido. Todos os layouts visíveis.", type: "info" });
+                      return;
+                    }
                     const labels = priorityIds
                       .split(",")
                       .map((s) => s.trim().toUpperCase())
@@ -1232,32 +1252,23 @@ const Index = () => {
                       setStatus({ msg: "Preencha os IDs prioritários primeiro!", type: "error" });
                       return;
                     }
-                    const toRemove: number[] = [];
-                    chapas.forEach((chapa, idx) => {
-                      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
-                      const hasAny = usedPieces.some((p) => p.label && labels.includes(p.label.toUpperCase()));
-                      if (!hasAny) toRemove.push(idx);
-                    });
-                    if (toRemove.length === 0) {
-                      setStatus({ msg: "Todos os layouts já contêm IDs prioritários.", type: "success" });
-                      return;
-                    }
-                    setChapas((prev) => prev.filter((_, idx) => !toRemove.includes(idx)));
-                    if (activeChapa >= chapas.length - toRemove.length) setActiveChapa(0);
-                    setStatus({
-                      msg: `🗑️ ${toRemove.length} layout(s) sem IDs prioritários removido(s).`,
-                      type: "success",
-                    });
+                    setFilterActiveLabels(labels);
+                    setActiveChapa(0);
+                    setStatus({ msg: `🔍 Filtro aplicado: mostrando apenas layouts com ${labels.join(", ")}`, type: "success" });
                   }}
                   className="cnc-btn text-[8px] px-2 whitespace-nowrap"
-                  title="Remover layouts que NÃO contêm os IDs listados"
-                  style={{ background: "hsl(0 70% 40%)", color: "white", fontSize: "9px" }}
+                  title={filterActiveLabels ? "Remover filtro e mostrar todos os layouts" : "Filtrar layouts que contêm os IDs listados"}
+                  style={{
+                    background: filterActiveLabels ? "hsl(211 60% 40%)" : "hsl(30 80% 40%)",
+                    color: "white",
+                    fontSize: "9px",
+                  }}
                 >
-                  🗑️ Filtrar
+                  {filterActiveLabels ? "✕ Limpar" : "🔍 Filtrar"}
                 </button>
               </div>
               <div style={{ fontSize: "8px", color: "hsl(0 0% 45%)", marginTop: "3px" }}>
-                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Botão remove chapas sem esses IDs.
+                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Filtro visual — não remove layouts.
               </div>
             </div>
             <div className="flex gap-2 mb-3">
@@ -1388,18 +1399,20 @@ const Index = () => {
             )}
 
             {/* Layout summary */}
-            {layoutGroups.length > 0 && (
+            {filteredLayoutGroups.length > 0 && (
               <div
                 className="mt-3 p-2 rounded"
                 style={{ background: "hsl(0 0% 6%)", border: "1px solid hsl(0 0% 18%)" }}
               >
                 <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(0 0% 50%)" }}>
-                  Resumo dos Layouts
+                  Resumo dos Layouts {filterActiveLabels ? `(filtrado: ${filterActiveLabels.join(", ")})` : ""}
                 </div>
                 <div className="text-[11px] mb-2" style={{ color: "hsl(0 0% 70%)" }}>
-                  {chapas.length} chapa(s) total • {layoutGroups.length} layout(s) único(s)
+                  {filterActiveLabels 
+                    ? `${filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • ${filteredLayoutGroups.length} layout(s) único(s) — total: ${chapas.length}`
+                    : `${chapas.length} chapa(s) total • ${layoutGroups.length} layout(s) único(s)`}
                 </div>
-                {layoutGroups.map((group, gIdx) => {
+                {filteredLayoutGroups.map((group, gIdx) => {
                   const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
                   return (
                     <div key={gIdx} className="flex items-center gap-1 mb-1">
@@ -1441,7 +1454,7 @@ const Index = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteLayout(gIdx);
+                          const origIdx = layoutGroups.findIndex((g) => g.indices[0] === group.indices[0]); deleteLayout(origIdx >= 0 ? origIdx : gIdx);
                         }}
                         className="p-1.5 rounded transition-colors cursor-pointer"
                         style={{ background: "hsl(0 50% 25%)", border: "1px solid hsl(0 40% 35%)" }}
