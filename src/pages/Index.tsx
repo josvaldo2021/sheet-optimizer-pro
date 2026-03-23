@@ -1237,6 +1237,11 @@ const Index = () => {
                 />
                 <button
                   onClick={() => {
+                    if (filterActiveLabels) {
+                      setFilterActiveLabels(null);
+                      setStatus({ msg: "Filtro removido. Todos os layouts visíveis.", type: "info" });
+                      return;
+                    }
                     const labels = priorityIds
                       .split(",")
                       .map((s) => s.trim().toUpperCase())
@@ -1245,28 +1250,19 @@ const Index = () => {
                       setStatus({ msg: "Preencha os IDs prioritários primeiro!", type: "error" });
                       return;
                     }
-                    const toRemove: number[] = [];
-                    chapas.forEach((chapa, idx) => {
-                      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
-                      const hasAny = usedPieces.some((p) => p.label && labels.includes(p.label.toUpperCase()));
-                      if (!hasAny) toRemove.push(idx);
-                    });
-                    if (toRemove.length === 0) {
-                      setStatus({ msg: "Todos os layouts já contêm IDs prioritários.", type: "success" });
-                      return;
-                    }
-                    setChapas((prev) => prev.filter((_, idx) => !toRemove.includes(idx)));
-                    if (activeChapa >= chapas.length - toRemove.length) setActiveChapa(0);
-                    setStatus({
-                      msg: `🗑️ ${toRemove.length} layout(s) sem IDs prioritários removido(s).`,
-                      type: "success",
-                    });
+                    setFilterActiveLabels(labels);
+                    setActiveChapa(0);
+                    setStatus({ msg: `🔍 Filtro aplicado: mostrando apenas layouts com ${labels.join(", ")}`, type: "success" });
                   }}
                   className="cnc-btn text-[8px] px-2 whitespace-nowrap"
-                  title="Remover layouts que NÃO contêm os IDs listados"
-                  style={{ background: "hsl(0 70% 40%)", color: "white", fontSize: "9px" }}
+                  title={filterActiveLabels ? "Remover filtro e mostrar todos os layouts" : "Filtrar layouts que contêm os IDs listados"}
+                  style={{
+                    background: filterActiveLabels ? "hsl(211 60% 40%)" : "hsl(30 80% 40%)",
+                    color: "white",
+                    fontSize: "9px",
+                  }}
                 >
-                  🗑️ Filtrar
+                  {filterActiveLabels ? "✕ Limpar" : "🔍 Filtrar"}
                 </button>
               </div>
               <div style={{ fontSize: "8px", color: "hsl(0 0% 45%)", marginTop: "3px" }}>
