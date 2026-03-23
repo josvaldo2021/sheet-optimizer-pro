@@ -1397,18 +1397,20 @@ const Index = () => {
             )}
 
             {/* Layout summary */}
-            {layoutGroups.length > 0 && (
+            {filteredLayoutGroups.length > 0 && (
               <div
                 className="mt-3 p-2 rounded"
                 style={{ background: "hsl(0 0% 6%)", border: "1px solid hsl(0 0% 18%)" }}
               >
                 <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(0 0% 50%)" }}>
-                  Resumo dos Layouts
+                  Resumo dos Layouts {filterActiveLabels ? `(filtrado: ${filterActiveLabels.join(", ")})` : ""}
                 </div>
                 <div className="text-[11px] mb-2" style={{ color: "hsl(0 0% 70%)" }}>
-                  {chapas.length} chapa(s) total • {layoutGroups.length} layout(s) único(s)
+                  {filterActiveLabels 
+                    ? `${filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • ${filteredLayoutGroups.length} layout(s) único(s) — total: ${chapas.length}`
+                    : `${chapas.length} chapa(s) total • ${layoutGroups.length} layout(s) único(s)`}
                 </div>
-                {layoutGroups.map((group, gIdx) => {
+                {filteredLayoutGroups.map((group, gIdx) => {
                   const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
                   return (
                     <div key={gIdx} className="flex items-center gap-1 mb-1">
