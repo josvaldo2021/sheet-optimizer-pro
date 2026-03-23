@@ -86,6 +86,16 @@ const Index = () => {
     return groupIdenticalLayouts(chapas);
   }, [chapas]);
 
+  // ─── Filtered layout groups (visual filter by priority IDs) ───
+  const filteredLayoutGroups = useMemo(() => {
+    if (!filterActiveLabels || filterActiveLabels.length === 0) return layoutGroups;
+    return layoutGroups.filter((group) => {
+      const chapaIdx = group.indices[0];
+      const usedPieces = extractUsedPiecesWithContext(chapas[chapaIdx].tree);
+      return usedPieces.some((p) => p.label && filterActiveLabels.includes(p.label.toUpperCase()));
+    });
+  }, [layoutGroups, filterActiveLabels, chapas, extractUsedPiecesWithContext]);
+
   // ─── Actions ───
   const applySetup = useCallback(() => {
     setTree(createRoot(usableW, usableH));
