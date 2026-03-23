@@ -1452,7 +1452,7 @@ const Index = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteLayout(gIdx);
+                          const origIdx = layoutGroups.findIndex((g) => g.indices[0] === group.indices[0]); deleteLayout(origIdx >= 0 ? origIdx : gIdx);
                         }}
                         className="p-1.5 rounded transition-colors cursor-pointer"
                         style={{ background: "hsl(0 50% 25%)", border: "1px solid hsl(0 40% 35%)" }}
