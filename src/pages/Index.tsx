@@ -93,6 +93,7 @@ const Index = () => {
     setTree(createRoot(usableW, usableH));
     setSelectedId("root");
     setChapas([]);
+    setFilterActiveLabels(null);
     setActiveChapa(0);
     setStatus({ msg: "Setup aplicado", type: "success" });
   }, [usableW, usableH]);
@@ -436,6 +437,7 @@ const Index = () => {
 
     const best = candidates[0] || [];
     setChapas(best);
+    setFilterActiveLabels(null);
     if (best.length > 0) {
       setTree(best[0].tree);
       setSelectedId("root");
