@@ -46,6 +46,7 @@ const Index = () => {
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [priorityIds, setPriorityIds] = useState("");
+  const [filterActiveLabels, setFilterActiveLabels] = useState<string[] | null>(null);
   const [replicationInfo, setReplicationInfo] = useState<{
     count: number;
     bom: Array<{ w: number; h: number; need: number; available: number }>;
