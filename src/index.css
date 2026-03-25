@@ -224,7 +224,14 @@
 .sv-usable {
   position: absolute;
   box-sizing: border-box;
-  background: hsl(0 0% 92%);
+  background-color: hsl(0 0% 90%);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    hsla(0, 0%, 0%, 0.05) 10px,
+    hsla(0, 0%, 0%, 0.05) 20px
+  );
   overflow: hidden;
   box-shadow: inset 0 0 0 1px hsl(0 0% 55%);
 }
@@ -247,7 +254,6 @@
   display: flex;
   flex-direction: column-reverse;
   box-sizing: border-box;
-  border-right: 1px solid hsla(0 0% 100% / 0.12);
 }
 .sv-piece {
   width: 100%;
