@@ -1315,6 +1315,408 @@ function groupByCommonDimensionTransposed(
   return result;
 }
 
+// ========== KNAPSACK DP UTILITIES ==========
+
+/**
+ * 0-1 Knapsack: seleciona subconjunto de itens que maximiza o preenchimento
+ * sem exceder a capacidade.
+ * @param weights - array de pesos/dimensões dos itens
+ * @param capacity - capacidade máxima
+ * @returns índices dos itens selecionados
+ */
+function knapsackSelectItems(weights: number[], capacity: number): number[] {
+  const n = weights.length;
+  const cap = Math.floor(capacity);
+  if (cap <= 0 || n === 0) return [];
+
+  // Scale down for large capacities to keep memory reasonable
+  const scale = cap > 10000 ? Math.ceil(cap / 10000) : 1;
+  const scaledCap = Math.floor(cap / scale);
+  const scaledWeights = weights.map(w => Math.floor(w / scale));
+
+  const dp = new Float64Array(scaledCap + 1);
+  const keep = new Uint8Array(n * (scaledCap + 1));
+
+  for (let i = 0; i < n; i++) {
+    const w = scaledWeights[i];
+    if (w <= 0 || w > scaledCap) continue;
+    for (let j = scaledCap; j >= w; j--) {
+      const newVal = dp[j - w] + weights[i]; // original weight as value
+      if (newVal > dp[j]) {
+        dp[j] = newVal;
+        keep[i * (scaledCap + 1) + j] = 1;
+      }
+    }
+  }
+
+  const result: number[] = [];
+  let j = scaledCap;
+  for (let i = n - 1; i >= 0; i--) {
+    if (j >= 0 && keep[i * (scaledCap + 1) + j]) {
+      result.push(i);
+      j -= scaledWeights[i];
+    }
+  }
+
+  return result;
+}
+
+// ========== STRIP PACKING COM DP ==========
+
+/**
+ * STRIP PACKING COM PROGRAMAÇÃO DINÂMICA
+ *
+ * Processo:
+ * 1. Agrupa peças por altura similar (tolerância ±tolerance mm)
+ * 2. Dentro de cada grupo, usa Knapsack DP para selecionar a combinação
+ *    ótima de peças que maximiza o preenchimento da largura da chapa
+ * 3. Usa Knapsack DP para selecionar quais faixas colocar na chapa
+ *    maximizando o preenchimento da altura
+ *
+ * @param tolerance - tolerância em mm para agrupar alturas similares (default 5mm)
+ * @param orient - "auto" normaliza w>h, "raw" usa dimensões originais
+ */
+function groupStripPackingDP(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  tolerance: number = 5,
+  orient: "auto" | "raw" = "auto",
+): Piece[] {
+  if (pieces.length < 2) return pieces;
+
+  // 1. Normalize orientation
+  const normalized = pieces.map((p, idx) => ({
+    ...p,
+    nw: orient === "raw" ? p.w : Math.max(p.w, p.h),
+    nh: orient === "raw" ? p.h : Math.min(p.w, p.h),
+    origIdx: idx,
+  }));
+
+  // 2. Sort by height for clustering
+  const sorted = [...normalized].sort((a, b) => a.nh - b.nh);
+
+  // 3. Cluster by similar height (within tolerance)
+  const heightGroups: (typeof sorted)[] = [];
+  let currentGroup: typeof sorted = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].nh - currentGroup[0].nh <= tolerance) {
+      currentGroup.push(sorted[i]);
+    } else {
+      heightGroups.push(currentGroup);
+      currentGroup = [sorted[i]];
+    }
+  }
+  heightGroups.push(currentGroup);
+
+  // 4. For each height group, use DP to select optimal subset for strip width
+  const strips: Array<{
+    height: number;
+    totalWidth: number;
+    pieces: typeof sorted;
+  }> = [];
+
+  const unassigned: typeof sorted = [];
+
+  for (const group of heightGroups) {
+    if (group.length < 2) {
+      unassigned.push(...group);
+      continue;
+    }
+
+    const stripHeight = Math.max(...group.map(p => p.nh));
+    const widths = group.map(p => p.nw);
+
+    // DP to select pieces that maximize fill of usableW
+    const selected = knapsackSelectItems(widths, usableW);
+
+    if (selected.length < 2) {
+      unassigned.push(...group);
+      continue;
+    }
+
+    const selectedPieces = selected.map(i => group[i]);
+    const totalWidth = selected.reduce((sum, i) => sum + widths[i], 0);
+
+    strips.push({
+      height: stripHeight,
+      totalWidth,
+      pieces: selectedPieces,
+    });
+
+    // Remaining pieces from this group
+    const selectedSet = new Set(selected);
+    for (let i = 0; i < group.length; i++) {
+      if (!selectedSet.has(i)) unassigned.push(group[i]);
+    }
+  }
+
+  if (strips.length === 0) return pieces;
+
+  // 5. DP to select which strips best fill sheet height
+  const stripHeights = strips.map(s => s.height);
+  const selectedStrips = knapsackSelectItems(stripHeights, usableH);
+
+  // 6. Build result
+  const result: Piece[] = [];
+  const usedStripSet = new Set(selectedStrips);
+
+  for (const si of selectedStrips) {
+    const strip = strips[si];
+    if (strip.pieces.length >= 2) {
+      const groupLabels = strip.pieces.filter(p => p.label).map(p => p.label!);
+      result.push({
+        w: strip.totalWidth,
+        h: strip.height,
+        area: strip.pieces[0].nw * strip.height,
+        count: strip.pieces.length,
+        labels: groupLabels.length > 0 ? groupLabels : undefined,
+        groupedAxis: "w",
+        individualDims: strip.pieces.map(p => p.nw),
+      });
+    } else {
+      const p = strip.pieces[0];
+      result.push({ w: p.nw, h: p.nh, area: p.nw * p.nh, count: 1, label: p.label });
+    }
+  }
+
+  // Add strips not selected by height DP
+  for (let i = 0; i < strips.length; i++) {
+    if (!usedStripSet.has(i)) {
+      for (const p of strips[i].pieces) unassigned.push(p);
+    }
+  }
+
+  // Add unassigned pieces
+  for (const p of unassigned) {
+    result.push({ w: p.nw, h: p.nh, area: p.nw * p.nh, count: 1, label: p.label });
+  }
+
+  result.sort((a, b) => b.area - a.area);
+  ensureLargestIndividualFirst(result);
+  return result;
+}
+
+/**
+ * Variante do Strip Packing DP com orientação invertida (transposed).
+ * Agrupa por largura similar e empilha verticalmente.
+ */
+function groupStripPackingDPTransposed(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  tolerance: number = 5,
+): Piece[] {
+  if (pieces.length < 2) return pieces;
+
+  // Orient so width is the smaller dimension
+  const normalized = pieces.map((p, idx) => ({
+    ...p,
+    nw: Math.min(p.w, p.h),  // width = smaller
+    nh: Math.max(p.w, p.h),  // height = larger
+    origIdx: idx,
+  }));
+
+  // Sort by width for clustering
+  const sorted = [...normalized].sort((a, b) => a.nw - b.nw);
+
+  // Cluster by similar width
+  const widthGroups: (typeof sorted)[] = [];
+  let currentGroup: typeof sorted = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].nw - currentGroup[0].nw <= tolerance) {
+      currentGroup.push(sorted[i]);
+    } else {
+      widthGroups.push(currentGroup);
+      currentGroup = [sorted[i]];
+    }
+  }
+  widthGroups.push(currentGroup);
+
+  // For each width group, DP to pack heights into usableH
+  const strips: Array<{
+    width: number;
+    totalHeight: number;
+    pieces: typeof sorted;
+  }> = [];
+
+  const unassigned: typeof sorted = [];
+
+  for (const group of widthGroups) {
+    if (group.length < 2) {
+      unassigned.push(...group);
+      continue;
+    }
+
+    const stripWidth = Math.max(...group.map(p => p.nw));
+    const heights = group.map(p => p.nh);
+
+    const selected = knapsackSelectItems(heights, usableH);
+
+    if (selected.length < 2) {
+      unassigned.push(...group);
+      continue;
+    }
+
+    const selectedPieces = selected.map(i => group[i]);
+    const totalHeight = selected.reduce((sum, i) => sum + heights[i], 0);
+
+    strips.push({ width: stripWidth, totalHeight, pieces: selectedPieces });
+
+    const selectedSet = new Set(selected);
+    for (let i = 0; i < group.length; i++) {
+      if (!selectedSet.has(i)) unassigned.push(group[i]);
+    }
+  }
+
+  if (strips.length === 0) return pieces;
+
+  // DP to select which column-strips fit in usableW
+  const stripWidths = strips.map(s => s.width);
+  const selectedStrips = knapsackSelectItems(stripWidths, usableW);
+
+  const result: Piece[] = [];
+  const usedStripSet = new Set(selectedStrips);
+
+  for (const si of selectedStrips) {
+    const strip = strips[si];
+    if (strip.pieces.length >= 2) {
+      const groupLabels = strip.pieces.filter(p => p.label).map(p => p.label!);
+      result.push({
+        w: strip.width,
+        h: strip.totalHeight,
+        area: strip.width * strip.pieces[0].nh,
+        count: strip.pieces.length,
+        labels: groupLabels.length > 0 ? groupLabels : undefined,
+        groupedAxis: "h",
+        individualDims: strip.pieces.map(p => p.nh),
+      });
+    } else {
+      const p = strip.pieces[0];
+      result.push({ w: p.nw, h: p.nh, area: p.nw * p.nh, count: 1, label: p.label });
+    }
+  }
+
+  for (let i = 0; i < strips.length; i++) {
+    if (!usedStripSet.has(i)) {
+      for (const p of strips[i].pieces) unassigned.push(p);
+    }
+  }
+
+  for (const p of unassigned) {
+    result.push({ w: p.nw, h: p.nh, area: p.nw * p.nh, count: 1, label: p.label });
+  }
+
+  result.sort((a, b) => b.area - a.area);
+  ensureLargestIndividualFirst(result);
+  return result;
+}
+
+/**
+ * Common Dimension Binding + Knapsack DP
+ * Encontra a dimensão mais frequente, orienta peças e usa DP para empacotar.
+ */
+function groupCommonDimensionDP(
+  pieces: Piece[],
+  usableW: number,
+  usableH: number,
+  threshold: number = 0.3,
+): Piece[] {
+  if (pieces.length < 2) return pieces;
+
+  // Find most common dimension
+  const dimCount = new Map<number, number>();
+  for (const p of pieces) {
+    dimCount.set(p.w, (dimCount.get(p.w) || 0) + 1);
+    if (p.h !== p.w) dimCount.set(p.h, (dimCount.get(p.h) || 0) + 1);
+  }
+
+  let bestDim = 0, bestCount = 0;
+  for (const [dim, count] of dimCount) {
+    if (count > bestCount) { bestCount = count; bestDim = dim; }
+  }
+
+  if (bestCount < Math.max(2, Math.floor(pieces.length * threshold))) return pieces;
+
+  // Orient so common dimension is height
+  const oriented: Array<Piece & { origW: number }> = [];
+  const others: Piece[] = [];
+  for (const p of pieces) {
+    if (p.h === bestDim) {
+      oriented.push({ ...p, origW: p.w });
+    } else if (p.w === bestDim) {
+      oriented.push({ ...p, w: p.h, h: p.w, origW: p.h });
+    } else {
+      others.push(p);
+    }
+  }
+
+  // Use DP to select optimal subset that fills usableW
+  const widths = oriented.map(p => p.origW);
+  const selected = knapsackSelectItems(widths, usableW);
+
+  if (selected.length < 2) return pieces;
+
+  // Build strips from DP result — pack into rows
+  const selectedPieces = selected.map(i => oriented[i]);
+  const selectedSet = new Set(selected);
+  const unselected = oriented.filter((_, i) => !selectedSet.has(i));
+
+  // Multiple rows if total width exceeds usableW
+  const rows: Array<typeof selectedPieces> = [];
+  const rowWidths: number[] = [];
+
+  // Sort by width descending for better packing
+  selectedPieces.sort((a, b) => b.origW - a.origW);
+
+  for (const p of selectedPieces) {
+    let placed = false;
+    for (let r = 0; r < rows.length; r++) {
+      if (rowWidths[r] + p.origW <= usableW) {
+        rows[r].push(p);
+        rowWidths[r] += p.origW;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      rows.push([p]);
+      rowWidths.push(p.origW);
+    }
+  }
+
+  const result: Piece[] = [];
+  for (let r = 0; r < rows.length; r++) {
+    if (rows[r].length >= 2) {
+      const groupLabels = rows[r].filter(p => p.label).map(p => p.label!);
+      result.push({
+        w: rowWidths[r],
+        h: bestDim,
+        area: rows[r][0].origW * bestDim,
+        count: rows[r].length,
+        labels: groupLabels.length > 0 ? groupLabels : undefined,
+        groupedAxis: "w",
+        individualDims: rows[r].map(p => p.origW),
+      });
+    } else {
+      const p = rows[r][0];
+      result.push({ w: p.origW, h: bestDim, area: p.origW * bestDim, count: 1, label: p.label });
+    }
+  }
+
+  // Add unselected oriented pieces and others
+  for (const p of unselected) {
+    result.push({ w: p.origW, h: bestDim, area: p.origW * bestDim, count: 1, label: p.label });
+  }
+  result.push(...others);
+
+  result.sort((a, b) => b.area - a.area);
+  ensureLargestIndividualFirst(result);
+  return result;
+}
+
 // ========== MAIN OPTIMIZER V6 IMPROVED ==========
 
 export function optimizeV6(
@@ -1380,6 +1782,26 @@ export function optimizeV6(
           groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
           groupByCommonDimensionTransposed(pieces, usableW, usableH),
           groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
+          // NOVO: Strip Packing com DP (tolerâncias variadas)
+          groupStripPackingDP(pieces, usableW, usableH, 0),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 0),
+          groupStripPackingDP(pieces, usableW, usableH, 5),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 5),
+          groupStripPackingDP(pieces, usableW, usableH, 30),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 30),
+          groupStripPackingDP(pieces, usableW, usableH, 100),
+          groupStripPackingDP(pieces, usableW, usableH, 5, "raw"),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 5, "raw"),
+          // Strip Packing DP Transposed (colunas verticais)
+          groupStripPackingDPTransposed(pieces, usableW, usableH, 0),
+          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 0),
+          groupStripPackingDPTransposed(pieces, usableW, usableH, 5),
+          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 5),
+          // Common Dimension + DP
+          groupCommonDimensionDP(pieces, usableW, usableH),
+          groupCommonDimensionDP(rotatedPieces, usableW, usableH),
+          groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
+          groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
         ];
 
   let bestTree: TreeNode | null = null;
@@ -1453,7 +1875,7 @@ export interface OptimizationProgress {
 interface GAIndividual {
   genome: number[]; // Permutation of piece indices
   rotations: boolean[]; // Per-piece rotation bitmask
-  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight, 9=commonDim, 10=commonDimT
+  groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14; // 0=none, 1=byHeight, 2=byWidth, 3=fillRow, 4=fillRowRaw, 5=fillCol, 6=fillColRaw, 7=colWidth, 8=colHeight, 9=commonDim, 10=commonDimT, 11=stripDP, 12=stripDPT, 13=commonDimDP, 14=stripDP100
   transposed: boolean; // true = swap usableW/usableH (horizontal main cuts)
 }
 
@@ -1593,7 +2015,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)[Math.floor(Math.random() * 11)] as GAIndividual['groupingMode'],
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const)[Math.floor(Math.random() * 15)] as GAIndividual['groupingMode'],
       transposed: Math.random() > 0.5,
     };
   }
@@ -1631,6 +2053,14 @@ export async function optimizeGeneticAsync(
       work = groupByCommonDimension(work, usableW, usableH);
     } else if (ind.groupingMode === 10) {
       work = groupByCommonDimensionTransposed(work, usableW, usableH);
+    } else if (ind.groupingMode === 11) {
+      work = groupStripPackingDP(work, usableW, usableH, 5);
+    } else if (ind.groupingMode === 12) {
+      work = groupStripPackingDPTransposed(work, usableW, usableH, 5);
+    } else if (ind.groupingMode === 13) {
+      work = groupCommonDimensionDP(work, usableW, usableH);
+    } else if (ind.groupingMode === 14) {
+      work = groupStripPackingDP(work, usableW, usableH, 100);
     }
 
     return work;
@@ -1729,7 +2159,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)[Math.floor(Math.random() * 11)] as GAIndividual['groupingMode'];
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const)[Math.floor(Math.random() * 15)] as GAIndividual['groupingMode'];
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
