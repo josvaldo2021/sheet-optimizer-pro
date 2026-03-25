@@ -2053,6 +2053,14 @@ export async function optimizeGeneticAsync(
       work = groupByCommonDimension(work, usableW, usableH);
     } else if (ind.groupingMode === 10) {
       work = groupByCommonDimensionTransposed(work, usableW, usableH);
+    } else if (ind.groupingMode === 11) {
+      work = groupStripPackingDP(work, usableW, usableH, 5);
+    } else if (ind.groupingMode === 12) {
+      work = groupStripPackingDPTransposed(work, usableW, usableH, 5);
+    } else if (ind.groupingMode === 13) {
+      work = groupCommonDimensionDP(work, usableW, usableH);
+    } else if (ind.groupingMode === 14) {
+      work = groupStripPackingDP(work, usableW, usableH, 100);
     }
 
     return work;
