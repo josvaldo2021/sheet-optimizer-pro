@@ -1782,6 +1782,26 @@ export function optimizeV6(
           groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
           groupByCommonDimensionTransposed(pieces, usableW, usableH),
           groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
+          // NOVO: Strip Packing com DP (tolerâncias variadas)
+          groupStripPackingDP(pieces, usableW, usableH, 0),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 0),
+          groupStripPackingDP(pieces, usableW, usableH, 5),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 5),
+          groupStripPackingDP(pieces, usableW, usableH, 30),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 30),
+          groupStripPackingDP(pieces, usableW, usableH, 100),
+          groupStripPackingDP(pieces, usableW, usableH, 5, "raw"),
+          groupStripPackingDP(rotatedPieces, usableW, usableH, 5, "raw"),
+          // Strip Packing DP Transposed (colunas verticais)
+          groupStripPackingDPTransposed(pieces, usableW, usableH, 0),
+          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 0),
+          groupStripPackingDPTransposed(pieces, usableW, usableH, 5),
+          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 5),
+          // Common Dimension + DP
+          groupCommonDimensionDP(pieces, usableW, usableH),
+          groupCommonDimensionDP(rotatedPieces, usableW, usableH),
+          groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
+          groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
         ];
 
   let bestTree: TreeNode | null = null;
