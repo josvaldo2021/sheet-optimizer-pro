@@ -2015,7 +2015,7 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)[Math.floor(Math.random() * 11)] as GAIndividual['groupingMode'],
+      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const)[Math.floor(Math.random() * 15)] as GAIndividual['groupingMode'],
       transposed: Math.random() > 0.5,
     };
   }
@@ -2151,7 +2151,7 @@ export async function optimizeGeneticAsync(
       }
     } else if (r < 0.85) {
       // Grouping Mutation
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const)[Math.floor(Math.random() * 11)] as GAIndividual['groupingMode'];
+      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const)[Math.floor(Math.random() * 15)] as GAIndividual['groupingMode'];
     } else {
       // Transposition Mutation
       c.transposed = !c.transposed;
