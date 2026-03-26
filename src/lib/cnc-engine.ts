@@ -2984,6 +2984,8 @@ function unifyColumnWaste(
 }
 
 
+/**
+ * Validates that no column (X node) has Y strips whose total height exceeds usableH.
  * If overflow is detected, removes excess Y strips from the end and adjusts placedArea.
  */
 function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, placedArea: number): number {
