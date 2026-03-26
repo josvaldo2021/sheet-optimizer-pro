@@ -2835,6 +2835,11 @@ function runPlacement(
     }
   }
 
+  // --- UNIFY COLUMN WASTE: merge fragmented Z-waste across Y strips ---
+  if (remaining.length > 0) {
+    placedArea += unifyColumnWaste(tree, remaining, usableW, usableH, minBreak);
+  }
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
