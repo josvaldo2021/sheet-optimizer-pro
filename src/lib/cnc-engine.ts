@@ -2847,18 +2847,15 @@ function runPlacement(
 }
 
 /**
- * UNIFY COLUMN WASTE: Post-processing that detects Z-waste (right-side waste) across
- * multiple Y strips in the same X column, and splits the column to create a unified
- * waste area. This larger unified waste can then potentially fit pieces that wouldn't
- * fit in the individual fragmented waste areas.
- * 
- * Example: If an X column has:
- *   Y1 (h=725): pieces using 2321mm width, waste = 439mm
- *   Y2 (h=676): pieces using 2321mm width, waste = 439mm
- * 
- * Instead of two fragmented wastes (439×725 and 439×676), we create:
- *   X1 (w=2321): Y1 and Y2 with pieces (no Z waste)
- *   X2 (w=439): unified waste area (439×1401) that can fit larger pieces
+ * UNIFY WASTE AT ALL LEVELS: Post-processing that detects fragmented waste across
+ * sibling nodes at every hierarchy level and merges them into unified areas.
+ *
+ * Level 1 (X→Y): Z-waste across Y strips → split X column, create unified waste column
+ * Level 2 (Y→Z): W-waste across Z nodes → split Y strip height, create unified waste strip  
+ * Level 3 (Z→W): Q-waste across W nodes → split Z width, create unified waste sub-column
+ *
+ * Example Level 1: X column with Y1(waste 439×725) + Y2(waste 439×676) → unified 439×1401
+ * Example Level 2: Y strip with Z1(waste 917×125) + Z2(waste 917×225) → unified strip 1834×125
  */
 function unifyColumnWaste(
   tree: TreeNode,
@@ -2870,61 +2867,24 @@ function unifyColumnWaste(
   let addedArea = 0;
   if (remaining.length === 0) return 0;
 
-  // Process each X column
-  const columnsToProcess = [...tree.filhos]; // snapshot since we may modify tree.filhos
-  
-  for (const colX of columnsToProcess) {
-    if (colX.filhos.length < 2) continue; // Need at least 2 Y strips to unify
+  // Helper: try to fill pieces into a new column/strip area
+  const fillArea = (
+    parentNode: TreeNode,
+    parentType: "X" | "Y" | "Z",
+    areaW: number,
+    areaH: number,
+  ): number => {
+    let filled = 0;
+    let freeH = areaH;
 
-    // Calculate Z-waste for each Y strip
-    const yWastes: Array<{ yNode: TreeNode; usedZ: number; wasteZ: number }> = [];
-    
-    for (const yNode of colX.filhos) {
-      const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-      const wasteZ = colX.valor - usedZ;
-      yWastes.push({ yNode, usedZ, wasteZ });
-    }
-
-    // Find minimum Z-waste across all Y strips (this is the guaranteed "carvable" width)
-    const minWaste = Math.min(...yWastes.map(w => w.wasteZ));
-    
-    // Only proceed if there's meaningful waste to unify (at least 50mm)
-    if (minWaste < 50) continue;
-
-    // Calculate total height of the unified waste column
-    const totalH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-    
-    // Check if any remaining piece could fit in the unified waste area
-    const canFitSomething = remaining.some(p => {
-      return (p.w <= minWaste && p.h <= totalH) || (p.h <= minWaste && p.w <= totalH);
-    });
-    
-    if (!canFitSomething) continue;
-
-    // Check usable width budget: can we add a new X column?
-    const currentUsedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    // We're not adding width, we're splitting existing column width
-    // Reduce colX.valor and create new X column with the carved width
-    
-    // Reduce the X column width by minWaste
-    colX.valor -= minWaste;
-
-    // Create new X column for the unified waste
-    const newColId = insertNode(tree, "root", "X", minWaste, 1);
-    const newCol = findNode(tree, newColId)!;
-
-    // Now try to place remaining pieces in this new unified column
-    let freeH = usableH; // Full usable height available
-    
     for (let i = 0; i < remaining.length && freeH > 0; i++) {
       const pc = remaining[i];
       let bestOri: { w: number; h: number } | null = null;
       let bestScore = Infinity;
 
       for (const o of oris(pc)) {
-        if (o.w <= minWaste && o.h <= freeH) {
-          // Prefer pieces that fill the width best
-          const score = (minWaste - o.w) + (freeH - o.h) * 0.1;
+        if (o.w <= areaW && o.h <= freeH) {
+          const score = (areaW - o.w) + (freeH - o.h) * 0.1;
           if (score < bestScore) {
             bestScore = score;
             bestOri = o;
@@ -2933,38 +2893,77 @@ function unifyColumnWaste(
       }
 
       if (bestOri) {
-        // Apply residual dominance on height
         let effectiveH = bestOri.h;
         const residualH = freeH - bestOri.h;
         if (residualH > 0) {
-          const canFitMore = remaining.slice(i + 1).some(p => {
-            return oris(p).some(o => o.w <= minWaste && o.h <= residualH);
-          });
-          if (!canFitMore) {
-            effectiveH = freeH;
-          }
+          const canFitMore = remaining.slice(i + 1).some(p =>
+            oris(p).some(o => o.w <= areaW && o.h <= residualH)
+          );
+          if (!canFitMore) effectiveH = freeH;
         }
 
-        const yId = insertNode(tree, newCol.id, "Y", effectiveH, 1);
-        const yNode = findNode(tree, yId)!;
-        
-        addedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-        
-        // Lateral Z filling in the new column
-        let freeZW = minWaste - bestOri.w;
-        for (let j = 0; j < remaining.length && freeZW > 0; j++) {
-          if (j === i) continue;
-          const lpc = remaining[j];
-          for (const o of oris(lpc)) {
-            if (o.w <= freeZW && o.h <= effectiveH) {
-              addedArea += createPieceNodes(tree, yNode, lpc, o.w, o.h, o.w !== lpc.w);
-              freeZW -= o.w;
-              remaining.splice(j, 1);
-              if (j < i) i--;
-              j--;
-              break;
+        if (parentType === "X") {
+          // Parent is X column, create Y strip
+          const yId = insertNode(tree, parentNode.id, "Y", effectiveH, 1);
+          const yNode = findNode(tree, yId)!;
+          filled += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+
+          // Lateral Z filling
+          let freeZW = areaW - bestOri.w;
+          for (let j = 0; j < remaining.length && freeZW > 0; j++) {
+            if (j === i) continue;
+            const lpc = remaining[j];
+            for (const o of oris(lpc)) {
+              if (o.w <= freeZW && o.h <= effectiveH) {
+                filled += createPieceNodes(tree, yNode, lpc, o.w, o.h, o.w !== lpc.w);
+                freeZW -= o.w;
+                remaining.splice(j, 1);
+                if (j < i) i--;
+                j--;
+                break;
+              }
             }
           }
+        } else if (parentType === "Y") {
+          // Parent is Y strip, create Z sub-column
+          const zId = insertNode(tree, parentNode.id, "Z", bestOri.w, 1);
+          const zNode = findNode(tree, zId)!;
+          const wId = insertNode(tree, zId, "W", bestOri.h, 1);
+          const wNode = findNode(tree, wId)!;
+          if (pc.label) { zNode.label = pc.label; wNode.label = pc.label; }
+          filled += bestOri.w * bestOri.h;
+
+          // Vertical W filling in this Z
+          let freeWH = effectiveH - bestOri.h;
+          for (let j = 0; j < remaining.length && freeWH > 0; j++) {
+            if (j === i) continue;
+            const lpc = remaining[j];
+            for (const o of oris(lpc)) {
+              if (o.w <= bestOri.w && o.h <= freeWH) {
+                const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
+                const wNode2 = findNode(tree, wId2)!;
+                if (lpc.label) wNode2.label = lpc.label;
+                filled += bestOri.w * o.h;
+                freeWH -= o.h;
+                remaining.splice(j, 1);
+                if (j < i) i--;
+                j--;
+                break;
+              }
+            }
+          }
+        } else {
+          // parentType === "Z", create W sub-row
+          const wId = insertNode(tree, parentNode.id, "W", bestOri.h, 1);
+          const wNode = findNode(tree, wId)!;
+          if (pc.label) wNode.label = pc.label;
+
+          if (bestOri.w < areaW) {
+            const qId = insertNode(tree, wId, "Q", bestOri.w, 1);
+            const qNode = findNode(tree, qId)!;
+            if (pc.label) qNode.label = pc.label;
+          }
+          filled += areaW * bestOri.h;
         }
 
         freeH -= effectiveH;
@@ -2972,11 +2971,116 @@ function unifyColumnWaste(
         i--;
       }
     }
+    return filled;
+  };
 
-    // If nothing was placed, revert the split
+  // === LEVEL 1: X→Y level (Z-waste unification across Y strips) ===
+  const columnsToProcess = [...tree.filhos];
+  for (const colX of columnsToProcess) {
+    if (remaining.length === 0) break;
+    if (colX.filhos.length < 2) continue;
+
+    const yWastes = colX.filhos.map(yNode => {
+      const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+      return colX.valor - usedZ;
+    });
+    const minWaste = Math.min(...yWastes);
+    if (minWaste < 50) continue;
+
+    const totalH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    const canFit = remaining.some(p =>
+      (p.w <= minWaste && p.h <= totalH) || (p.h <= minWaste && p.w <= totalH)
+    );
+    if (!canFit) continue;
+
+    colX.valor -= minWaste;
+    const newColId = insertNode(tree, "root", "X", minWaste, 1);
+    const newCol = findNode(tree, newColId)!;
+
+    const filled = fillArea(newCol, "X", minWaste, usableH);
+    addedArea += filled;
+
     if (newCol.filhos.length === 0) {
       colX.valor += minWaste;
       tree.filhos = tree.filhos.filter(x => x.id !== newCol.id);
+    }
+  }
+
+  // === LEVEL 2: Y→Z level (W-waste unification across Z nodes in each Y strip) ===
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of [...colX.filhos]) {
+      if (remaining.length === 0) break;
+      if (yNode.filhos.length < 2) continue;
+
+      const zWastes = yNode.filhos.map(zNode => {
+        const usedW = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+        return yNode.valor - usedW;
+      });
+      const minWaste = Math.min(...zWastes);
+      if (minWaste < 50) continue;
+
+      const totalW = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+      const canFit = remaining.some(p =>
+        (p.w <= totalW && p.h <= minWaste) || (p.h <= totalW && p.w <= minWaste)
+      );
+      if (!canFit) continue;
+
+      // Reduce Y strip height by minWaste
+      yNode.valor -= minWaste;
+
+      // Create a new Y strip with unified waste height
+      const newYId = insertNode(tree, colX.id, "Y", minWaste, 1);
+      const newYNode = findNode(tree, newYId)!;
+
+      const filled = fillArea(newYNode, "Y", colX.valor, minWaste);
+      addedArea += filled;
+
+      if (newYNode.filhos.length === 0) {
+        yNode.valor += minWaste;
+        colX.filhos = colX.filhos.filter(y => y.id !== newYNode.id);
+      }
+    }
+  }
+
+  // === LEVEL 3: Z→W level (Q-waste unification across W nodes in each Z) ===
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+      for (const zNode of [...yNode.filhos]) {
+        if (remaining.length === 0) break;
+        if (zNode.filhos.length < 2) continue;
+
+        const wWastes = zNode.filhos.map(wNode => {
+          const usedQ = wNode.filhos.reduce((a, q) => a + q.valor * q.multi, 0);
+          // If W has no Q children, the piece fills the full Z width
+          return usedQ > 0 ? zNode.valor - usedQ : 0;
+        });
+        const minWaste = Math.min(...wWastes);
+        if (minWaste < 50) continue;
+
+        const totalH = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
+        const canFit = remaining.some(p =>
+          (p.w <= minWaste && p.h <= totalH) || (p.h <= minWaste && p.w <= totalH)
+        );
+        if (!canFit) continue;
+
+        // Reduce Z width by minWaste
+        zNode.valor -= minWaste;
+
+        // Create a new Z node for unified waste
+        const newZId = insertNode(tree, yNode.id, "Z", minWaste, 1);
+        const newZNode = findNode(tree, newZId)!;
+
+        const filled = fillArea(newZNode, "Z", minWaste, yNode.valor);
+        addedArea += filled;
+
+        if (newZNode.filhos.length === 0) {
+          zNode.valor += minWaste;
+          yNode.filhos = yNode.filhos.filter(z => z.id !== newZNode.id);
+        }
+      }
     }
   }
 
