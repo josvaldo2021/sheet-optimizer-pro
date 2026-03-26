@@ -2835,11 +2835,154 @@ function runPlacement(
     }
   }
 
+  // --- UNIFY COLUMN WASTE: merge fragmented Z-waste across Y strips ---
+  if (remaining.length > 0) {
+    placedArea += unifyColumnWaste(tree, remaining, usableW, usableH, minBreak);
+  }
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
   return { tree, area: placedArea, remaining };
 }
+
+/**
+ * UNIFY COLUMN WASTE: Post-processing that detects Z-waste (right-side waste) across
+ * multiple Y strips in the same X column, and splits the column to create a unified
+ * waste area. This larger unified waste can then potentially fit pieces that wouldn't
+ * fit in the individual fragmented waste areas.
+ * 
+ * Example: If an X column has:
+ *   Y1 (h=725): pieces using 2321mm width, waste = 439mm
+ *   Y2 (h=676): pieces using 2321mm width, waste = 439mm
+ * 
+ * Instead of two fragmented wastes (439×725 and 439×676), we create:
+ *   X1 (w=2321): Y1 and Y2 with pieces (no Z waste)
+ *   X2 (w=439): unified waste area (439×1401) that can fit larger pieces
+ */
+function unifyColumnWaste(
+  tree: TreeNode,
+  remaining: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number,
+): number {
+  let addedArea = 0;
+  if (remaining.length === 0) return 0;
+
+  // Process each X column
+  const columnsToProcess = [...tree.filhos]; // snapshot since we may modify tree.filhos
+  
+  for (const colX of columnsToProcess) {
+    if (colX.filhos.length < 2) continue; // Need at least 2 Y strips to unify
+
+    // Calculate Z-waste for each Y strip
+    const yWastes: Array<{ yNode: TreeNode; usedZ: number; wasteZ: number }> = [];
+    
+    for (const yNode of colX.filhos) {
+      const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+      const wasteZ = colX.valor - usedZ;
+      yWastes.push({ yNode, usedZ, wasteZ });
+    }
+
+    // Find minimum Z-waste across all Y strips (this is the guaranteed "carvable" width)
+    const minWaste = Math.min(...yWastes.map(w => w.wasteZ));
+    
+    // Only proceed if there's meaningful waste to unify (at least 50mm)
+    if (minWaste < 50) continue;
+
+    // Calculate total height of the unified waste column
+    const totalH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    
+    // Check if any remaining piece could fit in the unified waste area
+    const canFitSomething = remaining.some(p => {
+      return (p.w <= minWaste && p.h <= totalH) || (p.h <= minWaste && p.w <= totalH);
+    });
+    
+    if (!canFitSomething) continue;
+
+    // Check usable width budget: can we add a new X column?
+    const currentUsedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+    // We're not adding width, we're splitting existing column width
+    // Reduce colX.valor and create new X column with the carved width
+    
+    // Reduce the X column width by minWaste
+    colX.valor -= minWaste;
+
+    // Create new X column for the unified waste
+    const newColId = insertNode(tree, "root", "X", minWaste, 1);
+    const newCol = findNode(tree, newColId)!;
+
+    // Now try to place remaining pieces in this new unified column
+    let freeH = usableH; // Full usable height available
+    
+    for (let i = 0; i < remaining.length && freeH > 0; i++) {
+      const pc = remaining[i];
+      let bestOri: { w: number; h: number } | null = null;
+      let bestScore = Infinity;
+
+      for (const o of oris(pc)) {
+        if (o.w <= minWaste && o.h <= freeH) {
+          // Prefer pieces that fill the width best
+          const score = (minWaste - o.w) + (freeH - o.h) * 0.1;
+          if (score < bestScore) {
+            bestScore = score;
+            bestOri = o;
+          }
+        }
+      }
+
+      if (bestOri) {
+        // Apply residual dominance on height
+        let effectiveH = bestOri.h;
+        const residualH = freeH - bestOri.h;
+        if (residualH > 0) {
+          const canFitMore = remaining.slice(i + 1).some(p => {
+            return oris(p).some(o => o.w <= minWaste && o.h <= residualH);
+          });
+          if (!canFitMore) {
+            effectiveH = freeH;
+          }
+        }
+
+        const yId = insertNode(tree, newCol.id, "Y", effectiveH, 1);
+        const yNode = findNode(tree, yId)!;
+        
+        addedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+        
+        // Lateral Z filling in the new column
+        let freeZW = minWaste - bestOri.w;
+        for (let j = 0; j < remaining.length && freeZW > 0; j++) {
+          if (j === i) continue;
+          const lpc = remaining[j];
+          for (const o of oris(lpc)) {
+            if (o.w <= freeZW && o.h <= effectiveH) {
+              addedArea += createPieceNodes(tree, yNode, lpc, o.w, o.h, o.w !== lpc.w);
+              freeZW -= o.w;
+              remaining.splice(j, 1);
+              if (j < i) i--;
+              j--;
+              break;
+            }
+          }
+        }
+
+        freeH -= effectiveH;
+        remaining.splice(i, 1);
+        i--;
+      }
+    }
+
+    // If nothing was placed, revert the split
+    if (newCol.filhos.length === 0) {
+      colX.valor += minWaste;
+      tree.filhos = tree.filhos.filter(x => x.id !== newCol.id);
+    }
+  }
+
+  return addedArea;
+}
+
 
 /**
  * Validates that no column (X node) has Y strips whose total height exceeds usableH.
