@@ -3175,6 +3175,62 @@ function unifyColumnWaste(
     }
   }
 
+  // === LEVEL 4: W→Q level (waste unification across Q nodes in each W) ===
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+      for (const zNode of yNode.filhos) {
+        if (remaining.length === 0) break;
+        for (const wNode of [...zNode.filhos]) {
+          if (remaining.length === 0) break;
+          if (wNode.filhos.length < 2) continue;
+
+          // Q nodes sit inside W. Each Q has a width (valor).
+          // Waste = Z width - sum of Q widths
+          const usedQ = wNode.filhos.reduce((a, q) => a + q.valor * q.multi, 0);
+          const qWaste = zNode.valor - usedQ;
+          if (qWaste < 50) continue;
+
+          // For Q-level, waste is a single contiguous area (rightmost space)
+          // Try to fill it directly
+          const canFit = remaining.some(p =>
+            (p.w <= qWaste && p.h <= wNode.valor) || (p.h <= qWaste && p.w <= wNode.valor)
+          );
+          if (!canFit) continue;
+
+          // Add Q nodes for pieces that fit in the waste area
+          let freeW = qWaste;
+          for (let i = 0; i < remaining.length && freeW >= 50; i++) {
+            const pc = remaining[i];
+            let bestOri: { w: number; h: number } | null = null;
+            let bestScore = Infinity;
+
+            for (const o of oris(pc)) {
+              if (o.w <= freeW && o.h <= wNode.valor) {
+                const score = (freeW - o.w) + (wNode.valor - o.h) * 0.1;
+                if (score < bestScore) {
+                  bestScore = score;
+                  bestOri = o;
+                }
+              }
+            }
+
+            if (bestOri) {
+              const qId = insertNode(tree, wNode.id, "Q", bestOri.w, 1);
+              const qNode = findNode(tree, qId)!;
+              if (pc.label) qNode.label = pc.label;
+              addedArea += bestOri.w * wNode.valor;
+              freeW -= bestOri.w;
+              remaining.splice(i, 1);
+              i--;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return addedArea;
 }
 
