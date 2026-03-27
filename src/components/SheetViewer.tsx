@@ -101,6 +101,10 @@ export default function SheetViewer({
     type YWasteInfo = { xStart: number; xWidth: number; yStart: number; wasteH: number; xNodeValor: number };
     const yWastes: YWasteInfo[] = [];
 
+    // Collect Z-waste metadata for merging across adjacent Y strips
+    type ZWasteInfo = { absX: number; absY: number; wasteW: number; stripH: number };
+    const zWastes: ZWasteInfo[] = [];
+
     tree.filhos.forEach(xNode => {
       for (let ix = 0; ix < xNode.multi; ix++) {
         const cx = xOff;
