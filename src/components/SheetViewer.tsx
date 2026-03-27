@@ -296,6 +296,8 @@ export default function SheetViewer({
                 zWastes.push({ absX: cx + zOff, absY: cy, wasteW: zWaste, stripH: yNode.valor });
               }
             }
+
+            strips.push(
               <div
                 key={`y-${yNode.id}-${iy}`}
                 className={`${selectedId === yNode.id ? 'sv-selected' : ''}`}
