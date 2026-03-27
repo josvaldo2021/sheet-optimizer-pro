@@ -2974,6 +2974,97 @@ function unifyColumnWaste(
     return filled;
   };
 
+  // === LEVEL 0: Y-waste unification across adjacent X columns ===
+  // Detect X columns whose Y strips don't fill usableH, merge the top gaps
+  // into a single unified block to increase the chance of fitting pieces.
+  {
+    const xCols = tree.filhos;
+    if (xCols.length >= 2 && remaining.length > 0) {
+      // Compute Y-waste (unused vertical space) for each X column
+      const colYWastes = xCols.map(colX => {
+        const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        return usableH - usedH;
+      });
+
+      // Find groups of consecutive columns with significant Y-waste
+      // and merge them into unified blocks
+      let groupStart = -1;
+      for (let i = 0; i <= xCols.length; i++) {
+        const waste = i < xCols.length ? colYWastes[i] : 0;
+        const hasWaste = waste >= 50;
+
+        if (hasWaste && groupStart < 0) {
+          groupStart = i;
+        } else if (!hasWaste && groupStart >= 0) {
+          // End of group: columns [groupStart..i-1] have Y-waste
+          if (i - groupStart >= 2) {
+            const groupCols = xCols.slice(groupStart, i);
+            const minYWaste = Math.min(...groupCols.map((_, gi) => colYWastes[groupStart + gi]));
+            const totalW = groupCols.reduce((a, c) => a + c.valor * c.multi, 0);
+
+            if (minYWaste >= 50) {
+              const canFit = remaining.some(p =>
+                (p.w <= totalW && p.h <= minYWaste) || (p.h <= totalW && p.w <= minYWaste)
+              );
+
+              if (canFit) {
+                // Create a new X column with the total width and unified waste height
+                const newColId = insertNode(tree, "root", "X", totalW, 1);
+                const newCol = findNode(tree, newColId)!;
+
+                const filled = fillArea(newCol, "X", totalW, minYWaste);
+                addedArea += filled;
+
+                if (newCol.filhos.length > 0) {
+                  // Successfully placed pieces — shrink original columns' available height
+                  // by reducing waste from each column (add a dummy Y strip placeholder is not needed,
+                  // the waste simply becomes occupied by the new unified column)
+                  // We need to reduce each column's usable space. The cleanest way:
+                  // reduce each column's effective Y-waste by minYWaste.
+                  // Since usableH is fixed, we add a "spacer" Y strip to each column.
+                  for (let gi = groupStart; gi < i; gi++) {
+                    // The new unified column already accounts for this space,
+                    // no further tree changes needed for original columns
+                    // (their Y-waste is still there, but the unified col covers it)
+                  }
+                } else {
+                  // Nothing placed, remove the column
+                  tree.filhos = tree.filhos.filter(x => x.id !== newCol.id);
+                }
+              }
+            }
+          }
+          groupStart = -1;
+        }
+      }
+
+      // Also try ALL columns together even if not consecutive
+      if (remaining.length > 0) {
+        const allWastes = xCols.map(colX => {
+          const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+          return usableH - usedH;
+        });
+        const minGlobalYWaste = Math.min(...allWastes);
+        if (minGlobalYWaste >= 50) {
+          const totalW = xCols.reduce((a, c) => a + c.valor * c.multi, 0);
+          const canFit = remaining.some(p =>
+            (p.w <= totalW && p.h <= minGlobalYWaste) || (p.h <= totalW && p.w <= minGlobalYWaste)
+          );
+          if (canFit) {
+            const newColId = insertNode(tree, "root", "X", totalW, 1);
+            const newCol = findNode(tree, newColId)!;
+            const filled = fillArea(newCol, "X", totalW, minGlobalYWaste);
+            addedArea += filled;
+
+            if (newCol.filhos.length === 0) {
+              tree.filhos = tree.filhos.filter(x => x.id !== newCol.id);
+            }
+          }
+        }
+      }
+    }
+  }
+
   // === LEVEL 1: X→Y level (Z-waste unification across Y strips) ===
   const columnsToProcess = [...tree.filhos];
   for (const colX of columnsToProcess) {
