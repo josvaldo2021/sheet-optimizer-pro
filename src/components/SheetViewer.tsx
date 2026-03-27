@@ -289,19 +289,13 @@ export default function SheetViewer({
             // Z waste (remaining dimension in strip)
             const zWaste = xNode.valor - zOff;
             if (zWaste > 0 && zWaste * scale >= 4) {
-              zEls.push(
-                <div key="sz" className="sv-waste" style={{
-                  ...(T
-                    ? { width: '100%', height: zWaste * scale }
-                    : { width: zWaste * scale, height: '100%' }
-                  ),
-                }}>
-                  <span className="sv-waste-label">{dimLabel(zWaste, yNode.valor)}</span>
-                </div>
-              );
+              // Collect for merging instead of rendering inline
+              if (T) {
+                zWastes.push({ absX: cy, absY: cx, wasteW: zWaste, stripH: xNode.valor });
+              } else {
+                zWastes.push({ absX: cx + zOff, absY: cy, wasteW: zWaste, stripH: yNode.valor });
+              }
             }
-
-            strips.push(
               <div
                 key={`y-${yNode.id}-${iy}`}
                 className={`${selectedId === yNode.id ? 'sv-selected' : ''}`}
