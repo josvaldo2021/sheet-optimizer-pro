@@ -379,7 +379,43 @@ export default function SheetViewer({
       });
     }
 
-    // X waste (remaining dimension)
+    // Merge adjacent Z-wastes (same X position and wasteW) into unified blocks
+    if (zWastes.length > 0) {
+      // Sort by absX then absY
+      zWastes.sort((a, b) => Math.abs(a.absX - b.absX) < 1 ? a.absY - b.absY : a.absX - b.absX);
+      const mergedZ: Array<{ absX: number; absY: number; wasteW: number; totalH: number }> = [];
+      let cur = { absX: zWastes[0].absX, absY: zWastes[0].absY, wasteW: zWastes[0].wasteW, totalH: zWastes[0].stripH };
+
+      for (let i = 1; i < zWastes.length; i++) {
+        const z = zWastes[i];
+        const sameX = Math.abs(cur.absX - z.absX) < 1;
+        const sameW = Math.abs(cur.wasteW - z.wasteW) < 1;
+        const adjacent = Math.abs((cur.absY + cur.totalH) - z.absY) < 1;
+
+        if (sameX && sameW && adjacent) {
+          cur.totalH += z.stripH;
+        } else {
+          mergedZ.push({ ...cur });
+          cur = { absX: z.absX, absY: z.absY, wasteW: z.wasteW, totalH: z.stripH };
+        }
+      }
+      mergedZ.push(cur);
+
+      mergedZ.forEach((m, mi) => {
+        els.push(
+          <div key={`zw-merged-${mi}`} className="sv-waste" style={{
+            position: 'absolute',
+            ...(T
+              ? { bottom: m.absY * scale, left: m.absX * scale, width: m.wasteW * scale, height: m.totalH * scale }
+              : { left: m.absX * scale, bottom: m.absY * scale, width: m.wasteW * scale, height: m.totalH * scale }
+            ),
+          }}>
+            <span className="sv-waste-label">{T ? `${Math.round(m.totalH)}×${Math.round(m.wasteW)}` : `${Math.round(m.wasteW)}×${Math.round(m.totalH)}`}</span>
+          </div>
+        );
+      });
+    }
+
     const xDimTotal = T ? usableH : usableW;
     const xWaste = xDimTotal - xOff;
     if (xWaste > 0 && xWaste * scale >= 4) {
