@@ -2843,6 +2843,9 @@ function runPlacement(
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
+  // --- COMPRESSION: merge identical sibling nodes into multi ---
+  compressTree(tree);
+
   return { tree, area: placedArea, remaining };
 }
 
@@ -3078,6 +3081,68 @@ function unifyColumnWaste(
   return addedArea;
 }
 
+
+// ========== TREE COMPRESSION ==========
+
+/**
+ * Checks if two nodes have the same structure (valor + children recursively).
+ * Does NOT compare multi at the top level (caller handles merging).
+ * Does NOT compare labels (they're display-only and reassigned by annotateTreeLabels).
+ */
+function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
+  if (Math.abs(a.valor - b.valor) > 0.5) return false;
+  if (a.filhos.length !== b.filhos.length) return false;
+  for (let i = 0; i < a.filhos.length; i++) {
+    const ca = a.filhos[i], cb = b.filhos[i];
+    if (Math.abs(ca.valor - cb.valor) > 0.5) return false;
+    if (ca.multi !== cb.multi) return false;
+    if (!nodesStructurallyEqual(ca, cb)) return false;
+  }
+  return true;
+}
+
+/**
+ * COMPRESSÃO DA ÁRVORE: Mescla nós irmãos idênticos em um único nó com multi > 1.
+ * 
+ * Executa bottom-up: primeiro comprime os filhos, depois mescla no nível atual.
+ * 
+ * Exemplo:
+ *   Antes: Z725(x1), Z725(x1), Z725(x1), Z725(x1)
+ *   Depois: Z725(x4)
+ * 
+ * Isso produz a representação compacta esperada pelo padrão de corte CNC,
+ * sem conflitar com a estrutura hierárquica dos nós.
+ */
+function compressTree(node: TreeNode): void {
+  // 1. Recurse into all children first (bottom-up)
+  for (const child of node.filhos) {
+    compressTree(child);
+  }
+
+  // 2. Merge identical siblings at current level
+  if (node.filhos.length <= 1) return;
+
+  const compressed: TreeNode[] = [];
+  const used = new Set<number>();
+
+  for (let i = 0; i < node.filhos.length; i++) {
+    if (used.has(i)) continue;
+    const current = node.filhos[i];
+
+    for (let j = i + 1; j < node.filhos.length; j++) {
+      if (used.has(j)) continue;
+      if (nodesStructurallyEqual(current, node.filhos[j])) {
+        current.multi += node.filhos[j].multi;
+        used.add(j);
+      }
+    }
+
+    compressed.push(current);
+    used.add(i);
+  }
+
+  node.filhos = compressed;
+}
 
 
 /**
