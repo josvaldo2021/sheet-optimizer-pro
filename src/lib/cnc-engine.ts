@@ -2950,6 +2950,72 @@ function unifyColumnWaste(
 ): number {
   let addedArea = 0;
   if (remaining.length === 0) return 0;
+  const T = tree.transposed || false;
+  const totalW = T ? usableH : usableW;
+  const totalH = T ? usableW : usableH;
+
+  // ==================== PASS 0: Fill X-waste (free width to the right of all columns) ====================
+  {
+    const usedX = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+    let freeX = totalW - usedX;
+
+    while (freeX >= 50 && remaining.length > 0) {
+      let bestIdx = -1;
+      let bestO: { w: number; h: number } | null = null;
+      let bestArea = 0;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const pc = remaining[i];
+        for (const o of oris(pc)) {
+          if (o.w <= freeX && o.h <= totalH) {
+            if (o.w * o.h > bestArea) {
+              bestArea = o.w * o.h;
+              bestIdx = i;
+              bestO = o;
+            }
+          }
+        }
+      }
+      if (bestIdx < 0 || !bestO) break;
+
+      const pc = remaining[bestIdx];
+      let colW = bestO.w;
+      const residualX = freeX - bestO.w;
+      const canFitMoreX = remaining.some((p, idx) => idx !== bestIdx &&
+        oris(p).some(o => o.w <= residualX && o.h <= totalH)
+      );
+      if (!canFitMoreX && residualX > 0) colW = freeX;
+
+      const colId = gid();
+      const newCol: TreeNode = { id: colId, tipo: "X", valor: colW, multi: 1, filhos: [] };
+      tree.filhos.push(newCol);
+
+      let stripH = bestO.h;
+      const residualH = totalH - bestO.h;
+      const canFitMoreH = remaining.some((p, idx) => idx !== bestIdx &&
+        oris(p).some(o => o.w <= colW && o.h <= residualH)
+      );
+      if (!canFitMoreH && residualH > 0) stripH = totalH;
+
+      const yNode: TreeNode = { id: gid(), tipo: "Y", valor: stripH, multi: 1, filhos: [] };
+      newCol.filhos.push(yNode);
+
+      addedArea += createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+      remaining.splice(bestIdx, 1);
+      freeX -= colW;
+
+      // Fill remaining space in the new column
+      if (remaining.length > 0) {
+        const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+        const freeZ = colW - usedZ;
+        if (freeZ > 0) addedArea += fillRectZ(tree, yNode, remaining, freeZ, stripH, minBreak);
+
+        const usedH2 = newCol.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        const freeH2 = totalH - usedH2;
+        if (freeH2 > 0) addedArea += fillRect(tree, newCol, remaining, colW, freeH2, "Y", minBreak);
+      }
+    }
+  }
 
   // ==================== PASS 1: Fill Y-waste (free height in each X column) ====================
   for (const colX of tree.filhos) {
