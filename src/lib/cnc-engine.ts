@@ -897,11 +897,14 @@ function violatesZMinBreak(
 
 function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number, minBreak: number = 0): number {
   let filledArea = 0;
+  const T = tree.transposed || false;
+  const totalW = T ? usableH : usableW;
+  const totalH = T ? usableW : usableH;
 
   for (const colX of tree.filhos) {
     // Void in Y direction (remaining height in column)
     const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-    const freeH = usableH - usedH;
+    const freeH = totalH - usedH;
     if (freeH > 0) {
       filledArea += fillRect(tree, colX, remaining, colX.valor, freeH, "Y", minBreak);
     }
@@ -920,6 +923,82 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
         const freeW = yNode.valor - usedW;
         if (freeW > 0) {
           filledArea += fillRectW(tree, remaining, zNode, zNode.valor, freeW, minBreak);
+        }
+      }
+    }
+  }
+
+  // --- X-WASTE: free horizontal space to the right of all columns ---
+  if (remaining.length > 0) {
+    const usedX = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+    let freeX = totalW - usedX;
+
+    while (freeX >= 50 && remaining.length > 0) {
+      // Find the best piece that fits in freeX × totalH
+      let bestIdx = -1;
+      let bestO: { w: number; h: number } | null = null;
+      let bestArea = 0;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const pc = remaining[i];
+        for (const o of oris(pc)) {
+          if (o.w <= freeX && o.h <= totalH) {
+            const pieceArea = o.w * o.h;
+            if (pieceArea > bestArea) {
+              bestArea = pieceArea;
+              bestIdx = i;
+              bestO = o;
+            }
+          }
+        }
+      }
+
+      if (bestIdx < 0 || !bestO) break;
+
+      const pc = remaining[bestIdx];
+
+      // Create a new X column with the piece width (or full freeX if residual is too small)
+      let colW = bestO.w;
+      const residualX = freeX - bestO.w;
+      // Check if any remaining piece can fit in residualX
+      const canFitMoreX = remaining.some((p, idx) => idx !== bestIdx &&
+        oris(p).some(o => o.w <= residualX && o.h <= totalH)
+      );
+      if (!canFitMoreX && residualX > 0) colW = freeX;
+
+      const colId = gid();
+      const newCol: TreeNode = { id: colId, tipo: "X", valor: colW, multi: 1, filhos: [] };
+      tree.filhos.push(newCol);
+
+      // Create Y strip with piece height
+      let stripH = bestO.h;
+      const residualH = totalH - bestO.h;
+      const canFitMoreH = remaining.some((p, idx) => idx !== bestIdx &&
+        oris(p).some(o => o.w <= colW && o.h <= residualH)
+      );
+      if (!canFitMoreH && residualH > 0) stripH = totalH;
+
+      const yId = gid();
+      const yNode: TreeNode = { id: yId, tipo: "Y", valor: stripH, multi: 1, filhos: [] };
+      newCol.filhos.push(yNode);
+
+      filledArea += createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
+      remaining.splice(bestIdx, 1);
+      freeX -= colW;
+
+      // Try to fill remaining space in this new column
+      if (remaining.length > 0) {
+        // Z-waste in the Y strip
+        const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+        const freeZ = colW - usedZ;
+        if (freeZ > 0) {
+          filledArea += fillRectZ(tree, yNode, remaining, freeZ, stripH, minBreak);
+        }
+        // Y-waste (remaining height)
+        const usedH = newCol.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+        const freeH = totalH - usedH;
+        if (freeH > 0) {
+          filledArea += fillRect(tree, newCol, remaining, colW, freeH, "Y", minBreak);
         }
       }
     }
