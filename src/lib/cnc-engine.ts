@@ -2656,15 +2656,23 @@ function runPlacement(
         }
         if (o.w <= freeW && o.h <= usableH) {
           // Residual dominance: if leftover width can't fit any piece, extend to full freeW
+          // BUT: don't expand if remaining pieces share this width (keeps columns uniform for compression)
           let effectiveW = o.w;
           const residualW = freeW - o.w;
           if (residualW > 0) {
-            const xSibValues = tree.filhos.map((x) => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
-              effectiveW = freeW;
+            const sameDimCount = remaining.slice(1).filter(p =>
+              oris(p).some(ori => Math.abs(ori.w - o.w) < 0.5 || Math.abs(ori.h - o.w) < 0.5)
+            ).length;
+            if (sameDimCount === 0) {
+              const xSibValues = tree.filhos.map((x) => x.valor);
+              if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
+                effectiveW = freeW;
+              }
             }
           }
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          // Penalty for creating new columns — prefer reusing existing columns
+          const newColPenalty = 0.3;
+          const score = ((freeW - effectiveW) / usableW) * 0.5 + newColPenalty;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
@@ -2923,7 +2931,25 @@ function runPlacement(
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
   // --- COMPRESSION: merge identical sibling nodes into multi ---
+  if (typeof console !== 'undefined') {
+    const debugTree = (n: TreeNode, indent = ''): string => {
+      const lbl = n.label ? ` [${n.label}]` : '';
+      let s = `${indent}${n.tipo}${Math.round(n.valor)} (x${n.multi})${lbl}\n`;
+      for (const c of n.filhos) s += debugTree(c, indent + '  ');
+      return s;
+    };
+    console.log('[CNC-ENGINE] Tree BEFORE compression:\n' + debugTree(tree));
+  }
   compressTree(tree);
+  if (typeof console !== 'undefined') {
+    const debugTree = (n: TreeNode, indent = ''): string => {
+      const lbl = n.label ? ` [${n.label}]` : '';
+      let s = `${indent}${n.tipo}${Math.round(n.valor)} (x${n.multi})${lbl}\n`;
+      for (const c of n.filhos) s += debugTree(c, indent + '  ');
+      return s;
+    };
+    console.log('[CNC-ENGINE] Tree AFTER compression:\n' + debugTree(tree));
+  }
 
   return { tree, area: placedArea, remaining };
 }
@@ -3235,6 +3261,7 @@ function unifyColumnWaste(
  * Does NOT compare labels (they're display-only and reassigned by annotateTreeLabels).
  */
 function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
+  if (a.tipo !== b.tipo) return false;
   if (Math.abs(a.valor - b.valor) > 0.5) return false;
   if (a.filhos.length !== b.filhos.length) return false;
   for (let i = 0; i < a.filhos.length; i++) {
