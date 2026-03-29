@@ -2930,28 +2930,11 @@ function runPlacement(
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
-  // --- COMPRESSION: merge identical sibling nodes into multi ---
-  if (typeof console !== 'undefined') {
-    const debugTree = (n: TreeNode, indent = ''): string => {
-      const lbl = n.label ? ` [${n.label}]` : '';
-      let s = `${indent}${n.tipo}${Math.round(n.valor)} (x${n.multi})${lbl}\n`;
-      for (const c of n.filhos) s += debugTree(c, indent + '  ');
-      return s;
-    };
-    console.log('[CNC-ENGINE] Tree BEFORE compression:\n' + debugTree(tree));
-  }
-  compressTree(tree);
-  if (typeof console !== 'undefined') {
-    const debugTree = (n: TreeNode, indent = ''): string => {
-      const lbl = n.label ? ` [${n.label}]` : '';
-      let s = `${indent}${n.tipo}${Math.round(n.valor)} (x${n.multi})${lbl}\n`;
-      for (const c of n.filhos) s += debugTree(c, indent + '  ');
-      return s;
-    };
-    console.log('[CNC-ENGINE] Tree AFTER compression:\n' + debugTree(tree));
-  }
+  // --- CANONICAL NORMALIZATION: rebuild tree from final placed rectangles ---
+  const normalizedTree = canonicalizeTree(tree);
+  compressTree(normalizedTree);
 
-  return { tree, area: placedArea, remaining };
+  return { tree: normalizedTree, area: placedArea, remaining };
 }
 
 /**
@@ -3275,23 +3258,12 @@ function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
 
 /**
  * COMPRESSÃO DA ÁRVORE: Mescla nós irmãos idênticos em um único nó com multi > 1.
- * 
- * Executa bottom-up: primeiro comprime os filhos, depois mescla no nível atual.
- * 
- * Exemplo:
- *   Antes: Z725(x1), Z725(x1), Z725(x1), Z725(x1)
- *   Depois: Z725(x4)
- * 
- * Isso produz a representação compacta esperada pelo padrão de corte CNC,
- * sem conflitar com a estrutura hierárquica dos nós.
  */
 function compressTree(node: TreeNode): void {
-  // 1. Recurse into all children first (bottom-up)
   for (const child of node.filhos) {
     compressTree(child);
   }
 
-  // 2. Merge identical siblings at current level
   if (node.filhos.length <= 1) return;
 
   const compressed: TreeNode[] = [];
@@ -3314,6 +3286,195 @@ function compressTree(node: TreeNode): void {
   }
 
   node.filhos = compressed;
+}
+
+type PlacedRect = { x: number; y: number; w: number; h: number; label?: string };
+
+function extractPlacedRectangles(tree: TreeNode): PlacedRect[] {
+  const rects: PlacedRect[] = [];
+  let xOff = 0;
+
+  for (const xNode of tree.filhos) {
+    for (let ix = 0; ix < xNode.multi; ix++) {
+      const baseX = xOff;
+      let yOff = 0;
+
+      for (const yNode of xNode.filhos) {
+        for (let iy = 0; iy < yNode.multi; iy++) {
+          const baseY = yOff;
+          let zOff = 0;
+
+          for (const zNode of yNode.filhos) {
+            for (let iz = 0; iz < zNode.multi; iz++) {
+              const currentX = baseX + zOff;
+
+              if (zNode.filhos.length === 0) {
+                rects.push({ x: currentX, y: baseY, w: zNode.valor, h: yNode.valor, label: zNode.label });
+              } else {
+                let wOff = 0;
+                for (const wNode of zNode.filhos) {
+                  for (let iw = 0; iw < wNode.multi; iw++) {
+                    const currentY = baseY + wOff;
+
+                    if (wNode.filhos.length === 0) {
+                      rects.push({ x: currentX, y: currentY, w: zNode.valor, h: wNode.valor, label: wNode.label || zNode.label });
+                    } else {
+                      let qOff = 0;
+                      for (const qNode of wNode.filhos) {
+                        for (let iq = 0; iq < qNode.multi; iq++) {
+                          rects.push({ x: currentX + qOff, y: currentY, w: qNode.valor, h: wNode.valor, label: qNode.label || wNode.label || zNode.label });
+                          qOff += qNode.valor;
+                        }
+                      }
+                    }
+
+                    wOff += wNode.valor;
+                  }
+                }
+              }
+
+              zOff += zNode.valor;
+            }
+          }
+
+          yOff += yNode.valor;
+        }
+      }
+
+      xOff += xNode.valor;
+    }
+  }
+
+  return rects;
+}
+
+function isClose(a: number, b: number, eps: number = 0.5): boolean {
+  return Math.abs(a - b) <= eps;
+}
+
+function getCanonicalCuts(rects: PlacedRect[], axis: "x" | "y", size: number): number[] {
+  const edges = new Set<number>([0, size]);
+  for (const r of rects) {
+    edges.add(axis === "x" ? r.x : r.y);
+    edges.add(axis === "x" ? r.x + r.w : r.y + r.h);
+  }
+
+  return [...edges]
+    .sort((a, b) => a - b)
+    .filter((cut) => {
+      if (cut <= 0 || cut >= size) return false;
+      const hasBefore = rects.some((r) => (axis === "x" ? r.x + r.w <= cut + 0.5 : r.y + r.h <= cut + 0.5));
+      const hasAfter = rects.some((r) => (axis === "x" ? r.x >= cut - 0.5 : r.y >= cut - 0.5));
+      const crosses = rects.some((r) => {
+        const start = axis === "x" ? r.x : r.y;
+        const end = axis === "x" ? r.x + r.w : r.y + r.h;
+        return start < cut - 0.5 && end > cut + 0.5;
+      });
+      return hasBefore && hasAfter && !crosses;
+    });
+}
+
+function normalizeRectsToSegment(rects: PlacedRect[], axis: "x" | "y", offset: number): PlacedRect[] {
+  return rects.map((r) =>
+    axis === "x"
+      ? { ...r, x: r.x - offset }
+      : { ...r, y: r.y - offset },
+  );
+}
+
+function buildCanonicalChildren(
+  parent: TreeNode,
+  rects: PlacedRect[],
+  regionW: number,
+  regionH: number,
+  nextType: Exclude<NodeType, "ROOT" | "X">,
+): boolean {
+  if (rects.length === 0) return true;
+
+  if (nextType === "Q") {
+    const cuts = getCanonicalCuts(rects, "x", regionW);
+    const boundaries = [0, ...cuts, regionW];
+
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      const start = boundaries[i];
+      const end = boundaries[i + 1];
+      const segRects = rects.filter((r) => r.x >= start - 0.5 && r.x + r.w <= end + 0.5);
+      if (segRects.length === 0) continue;
+      if (segRects.length !== 1) return false;
+      const rect = segRects[0];
+      if (!isClose(rect.y, 0) || !isClose(rect.h, regionH) || !isClose(rect.x, start) || !isClose(rect.w, end - start)) return false;
+      parent.filhos.push({ id: gid(), tipo: "Q", valor: end - start, multi: 1, filhos: [], label: rect.label });
+    }
+
+    return parent.filhos.length > 0;
+  }
+
+  const axis = nextType === "Y" || nextType === "W" ? "y" : "x";
+  const size = axis === "x" ? regionW : regionH;
+  const cuts = getCanonicalCuts(rects, axis, size);
+  const boundaries = [0, ...cuts, size];
+
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const start = boundaries[i];
+    const end = boundaries[i + 1];
+    const segRects = rects.filter((r) =>
+      axis === "x"
+        ? r.x >= start - 0.5 && r.x + r.w <= end + 0.5
+        : r.y >= start - 0.5 && r.y + r.h <= end + 0.5,
+    );
+    if (segRects.length === 0) continue;
+
+    const segmentSize = end - start;
+    const child: TreeNode = { id: gid(), tipo: nextType, valor: segmentSize, multi: 1, filhos: [] };
+    const localRects = normalizeRectsToSegment(segRects, axis, start);
+
+    if (nextType === "Z" && localRects.length === 1) {
+      const rect = localRects[0];
+      if (isClose(rect.x, 0) && isClose(rect.y, 0) && isClose(rect.w, segmentSize) && isClose(rect.h, regionH)) {
+        child.label = rect.label;
+        parent.filhos.push(child);
+        continue;
+      }
+    }
+
+    if (nextType === "W" && localRects.length === 1) {
+      const rect = localRects[0];
+      if (isClose(rect.x, 0) && isClose(rect.y, 0) && isClose(rect.w, regionW) && isClose(rect.h, segmentSize)) {
+        child.label = rect.label;
+        parent.filhos.push(child);
+        continue;
+      }
+    }
+
+    const childW = axis === "x" ? segmentSize : regionW;
+    const childH = axis === "y" ? segmentSize : regionH;
+    const followingType = nextType === "Y" ? "Z" : nextType === "Z" ? "W" : "Q";
+
+    if (!buildCanonicalChildren(child, localRects, childW, childH, followingType)) {
+      return false;
+    }
+
+    parent.filhos.push(child);
+  }
+
+  return parent.filhos.length > 0;
+}
+
+function canonicalizeTree(tree: TreeNode): TreeNode {
+  const rects = extractPlacedRectangles(tree);
+  if (rects.length === 0) return tree;
+
+  const totalW = Math.max(...rects.map((r) => r.x + r.w));
+  const totalH = Math.max(...rects.map((r) => r.y + r.h));
+  const canonicalRoot = createRoot(totalW, totalH);
+  const xNode: TreeNode = { id: gid(), tipo: "X", valor: totalW, multi: 1, filhos: [] };
+  canonicalRoot.filhos.push(xNode);
+
+  if (!buildCanonicalChildren(xNode, rects, totalW, totalH, "Y")) {
+    return tree;
+  }
+
+  return canonicalRoot;
 }
 
 
