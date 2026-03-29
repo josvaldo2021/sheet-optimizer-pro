@@ -2931,7 +2931,25 @@ function runPlacement(
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
   // --- COMPRESSION: merge identical sibling nodes into multi ---
+  if (typeof console !== 'undefined') {
+    const debugTree = (n: TreeNode, indent = ''): string => {
+      const lbl = n.label ? ` [${n.label}]` : '';
+      let s = `${indent}${n.tipo}${Math.round(n.valor)} (x${n.multi})${lbl}\n`;
+      for (const c of n.filhos) s += debugTree(c, indent + '  ');
+      return s;
+    };
+    console.log('[CNC-ENGINE] Tree BEFORE compression:\n' + debugTree(tree));
+  }
   compressTree(tree);
+  if (typeof console !== 'undefined') {
+    const debugTree = (n: TreeNode, indent = ''): string => {
+      const lbl = n.label ? ` [${n.label}]` : '';
+      let s = `${indent}${n.tipo}${Math.round(n.valor)} (x${n.multi})${lbl}\n`;
+      for (const c of n.filhos) s += debugTree(c, indent + '  ');
+      return s;
+    };
+    console.log('[CNC-ENGINE] Tree AFTER compression:\n' + debugTree(tree));
+  }
 
   return { tree, area: placedArea, remaining };
 }
