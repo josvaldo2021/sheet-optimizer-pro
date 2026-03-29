@@ -3243,6 +3243,7 @@ function unifyColumnWaste(
  * Does NOT compare labels (they're display-only and reassigned by annotateTreeLabels).
  */
 function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
+  if (a.tipo !== b.tipo) return false;
   if (Math.abs(a.valor - b.valor) > 0.5) return false;
   if (a.filhos.length !== b.filhos.length) return false;
   for (let i = 0; i < a.filhos.length; i++) {
