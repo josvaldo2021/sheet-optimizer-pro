@@ -2656,15 +2656,23 @@ function runPlacement(
         }
         if (o.w <= freeW && o.h <= usableH) {
           // Residual dominance: if leftover width can't fit any piece, extend to full freeW
+          // BUT: don't expand if remaining pieces share this width (keeps columns uniform for compression)
           let effectiveW = o.w;
           const residualW = freeW - o.w;
           if (residualW > 0) {
-            const xSibValues = tree.filhos.map((x) => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
-              effectiveW = freeW;
+            const sameDimCount = remaining.slice(1).filter(p =>
+              oris(p).some(ori => Math.abs(ori.w - o.w) < 0.5 || Math.abs(ori.h - o.w) < 0.5)
+            ).length;
+            if (sameDimCount === 0) {
+              const xSibValues = tree.filhos.map((x) => x.valor);
+              if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
+                effectiveW = freeW;
+              }
             }
           }
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          // Penalty for creating new columns — prefer reusing existing columns
+          const newColPenalty = 0.3;
+          const score = ((freeW - effectiveW) / usableW) * 0.5 + newColPenalty;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
