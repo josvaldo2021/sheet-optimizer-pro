@@ -3445,6 +3445,9 @@ function tryBuildByAxis(
 
   if (boundaries.length <= 1) return false;
 
+  const hasRealSubdivision = boundaries.length > 2 || boundaries[boundaries.length - 1] < size - 0.5;
+  if (!hasRealSubdivision) return false;
+
   const builtChildren: TreeNode[] = [];
 
   for (let i = 0; i < boundaries.length - 1; i++) {
@@ -3480,6 +3483,17 @@ function tryBuildByAxis(
     const nextPreferredAxis: CanonicalAxis = axis === "x" ? "y" : "x";
     const nextVerticalDepth = axis === "x" ? verticalDepth + 1 : verticalDepth;
     const nextHorizontalDepth = axis === "y" ? horizontalDepth + 1 : horizontalDepth;
+
+    const sameRegion =
+      localRects.length === rects.length &&
+      isClose(childW, regionW) &&
+      isClose(childH, regionH) &&
+      localRects.every((rect, idx) => {
+        const prev = rects[idx];
+        return prev && isClose(rect.x, prev.x) && isClose(rect.y, prev.y) && isClose(rect.w, prev.w) && isClose(rect.h, prev.h);
+      });
+
+    if (sameRegion) return false;
 
     if (!buildCanonicalRegion(child, localRects, childW, childH, nextPreferredAxis, nextVerticalDepth, nextHorizontalDepth)) {
       return false;
