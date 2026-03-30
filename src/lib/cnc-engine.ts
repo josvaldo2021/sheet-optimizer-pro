@@ -3419,6 +3419,43 @@ function getTreeOccupiedExtents(tree: TreeNode, rects: PlacedRect[]): { w: numbe
   return { w: Math.max(treeW, rectW), h: Math.max(treeH, rectH) };
 }
 
+type CanonicalBandSegment = { x: number; w: number; label?: string };
+type CanonicalBand = { y: number; h: number; segments: CanonicalBandSegment[] };
+
+function buildCanonicalBands(rects: PlacedRect[], totalH: number): CanonicalBand[] {
+  const yEdges = [...new Set([0, totalH, ...rects.flatMap((r) => [r.y, r.y + r.h])])]
+    .sort((a, b) => a - b);
+
+  const bands: CanonicalBand[] = [];
+
+  for (let i = 0; i < yEdges.length - 1; i++) {
+    const y = yEdges[i];
+    const nextY = yEdges[i + 1];
+    const h = nextY - y;
+    if (h <= 0.5) continue;
+
+    const coveringRects = rects
+      .filter((r) => r.y <= y + 0.5 && r.y + r.h >= nextY - 0.5)
+      .sort((a, b) => a.x - b.x);
+
+    if (coveringRects.length === 0) continue;
+
+    bands.push({
+      y,
+      h,
+      segments: coveringRects.map((r) => ({ x: r.x, w: r.w, label: r.label })),
+    });
+  }
+
+  return bands;
+}
+
+function getBandSignature(band: CanonicalBand): string {
+  return band.segments
+    .map((segment) => `${segment.x.toFixed(2)}:${segment.w.toFixed(2)}`)
+    .join("|");
+}
+
 function getCanonicalStateKey(
   rects: PlacedRect[],
   regionW: number,
@@ -3563,12 +3600,62 @@ function canonicalizeTree(tree: TreeNode): TreeNode {
   if (rects.length === 0) return tree;
 
   const { w: totalW, h: totalH } = getTreeOccupiedExtents(tree, rects);
+  const bands = buildCanonicalBands(rects, totalH);
+  if (bands.length === 0) return tree;
+
   const canonicalRoot = createRoot(totalW, totalH);
   const xNode: TreeNode = { id: gid(), tipo: "X", valor: totalW, multi: 1, filhos: [] };
   canonicalRoot.filhos.push(xNode);
 
-  if (!buildCanonicalRegion(xNode, rects, totalW, totalH, "y", 1, 0, new Set())) {
-    return tree;
+  for (let i = 0; i < bands.length; ) {
+    const currentBand = bands[i];
+    const signature = getBandSignature(currentBand);
+    let j = i + 1;
+
+    while (j < bands.length && getBandSignature(bands[j]) === signature) {
+      j++;
+    }
+
+    const nextBandY = j < bands.length ? bands[j].y : totalH;
+    const yNode: TreeNode = {
+      id: gid(),
+      tipo: "Y",
+      valor: nextBandY - currentBand.y,
+      multi: 1,
+      filhos: [],
+    };
+
+    currentBand.segments.forEach((segment, segmentIndex) => {
+      const zNode: TreeNode = {
+        id: gid(),
+        tipo: "Z",
+        valor: segment.w,
+        multi: 1,
+        filhos: [],
+      };
+
+      if (j - i === 1) {
+        zNode.label = segment.label;
+      } else {
+        for (let bandIndex = i; bandIndex < j; bandIndex++) {
+          const bandSegment = bands[bandIndex].segments[segmentIndex];
+          const wNode: TreeNode = {
+            id: gid(),
+            tipo: "W",
+            valor: bands[bandIndex].h,
+            multi: 1,
+            filhos: [],
+            label: bandSegment?.label,
+          };
+          zNode.filhos.push(wNode);
+        }
+      }
+
+      yNode.filhos.push(zNode);
+    });
+
+    xNode.filhos.push(yNode);
+    i = j;
   }
 
   if (tree.transposed) canonicalRoot.transposed = true;
