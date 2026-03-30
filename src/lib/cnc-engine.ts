@@ -3382,41 +3382,77 @@ function normalizeRectsToSegment(rects: PlacedRect[], axis: "x" | "y", offset: n
   );
 }
 
-function buildCanonicalChildren(
+type CanonicalAxis = "x" | "y";
+
+function getAxisNodeType(axis: CanonicalAxis, verticalDepth: number, horizontalDepth: number): NodeType {
+  if (axis === "x") {
+    if (verticalDepth <= 0) return "X";
+    if (verticalDepth === 1) return "Z";
+    return "Q";
+  }
+  return horizontalDepth <= 0 ? "Y" : "W";
+}
+
+function createCanonicalSegmentNode(
+  axis: CanonicalAxis,
+  size: number,
+  verticalDepth: number,
+  horizontalDepth: number,
+): TreeNode {
+  return {
+    id: gid(),
+    tipo: getAxisNodeType(axis, verticalDepth, horizontalDepth),
+    valor: size,
+    multi: 1,
+    filhos: [],
+  };
+}
+
+function getTreeOccupiedExtents(tree: TreeNode, rects: PlacedRect[]): { w: number; h: number } {
+  const treeW = tree.filhos.reduce((sum, x) => sum + x.valor * x.multi, 0);
+  const treeH = tree.filhos.reduce(
+    (maxH, x) => Math.max(maxH, x.filhos.reduce((sum, y) => sum + y.valor * y.multi, 0)),
+    0,
+  );
+  const rectW = Math.max(...rects.map((r) => r.x + r.w));
+  const rectH = Math.max(...rects.map((r) => r.y + r.h));
+  return { w: Math.max(treeW, rectW), h: Math.max(treeH, rectH) };
+}
+
+function tryBuildByAxis(
   parent: TreeNode,
   rects: PlacedRect[],
   regionW: number,
   regionH: number,
-  nextType: Exclude<NodeType, "ROOT" | "X">,
+  axis: CanonicalAxis,
+  verticalDepth: number,
+  horizontalDepth: number,
 ): boolean {
-  if (rects.length === 0) return true;
+  const size = axis === "x" ? regionW : regionH;
+  const explicitCuts = getCanonicalCuts(rects, axis, size);
+  let boundaries = [0, ...explicitCuts, size];
 
-  if (nextType === "Q") {
-    const cuts = getCanonicalCuts(rects, "x", regionW);
-    const boundaries = [0, ...cuts, regionW];
+  if (explicitCuts.length === 0 && rects.length === 1) {
+    const rect = rects[0];
+    const startsAtOrigin = axis === "x" ? isClose(rect.x, 0) : isClose(rect.y, 0);
+    const spansCrossAxis = axis === "x" ? isClose(rect.h, regionH) : isClose(rect.w, regionW);
+    const occupiedSize = axis === "x" ? rect.w : rect.h;
 
-    for (let i = 0; i < boundaries.length - 1; i++) {
-      const start = boundaries[i];
-      const end = boundaries[i + 1];
-      const segRects = rects.filter((r) => r.x >= start - 0.5 && r.x + r.w <= end + 0.5);
-      if (segRects.length === 0) continue;
-      if (segRects.length !== 1) return false;
-      const rect = segRects[0];
-      if (!isClose(rect.y, 0) || !isClose(rect.h, regionH) || !isClose(rect.x, start) || !isClose(rect.w, end - start)) return false;
-      parent.filhos.push({ id: gid(), tipo: "Q", valor: end - start, multi: 1, filhos: [], label: rect.label });
+    if (startsAtOrigin && spansCrossAxis && occupiedSize < size - 0.5) {
+      boundaries = [0, occupiedSize];
     }
-
-    return parent.filhos.length > 0;
   }
 
-  const axis = nextType === "Y" || nextType === "W" ? "y" : "x";
-  const size = axis === "x" ? regionW : regionH;
-  const cuts = getCanonicalCuts(rects, axis, size);
-  const boundaries = [0, ...cuts, size];
+  if (boundaries.length <= 1) return false;
+
+  const builtChildren: TreeNode[] = [];
 
   for (let i = 0; i < boundaries.length - 1; i++) {
     const start = boundaries[i];
     const end = boundaries[i + 1];
+    const segmentSize = end - start;
+    if (segmentSize <= 0.5) continue;
+
     const segRects = rects.filter((r) =>
       axis === "x"
         ? r.x >= start - 0.5 && r.x + r.w <= end + 0.5
@@ -3424,57 +3460,90 @@ function buildCanonicalChildren(
     );
     if (segRects.length === 0) continue;
 
-    const segmentSize = end - start;
-    const child: TreeNode = { id: gid(), tipo: nextType, valor: segmentSize, multi: 1, filhos: [] };
+    const child = createCanonicalSegmentNode(axis, segmentSize, verticalDepth, horizontalDepth);
     const localRects = normalizeRectsToSegment(segRects, axis, start);
-
-    if (nextType === "Z" && localRects.length === 1) {
-      const rect = localRects[0];
-      if (isClose(rect.x, 0) && isClose(rect.y, 0) && isClose(rect.w, segmentSize) && isClose(rect.h, regionH)) {
-        child.label = rect.label;
-        parent.filhos.push(child);
-        continue;
-      }
-    }
-
-    if (nextType === "W" && localRects.length === 1) {
-      const rect = localRects[0];
-      if (isClose(rect.x, 0) && isClose(rect.y, 0) && isClose(rect.w, regionW) && isClose(rect.h, segmentSize)) {
-        child.label = rect.label;
-        parent.filhos.push(child);
-        continue;
-      }
-    }
-
     const childW = axis === "x" ? segmentSize : regionW;
     const childH = axis === "y" ? segmentSize : regionH;
-    const followingType = nextType === "Y" ? "Z" : nextType === "Z" ? "W" : "Q";
 
-    if (!buildCanonicalChildren(child, localRects, childW, childH, followingType)) {
+    if (
+      localRects.length === 1 &&
+      isClose(localRects[0].x, 0) &&
+      isClose(localRects[0].y, 0) &&
+      isClose(localRects[0].w, childW) &&
+      isClose(localRects[0].h, childH)
+    ) {
+      child.label = localRects[0].label;
+      builtChildren.push(child);
+      continue;
+    }
+
+    const nextPreferredAxis: CanonicalAxis = axis === "x" ? "y" : "x";
+    const nextVerticalDepth = axis === "x" ? verticalDepth + 1 : verticalDepth;
+    const nextHorizontalDepth = axis === "y" ? horizontalDepth + 1 : horizontalDepth;
+
+    if (!buildCanonicalRegion(child, localRects, childW, childH, nextPreferredAxis, nextVerticalDepth, nextHorizontalDepth)) {
       return false;
     }
 
-    parent.filhos.push(child);
+    builtChildren.push(child);
   }
 
-  return parent.filhos.length > 0;
+  if (builtChildren.length === 0) return false;
+  parent.filhos.push(...builtChildren);
+  return true;
+}
+
+function buildCanonicalRegion(
+  parent: TreeNode,
+  rects: PlacedRect[],
+  regionW: number,
+  regionH: number,
+  preferredAxis: CanonicalAxis,
+  verticalDepth: number,
+  horizontalDepth: number,
+): boolean {
+  if (rects.length === 0) return true;
+
+  if (
+    rects.length === 1 &&
+    isClose(rects[0].x, 0) &&
+    isClose(rects[0].y, 0) &&
+    isClose(rects[0].w, regionW) &&
+    isClose(rects[0].h, regionH)
+  ) {
+    parent.label = rects[0].label;
+    return true;
+  }
+
+  if (tryBuildByAxis(parent, rects, regionW, regionH, preferredAxis, verticalDepth, horizontalDepth)) {
+    return true;
+  }
+
+  const fallbackAxis: CanonicalAxis = preferredAxis === "x" ? "y" : "x";
+  return tryBuildByAxis(parent, rects, regionW, regionH, fallbackAxis, verticalDepth, horizontalDepth);
 }
 
 function canonicalizeTree(tree: TreeNode): TreeNode {
   const rects = extractPlacedRectangles(tree);
   if (rects.length === 0) return tree;
 
-  const totalW = Math.max(...rects.map((r) => r.x + r.w));
-  const totalH = Math.max(...rects.map((r) => r.y + r.h));
+  const { w: totalW, h: totalH } = getTreeOccupiedExtents(tree, rects);
   const canonicalRoot = createRoot(totalW, totalH);
   const xNode: TreeNode = { id: gid(), tipo: "X", valor: totalW, multi: 1, filhos: [] };
   canonicalRoot.filhos.push(xNode);
 
-  if (!buildCanonicalChildren(xNode, rects, totalW, totalH, "Y")) {
+  if (!buildCanonicalRegion(xNode, rects, totalW, totalH, "y", 1, 0)) {
     return tree;
   }
 
+  if (tree.transposed) canonicalRoot.transposed = true;
   return canonicalRoot;
+}
+
+export function normalizeCutTree(tree: TreeNode): TreeNode {
+  const normalizedTree = canonicalizeTree(cloneTree(tree));
+  compressTree(normalizedTree);
+  return normalizedTree;
 }
 
 
