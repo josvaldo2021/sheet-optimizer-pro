@@ -3419,6 +3419,21 @@ function getTreeOccupiedExtents(tree: TreeNode, rects: PlacedRect[]): { w: numbe
   return { w: Math.max(treeW, rectW), h: Math.max(treeH, rectH) };
 }
 
+function getCanonicalStateKey(
+  rects: PlacedRect[],
+  regionW: number,
+  regionH: number,
+  preferredAxis: CanonicalAxis,
+  verticalDepth: number,
+  horizontalDepth: number,
+): string {
+  const rectKey = rects
+    .map((r) => `${r.x.toFixed(2)},${r.y.toFixed(2)},${r.w.toFixed(2)},${r.h.toFixed(2)}`)
+    .sort()
+    .join("|");
+  return `${preferredAxis}:${verticalDepth}:${horizontalDepth}:${regionW.toFixed(2)}:${regionH.toFixed(2)}:${rectKey}`;
+}
+
 function tryBuildByAxis(
   parent: TreeNode,
   rects: PlacedRect[],
@@ -3427,6 +3442,7 @@ function tryBuildByAxis(
   axis: CanonicalAxis,
   verticalDepth: number,
   horizontalDepth: number,
+  seenStates: Set<string>,
 ): boolean {
   const size = axis === "x" ? regionW : regionH;
   const explicitCuts = getCanonicalCuts(rects, axis, size);
@@ -3495,7 +3511,7 @@ function tryBuildByAxis(
 
     if (sameRegion) return false;
 
-    if (!buildCanonicalRegion(child, localRects, childW, childH, nextPreferredAxis, nextVerticalDepth, nextHorizontalDepth)) {
+    if (!buildCanonicalRegion(child, localRects, childW, childH, nextPreferredAxis, nextVerticalDepth, nextHorizontalDepth, seenStates)) {
       return false;
     }
 
@@ -3515,8 +3531,13 @@ function buildCanonicalRegion(
   preferredAxis: CanonicalAxis,
   verticalDepth: number,
   horizontalDepth: number,
+  seenStates: Set<string>,
 ): boolean {
   if (rects.length === 0) return true;
+
+  const stateKey = getCanonicalStateKey(rects, regionW, regionH, preferredAxis, verticalDepth, horizontalDepth);
+  if (seenStates.has(stateKey)) return false;
+  seenStates.add(stateKey);
 
   if (
     rects.length === 1 &&
@@ -3529,12 +3550,12 @@ function buildCanonicalRegion(
     return true;
   }
 
-  if (tryBuildByAxis(parent, rects, regionW, regionH, preferredAxis, verticalDepth, horizontalDepth)) {
+  if (tryBuildByAxis(parent, rects, regionW, regionH, preferredAxis, verticalDepth, horizontalDepth, seenStates)) {
     return true;
   }
 
   const fallbackAxis: CanonicalAxis = preferredAxis === "x" ? "y" : "x";
-  return tryBuildByAxis(parent, rects, regionW, regionH, fallbackAxis, verticalDepth, horizontalDepth);
+  return tryBuildByAxis(parent, rects, regionW, regionH, fallbackAxis, verticalDepth, horizontalDepth, seenStates);
 }
 
 function canonicalizeTree(tree: TreeNode): TreeNode {
@@ -3546,7 +3567,7 @@ function canonicalizeTree(tree: TreeNode): TreeNode {
   const xNode: TreeNode = { id: gid(), tipo: "X", valor: totalW, multi: 1, filhos: [] };
   canonicalRoot.filhos.push(xNode);
 
-  if (!buildCanonicalRegion(xNode, rects, totalW, totalH, "y", 1, 0)) {
+  if (!buildCanonicalRegion(xNode, rects, totalW, totalH, "y", 1, 0, new Set())) {
     return tree;
   }
 
