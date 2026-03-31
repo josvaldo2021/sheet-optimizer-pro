@@ -1828,8 +1828,12 @@ export function optimizeV6(
     }
   }
 
-  const finalTree = bestTree || createRoot(usableW, usableH);
-  if (bestTransposed) finalTree.transposed = true;
+  let finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) {
+    finalTree.transposed = true;
+    // Normalize transposed tree to canonical hierarchy (X,Z,Q=vertical; Y,W=horizontal)
+    finalTree = normalizeTree(finalTree, usableW, usableH);
+  }
 
   return {
     tree: finalTree,
