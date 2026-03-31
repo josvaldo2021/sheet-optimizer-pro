@@ -897,14 +897,11 @@ function violatesZMinBreak(
 
 function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number, minBreak: number = 0): number {
   let filledArea = 0;
-  const T = tree.transposed || false;
-  const totalW = T ? usableH : usableW;
-  const totalH = T ? usableW : usableH;
 
   for (const colX of tree.filhos) {
     // Void in Y direction (remaining height in column)
     const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-    const freeH = totalH - usedH;
+    const freeH = usableH - usedH;
     if (freeH > 0) {
       filledArea += fillRect(tree, colX, remaining, colX.valor, freeH, "Y", minBreak);
     }
@@ -923,82 +920,6 @@ function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH:
         const freeW = yNode.valor - usedW;
         if (freeW > 0) {
           filledArea += fillRectW(tree, remaining, zNode, zNode.valor, freeW, minBreak);
-        }
-      }
-    }
-  }
-
-  // --- X-WASTE: free horizontal space to the right of all columns ---
-  if (remaining.length > 0) {
-    const usedX = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    let freeX = totalW - usedX;
-
-    while (freeX >= 50 && remaining.length > 0) {
-      // Find the best piece that fits in freeX × totalH
-      let bestIdx = -1;
-      let bestO: { w: number; h: number } | null = null;
-      let bestArea = 0;
-
-      for (let i = 0; i < remaining.length; i++) {
-        const pc = remaining[i];
-        for (const o of oris(pc)) {
-          if (o.w <= freeX && o.h <= totalH) {
-            const pieceArea = o.w * o.h;
-            if (pieceArea > bestArea) {
-              bestArea = pieceArea;
-              bestIdx = i;
-              bestO = o;
-            }
-          }
-        }
-      }
-
-      if (bestIdx < 0 || !bestO) break;
-
-      const pc = remaining[bestIdx];
-
-      // Create a new X column with the piece width (or full freeX if residual is too small)
-      let colW = bestO.w;
-      const residualX = freeX - bestO.w;
-      // Check if any remaining piece can fit in residualX
-      const canFitMoreX = remaining.some((p, idx) => idx !== bestIdx &&
-        oris(p).some(o => o.w <= residualX && o.h <= totalH)
-      );
-      if (!canFitMoreX && residualX > 0) colW = freeX;
-
-      const colId = gid();
-      const newCol: TreeNode = { id: colId, tipo: "X", valor: colW, multi: 1, filhos: [] };
-      tree.filhos.push(newCol);
-
-      // Create Y strip with piece height
-      let stripH = bestO.h;
-      const residualH = totalH - bestO.h;
-      const canFitMoreH = remaining.some((p, idx) => idx !== bestIdx &&
-        oris(p).some(o => o.w <= colW && o.h <= residualH)
-      );
-      if (!canFitMoreH && residualH > 0) stripH = totalH;
-
-      const yId = gid();
-      const yNode: TreeNode = { id: yId, tipo: "Y", valor: stripH, multi: 1, filhos: [] };
-      newCol.filhos.push(yNode);
-
-      filledArea += createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
-      remaining.splice(bestIdx, 1);
-      freeX -= colW;
-
-      // Try to fill remaining space in this new column
-      if (remaining.length > 0) {
-        // Z-waste in the Y strip
-        const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-        const freeZ = colW - usedZ;
-        if (freeZ > 0) {
-          filledArea += fillRectZ(tree, yNode, remaining, freeZ, stripH, minBreak);
-        }
-        // Y-waste (remaining height)
-        const usedH = newCol.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-        const freeH = totalH - usedH;
-        if (freeH > 0) {
-          filledArea += fillRect(tree, newCol, remaining, colW, freeH, "Y", minBreak);
         }
       }
     }
@@ -2656,23 +2577,15 @@ function runPlacement(
         }
         if (o.w <= freeW && o.h <= usableH) {
           // Residual dominance: if leftover width can't fit any piece, extend to full freeW
-          // BUT: don't expand if remaining pieces share this width (keeps columns uniform for compression)
           let effectiveW = o.w;
           const residualW = freeW - o.w;
           if (residualW > 0) {
-            const sameDimCount = remaining.slice(1).filter(p =>
-              oris(p).some(ori => Math.abs(ori.w - o.w) < 0.5 || Math.abs(ori.h - o.w) < 0.5)
-            ).length;
-            if (sameDimCount === 0) {
-              const xSibValues = tree.filhos.map((x) => x.valor);
-              if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
-                effectiveW = freeW;
-              }
+            const xSibValues = tree.filhos.map((x) => x.valor);
+            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
+              effectiveW = freeW;
             }
           }
-          // Penalty for creating new columns — prefer reusing existing columns
-          const newColPenalty = 0.3;
-          const score = ((freeW - effectiveW) / usableW) * 0.5 + newColPenalty;
+          const score = ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
@@ -2930,11 +2843,7 @@ function runPlacement(
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
-  // --- CANONICAL NORMALIZATION: rebuild tree from final placed rectangles ---
-  const normalizedTree = canonicalizeTree(tree);
-  compressTree(normalizedTree);
-
-  return { tree: normalizedTree, area: placedArea, remaining };
+  return { tree, area: placedArea, remaining };
 }
 
 /**
@@ -2959,72 +2868,6 @@ function unifyColumnWaste(
 ): number {
   let addedArea = 0;
   if (remaining.length === 0) return 0;
-  const T = tree.transposed || false;
-  const totalW = T ? usableH : usableW;
-  const totalH = T ? usableW : usableH;
-
-  // ==================== PASS 0: Fill X-waste (free width to the right of all columns) ====================
-  {
-    const usedX = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    let freeX = totalW - usedX;
-
-    while (freeX >= 50 && remaining.length > 0) {
-      let bestIdx = -1;
-      let bestO: { w: number; h: number } | null = null;
-      let bestArea = 0;
-
-      for (let i = 0; i < remaining.length; i++) {
-        const pc = remaining[i];
-        for (const o of oris(pc)) {
-          if (o.w <= freeX && o.h <= totalH) {
-            if (o.w * o.h > bestArea) {
-              bestArea = o.w * o.h;
-              bestIdx = i;
-              bestO = o;
-            }
-          }
-        }
-      }
-      if (bestIdx < 0 || !bestO) break;
-
-      const pc = remaining[bestIdx];
-      let colW = bestO.w;
-      const residualX = freeX - bestO.w;
-      const canFitMoreX = remaining.some((p, idx) => idx !== bestIdx &&
-        oris(p).some(o => o.w <= residualX && o.h <= totalH)
-      );
-      if (!canFitMoreX && residualX > 0) colW = freeX;
-
-      const colId = gid();
-      const newCol: TreeNode = { id: colId, tipo: "X", valor: colW, multi: 1, filhos: [] };
-      tree.filhos.push(newCol);
-
-      let stripH = bestO.h;
-      const residualH = totalH - bestO.h;
-      const canFitMoreH = remaining.some((p, idx) => idx !== bestIdx &&
-        oris(p).some(o => o.w <= colW && o.h <= residualH)
-      );
-      if (!canFitMoreH && residualH > 0) stripH = totalH;
-
-      const yNode: TreeNode = { id: gid(), tipo: "Y", valor: stripH, multi: 1, filhos: [] };
-      newCol.filhos.push(yNode);
-
-      addedArea += createPieceNodes(tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
-      remaining.splice(bestIdx, 1);
-      freeX -= colW;
-
-      // Fill remaining space in the new column
-      if (remaining.length > 0) {
-        const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-        const freeZ = colW - usedZ;
-        if (freeZ > 0) addedArea += fillRectZ(tree, yNode, remaining, freeZ, stripH, minBreak);
-
-        const usedH2 = newCol.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-        const freeH2 = totalH - usedH2;
-        if (freeH2 > 0) addedArea += fillRect(tree, newCol, remaining, colW, freeH2, "Y", minBreak);
-      }
-    }
-  }
 
   // ==================== PASS 1: Fill Y-waste (free height in each X column) ====================
   for (const colX of tree.filhos) {
@@ -3235,247 +3078,6 @@ function unifyColumnWaste(
   return addedArea;
 }
 
-
-// ========== TREE COMPRESSION ==========
-
-/**
- * Checks if two nodes have the same structure (valor + children recursively).
- * Does NOT compare multi at the top level (caller handles merging).
- * Does NOT compare labels (they're display-only and reassigned by annotateTreeLabels).
- */
-function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
-  if (a.tipo !== b.tipo) return false;
-  if (Math.abs(a.valor - b.valor) > 0.5) return false;
-  if (a.filhos.length !== b.filhos.length) return false;
-  for (let i = 0; i < a.filhos.length; i++) {
-    const ca = a.filhos[i], cb = b.filhos[i];
-    if (Math.abs(ca.valor - cb.valor) > 0.5) return false;
-    if (ca.multi !== cb.multi) return false;
-    if (!nodesStructurallyEqual(ca, cb)) return false;
-  }
-  return true;
-}
-
-/**
- * COMPRESSÃO DA ÁRVORE: Mescla nós irmãos idênticos em um único nó com multi > 1.
- */
-function compressTree(node: TreeNode): void {
-  for (const child of node.filhos) {
-    compressTree(child);
-  }
-
-  if (node.filhos.length <= 1) return;
-
-  const compressed: TreeNode[] = [];
-  const used = new Set<number>();
-
-  for (let i = 0; i < node.filhos.length; i++) {
-    if (used.has(i)) continue;
-    const current = node.filhos[i];
-
-    for (let j = i + 1; j < node.filhos.length; j++) {
-      if (used.has(j)) continue;
-      if (nodesStructurallyEqual(current, node.filhos[j])) {
-        current.multi += node.filhos[j].multi;
-        used.add(j);
-      }
-    }
-
-    compressed.push(current);
-    used.add(i);
-  }
-
-  node.filhos = compressed;
-}
-
-type PlacedRect = { x: number; y: number; w: number; h: number; label?: string };
-
-function extractPlacedRectangles(tree: TreeNode): PlacedRect[] {
-  const rects: PlacedRect[] = [];
-  let xOff = 0;
-
-  for (const xNode of tree.filhos) {
-    for (let ix = 0; ix < xNode.multi; ix++) {
-      const baseX = xOff;
-      let yOff = 0;
-
-      for (const yNode of xNode.filhos) {
-        for (let iy = 0; iy < yNode.multi; iy++) {
-          const baseY = yOff;
-          let zOff = 0;
-
-          for (const zNode of yNode.filhos) {
-            for (let iz = 0; iz < zNode.multi; iz++) {
-              const currentX = baseX + zOff;
-
-              if (zNode.filhos.length === 0) {
-                rects.push({ x: currentX, y: baseY, w: zNode.valor, h: yNode.valor, label: zNode.label });
-              } else {
-                let wOff = 0;
-                for (const wNode of zNode.filhos) {
-                  for (let iw = 0; iw < wNode.multi; iw++) {
-                    const currentY = baseY + wOff;
-
-                    if (wNode.filhos.length === 0) {
-                      rects.push({ x: currentX, y: currentY, w: zNode.valor, h: wNode.valor, label: wNode.label || zNode.label });
-                    } else {
-                      let qOff = 0;
-                      for (const qNode of wNode.filhos) {
-                        for (let iq = 0; iq < qNode.multi; iq++) {
-                          rects.push({ x: currentX + qOff, y: currentY, w: qNode.valor, h: wNode.valor, label: qNode.label || wNode.label || zNode.label });
-                          qOff += qNode.valor;
-                        }
-                      }
-                    }
-
-                    wOff += wNode.valor;
-                  }
-                }
-              }
-
-              zOff += zNode.valor;
-            }
-          }
-
-          yOff += yNode.valor;
-        }
-      }
-
-      xOff += xNode.valor;
-    }
-  }
-
-  return rects;
-}
-
-function isClose(a: number, b: number, eps: number = 0.5): boolean {
-  return Math.abs(a - b) <= eps;
-}
-
-function getCanonicalCuts(rects: PlacedRect[], axis: "x" | "y", size: number): number[] {
-  const edges = new Set<number>([0, size]);
-  for (const r of rects) {
-    edges.add(axis === "x" ? r.x : r.y);
-    edges.add(axis === "x" ? r.x + r.w : r.y + r.h);
-  }
-
-  return [...edges]
-    .sort((a, b) => a - b)
-    .filter((cut) => {
-      if (cut <= 0 || cut >= size) return false;
-      const hasBefore = rects.some((r) => (axis === "x" ? r.x + r.w <= cut + 0.5 : r.y + r.h <= cut + 0.5));
-      const hasAfter = rects.some((r) => (axis === "x" ? r.x >= cut - 0.5 : r.y >= cut - 0.5));
-      const crosses = rects.some((r) => {
-        const start = axis === "x" ? r.x : r.y;
-        const end = axis === "x" ? r.x + r.w : r.y + r.h;
-        return start < cut - 0.5 && end > cut + 0.5;
-      });
-      return hasBefore && hasAfter && !crosses;
-    });
-}
-
-function normalizeRectsToSegment(rects: PlacedRect[], axis: "x" | "y", offset: number): PlacedRect[] {
-  return rects.map((r) =>
-    axis === "x"
-      ? { ...r, x: r.x - offset }
-      : { ...r, y: r.y - offset },
-  );
-}
-
-function buildCanonicalChildren(
-  parent: TreeNode,
-  rects: PlacedRect[],
-  regionW: number,
-  regionH: number,
-  nextType: Exclude<NodeType, "ROOT" | "X">,
-): boolean {
-  if (rects.length === 0) return true;
-
-  if (nextType === "Q") {
-    const cuts = getCanonicalCuts(rects, "x", regionW);
-    const boundaries = [0, ...cuts, regionW];
-
-    for (let i = 0; i < boundaries.length - 1; i++) {
-      const start = boundaries[i];
-      const end = boundaries[i + 1];
-      const segRects = rects.filter((r) => r.x >= start - 0.5 && r.x + r.w <= end + 0.5);
-      if (segRects.length === 0) continue;
-      if (segRects.length !== 1) return false;
-      const rect = segRects[0];
-      if (!isClose(rect.y, 0) || !isClose(rect.h, regionH) || !isClose(rect.x, start) || !isClose(rect.w, end - start)) return false;
-      parent.filhos.push({ id: gid(), tipo: "Q", valor: end - start, multi: 1, filhos: [], label: rect.label });
-    }
-
-    return parent.filhos.length > 0;
-  }
-
-  const axis = nextType === "Y" || nextType === "W" ? "y" : "x";
-  const size = axis === "x" ? regionW : regionH;
-  const cuts = getCanonicalCuts(rects, axis, size);
-  const boundaries = [0, ...cuts, size];
-
-  for (let i = 0; i < boundaries.length - 1; i++) {
-    const start = boundaries[i];
-    const end = boundaries[i + 1];
-    const segRects = rects.filter((r) =>
-      axis === "x"
-        ? r.x >= start - 0.5 && r.x + r.w <= end + 0.5
-        : r.y >= start - 0.5 && r.y + r.h <= end + 0.5,
-    );
-    if (segRects.length === 0) continue;
-
-    const segmentSize = end - start;
-    const child: TreeNode = { id: gid(), tipo: nextType, valor: segmentSize, multi: 1, filhos: [] };
-    const localRects = normalizeRectsToSegment(segRects, axis, start);
-
-    if (nextType === "Z" && localRects.length === 1) {
-      const rect = localRects[0];
-      if (isClose(rect.x, 0) && isClose(rect.y, 0) && isClose(rect.w, segmentSize) && isClose(rect.h, regionH)) {
-        child.label = rect.label;
-        parent.filhos.push(child);
-        continue;
-      }
-    }
-
-    if (nextType === "W" && localRects.length === 1) {
-      const rect = localRects[0];
-      if (isClose(rect.x, 0) && isClose(rect.y, 0) && isClose(rect.w, regionW) && isClose(rect.h, segmentSize)) {
-        child.label = rect.label;
-        parent.filhos.push(child);
-        continue;
-      }
-    }
-
-    const childW = axis === "x" ? segmentSize : regionW;
-    const childH = axis === "y" ? segmentSize : regionH;
-    const followingType = nextType === "Y" ? "Z" : nextType === "Z" ? "W" : "Q";
-
-    if (!buildCanonicalChildren(child, localRects, childW, childH, followingType)) {
-      return false;
-    }
-
-    parent.filhos.push(child);
-  }
-
-  return parent.filhos.length > 0;
-}
-
-function canonicalizeTree(tree: TreeNode): TreeNode {
-  const rects = extractPlacedRectangles(tree);
-  if (rects.length === 0) return tree;
-
-  const totalW = Math.max(...rects.map((r) => r.x + r.w));
-  const totalH = Math.max(...rects.map((r) => r.y + r.h));
-  const canonicalRoot = createRoot(totalW, totalH);
-  const xNode: TreeNode = { id: gid(), tipo: "X", valor: totalW, multi: 1, filhos: [] };
-  canonicalRoot.filhos.push(xNode);
-
-  if (!buildCanonicalChildren(xNode, rects, totalW, totalH, "Y")) {
-    return tree;
-  }
-
-  return canonicalRoot;
-}
 
 
 /**
