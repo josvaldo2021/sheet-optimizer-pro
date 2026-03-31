@@ -2256,7 +2256,10 @@ export async function optimizeGeneticAsync(
       onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
     }
     let finalTree = bestTree || createRoot(usableW, usableH);
-    if (bestTransposed) finalTree.transposed = true;
+    if (bestTransposed) {
+      finalTree.transposed = true;
+      finalTree = normalizeTree(finalTree, usableW, usableH);
+    }
 
     // Pós-análise automática
     if (onProgress)
