@@ -3501,3 +3501,344 @@ function postOptimizeRegroup(
 
   return { tree: bestTree, area: bestArea, improved };
 }
+
+// ========== CANONICAL TREE NORMALIZATION ==========
+
+/**
+ * Rect in absolute physical coordinates (origin at bottom-left of usable area).
+ */
+interface AbsRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label?: string;
+}
+
+/**
+ * Extract absolute rectangles from a tree, converting transposed coordinates
+ * back to physical space.
+ */
+function extractAbsoluteRects(tree: TreeNode, usableW: number, usableH: number): AbsRect[] {
+  const rects: AbsRect[] = [];
+  const T = tree.transposed || false;
+
+  let xOff = 0;
+  for (const colX of tree.filhos) {
+    for (let ix = 0; ix < colX.multi; ix++) {
+      let yOff = 0;
+      for (const yNode of colX.filhos) {
+        for (let iy = 0; iy < yNode.multi; iy++) {
+          let zOff = 0;
+          for (const zNode of yNode.filhos) {
+            for (let iz = 0; iz < zNode.multi; iz++) {
+              if (zNode.filhos.length === 0) {
+                // Z leaf: piece occupies zNode.valor × yNode.valor
+                if (T) {
+                  rects.push({ x: yOff, y: xOff, w: yNode.valor, h: zNode.valor, label: zNode.label });
+                } else {
+                  rects.push({ x: xOff + zOff, y: yOff, w: zNode.valor, h: yNode.valor, label: zNode.label });
+                }
+              } else {
+                let wOff = 0;
+                for (const wNode of zNode.filhos) {
+                  for (let iw = 0; iw < wNode.multi; iw++) {
+                    if (wNode.filhos.length === 0) {
+                      if (T) {
+                        rects.push({ x: yOff + wOff, y: xOff + zOff, w: wNode.valor, h: zNode.valor, label: wNode.label });
+                      } else {
+                        rects.push({ x: xOff + zOff, y: yOff + wOff, w: zNode.valor, h: wNode.valor, label: wNode.label });
+                      }
+                    } else {
+                      let qOff = 0;
+                      for (const qNode of wNode.filhos) {
+                        for (let iq = 0; iq < qNode.multi; iq++) {
+                          if (T) {
+                            rects.push({ x: yOff + wOff, y: xOff + zOff + qOff, w: wNode.valor, h: qNode.valor, label: qNode.label });
+                          } else {
+                            rects.push({ x: xOff + zOff + qOff, y: yOff + wOff, w: qNode.valor, h: wNode.valor, label: qNode.label });
+                          }
+                          qOff += qNode.valor;
+                        }
+                      }
+                    }
+                    wOff += wNode.valor;
+                  }
+                }
+              }
+              zOff += zNode.valor;
+            }
+          }
+          yOff += yNode.valor;
+        }
+      }
+      xOff += colX.valor;
+    }
+  }
+
+  return rects;
+}
+
+/**
+ * Find vertical guillotine cuts in a set of rectangles within a bounding box.
+ * Returns sorted unique x-coordinates where cuts can be made, splitting all rects cleanly.
+ */
+function findVerticalCuts(rects: AbsRect[], bx: number, by: number, bw: number, bh: number): number[] {
+  // Collect all unique x-edges (relative to bx)
+  const edges = new Set<number>();
+  for (const r of rects) {
+    const left = r.x - bx;
+    const right = r.x + r.w - bx;
+    if (left > 0.5 && left < bw - 0.5) edges.add(Math.round(left));
+    if (right > 0.5 && right < bw - 0.5) edges.add(Math.round(right));
+  }
+
+  // A valid cut at position cx means no rectangle straddles it
+  const validCuts: number[] = [];
+  for (const cx of [...edges].sort((a, b) => a - b)) {
+    const absCx = bx + cx;
+    const straddles = rects.some(r => r.x < absCx - 0.5 && r.x + r.w > absCx + 0.5);
+    if (!straddles) validCuts.push(cx);
+  }
+
+  return validCuts;
+}
+
+/**
+ * Find horizontal guillotine cuts in a set of rectangles within a bounding box.
+ */
+function findHorizontalCuts(rects: AbsRect[], bx: number, by: number, bw: number, bh: number): number[] {
+  const edges = new Set<number>();
+  for (const r of rects) {
+    const bottom = r.y - by;
+    const top = r.y + r.h - by;
+    if (bottom > 0.5 && bottom < bh - 0.5) edges.add(Math.round(bottom));
+    if (top > 0.5 && top < bh - 0.5) edges.add(Math.round(top));
+  }
+
+  const validCuts: number[] = [];
+  for (const cy of [...edges].sort((a, b) => a - b)) {
+    const absCy = by + cy;
+    const straddles = rects.some(r => r.y < absCy - 0.5 && r.y + r.h > absCy + 0.5);
+    if (!straddles) validCuts.push(cy);
+  }
+
+  return validCuts;
+}
+
+/**
+ * Filter rects that intersect a bounding box.
+ */
+function rectsInBounds(rects: AbsRect[], bx: number, by: number, bw: number, bh: number): AbsRect[] {
+  return rects.filter(r =>
+    r.x >= bx - 0.5 && r.x + r.w <= bx + bw + 0.5 &&
+    r.y >= by - 0.5 && r.y + r.h <= by + bh + 0.5
+  );
+}
+
+/**
+ * Build canonical tree from absolute rectangles following strict cut hierarchy:
+ * - Level 0 (ROOT→X): vertical cuts → X children (width segments)
+ * - Level 1 (X→Y): horizontal cuts → Y children (height segments)
+ * - Level 2 (Y→Z): vertical cuts → Z children (width segments)
+ * - Level 3 (Z→W): horizontal cuts → W children (height segments)
+ * - Level 4 (W→Q): vertical cuts → Q children (width segments)
+ */
+function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number): TreeNode {
+  const root: TreeNode = { id: 'root', tipo: 'ROOT', valor: usableW, multi: 1, filhos: [] };
+
+  if (rects.length === 0) return root;
+
+  // Recursive subdivision following the hierarchy
+  type Level = 'X' | 'Y' | 'Z' | 'W' | 'Q';
+  const levelSequence: Level[] = ['X', 'Y', 'Z', 'W', 'Q'];
+  // X=vertical, Y=horizontal, Z=vertical, W=horizontal, Q=vertical
+  const isVertical = (level: Level) => level === 'X' || level === 'Z' || level === 'Q';
+
+  function subdivide(
+    parentNode: TreeNode,
+    levelIdx: number,
+    subRects: AbsRect[],
+    bx: number, by: number, bw: number, bh: number,
+  ): void {
+    if (subRects.length === 0 || levelIdx >= levelSequence.length) return;
+
+    const level = levelSequence[levelIdx];
+    const vertical = isVertical(level);
+
+    // Find cuts at this level
+    const cuts = vertical
+      ? findVerticalCuts(subRects, bx, by, bw, bh)
+      : findHorizontalCuts(subRects, bx, by, bw, bh);
+
+    if (cuts.length === 0) {
+      // No cuts at this level — either it's a single piece or we need to go deeper
+      if (subRects.length === 1) {
+        // Single piece — create leaf node
+        const r = subRects[0];
+        if (vertical) {
+          // This level is vertical → node.valor = width
+          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
+          parentNode.filhos.push(node);
+          // If there are more levels, the next level handles height
+          if (levelIdx + 1 < levelSequence.length) {
+            const nextLevel = levelSequence[levelIdx + 1];
+            const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
+            node.filhos.push(hNode);
+          }
+        } else {
+          // This level is horizontal → node.valor = height
+          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
+          parentNode.filhos.push(node);
+          if (levelIdx + 1 < levelSequence.length) {
+            const nextLevel = levelSequence[levelIdx + 1];
+            const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
+            node.filhos.push(wNode);
+          }
+        }
+        return;
+      }
+
+      // Multiple rects but no valid cut at this level — try next level
+      subdivide(parentNode, levelIdx + 1, subRects, bx, by, bw, bh);
+      return;
+    }
+
+    // Split into segments using cuts
+    const boundaries = vertical
+      ? [0, ...cuts, Math.round(bw)]
+      : [0, ...cuts, Math.round(bh)];
+
+    // Deduplicate and sort boundaries
+    const uniqueBounds = [...new Set(boundaries)].sort((a, b) => a - b);
+
+    for (let i = 0; i < uniqueBounds.length - 1; i++) {
+      const segStart = uniqueBounds[i];
+      const segEnd = uniqueBounds[i + 1];
+      const segSize = segEnd - segStart;
+      if (segSize < 1) continue;
+
+      let segBx: number, segBy: number, segBw: number, segBh: number;
+      if (vertical) {
+        segBx = bx + segStart;
+        segBy = by;
+        segBw = segSize;
+        segBh = bh;
+      } else {
+        segBx = bx;
+        segBy = by + segStart;
+        segBw = bw;
+        segBh = segSize;
+      }
+
+      const segRects = rectsInBounds(subRects, segBx, segBy, segBw, segBh);
+
+      if (segRects.length === 0) continue; // waste area, skip
+
+      // Create node for this segment
+      const nodeValor = vertical ? segBw : segBh;
+      const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(nodeValor), multi: 1, filhos: [] };
+
+      // If single rect filling the whole segment, it's a leaf
+      if (segRects.length === 1) {
+        const r = segRects[0];
+        const fillsW = Math.abs(r.w - segBw) < 1;
+        const fillsH = Math.abs(r.h - segBh) < 1;
+
+        if (fillsW && fillsH) {
+          // Perfect fit — leaf
+          node.label = r.label;
+          // Still need to create the child for the other dimension
+          if (levelIdx + 1 < levelSequence.length) {
+            const nextLevel = levelSequence[levelIdx + 1];
+            const childValor = vertical ? Math.round(segBh) : Math.round(segBw);
+            const child: TreeNode = { id: gid(), tipo: nextLevel, valor: childValor, multi: 1, filhos: [], label: r.label };
+            node.filhos.push(child);
+          }
+          parentNode.filhos.push(node);
+          continue;
+        }
+      }
+
+      // Recurse into next level
+      subdivide(node, levelIdx + 1, segRects, segBx, segBy, segBw, segBh);
+      parentNode.filhos.push(node);
+    }
+  }
+
+  subdivide(root, 0, rects, 0, 0, usableW, usableH);
+  return root;
+}
+
+/**
+ * Bottom-up compression: merge adjacent siblings with identical structure into multi.
+ */
+function compressMulti(node: TreeNode): void {
+  // First, recurse into children
+  for (const child of node.filhos) {
+    compressMulti(child);
+  }
+
+  // Then merge identical adjacent siblings
+  if (node.filhos.length < 2) return;
+
+  const compressed: TreeNode[] = [];
+  for (const child of node.filhos) {
+    if (compressed.length > 0) {
+      const last = compressed[compressed.length - 1];
+      if (nodesStructurallyEqual(last, child)) {
+        last.multi += child.multi;
+        continue;
+      }
+    }
+    compressed.push(child);
+  }
+  node.filhos = compressed;
+}
+
+/**
+ * Check if two nodes have the same structure (ignoring id and multi).
+ */
+function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
+  if (a.tipo !== b.tipo || Math.abs(a.valor - b.valor) > 0.5) return false;
+  if (a.filhos.length !== b.filhos.length) return false;
+  for (let i = 0; i < a.filhos.length; i++) {
+    if (!nodesStructurallyEqual(a.filhos[i], b.filhos[i])) return false;
+  }
+  return true;
+}
+
+/**
+ * MAIN NORMALIZATION ENTRY POINT
+ *
+ * Takes any tree (potentially transposed) and rebuilds it from scratch
+ * following the canonical cut hierarchy:
+ * - X, Z, Q = vertical cuts (valor = width)
+ * - Y, W = horizontal cuts (valor = height)
+ *
+ * Steps:
+ * 1. Extract absolute physical rectangles from the tree
+ * 2. Rebuild the tree using guillotine cut detection
+ * 3. Compress identical siblings into multi
+ * 4. Remove transposed flag (tree is now canonical)
+ */
+export function normalizeTree(tree: TreeNode, usableW: number, usableH: number): TreeNode {
+  // Extract physical rectangles
+  const rects = extractAbsoluteRects(tree, usableW, usableH);
+
+  if (rects.length === 0) return tree;
+
+  // Rebuild canonical tree
+  const canonical = buildCanonicalTree(rects, usableW, usableH);
+
+  // Compress multi
+  compressMulti(canonical);
+
+  // Transfer labels from original rects
+  // (already done during buildCanonicalTree)
+
+  // Remove transposed flag — tree is now in canonical form
+  canonical.transposed = false;
+
+  return canonical;
+}
