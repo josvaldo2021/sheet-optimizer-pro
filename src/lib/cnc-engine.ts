@@ -3499,7 +3499,10 @@ function postOptimizeRegroup(
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
-          if (transposed) bestTree.transposed = true;
+          if (transposed) {
+            bestTree.transposed = true;
+            bestTree = normalizeTree(bestTree, usableW, usableH);
+          }
           improved = true;
           console.log(
             `[CNC-ENGINE] Pós-análise combinada melhorou! → ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
