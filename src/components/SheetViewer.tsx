@@ -56,139 +56,347 @@ export default function SheetViewer({
   const pieceIndex = useRef(0);
 
   const renderSheet = useCallback((tree: TreeNode) => {
+    const els: JSX.Element[] = [];
+    let xOff = 0;
+    let colorIdx = 0;
     const T = tree.transposed || false;
 
-    // --- Piece & Waste Collection with Absolute Coordinates ---
-    type AbsoluteBox = { id: string; x: number; y: number; w: number; h: number; label?: string; isPiece: boolean };
-    const elements: AbsoluteBox[] = [];
-    const wastes: { x: number; y: number; w: number; h: number }[] = [];
+    // Helper: get real-space piece label (width × height)
+    const dimLabel = (d1: number, d2: number) => T
+      ? `${Math.round(d2)}×${Math.round(d1)}`
+      : `${Math.round(d1)}×${Math.round(d2)}`;
 
-    let xOff = 0;
+    // Dynamic font sizing that adapts to piece box + text length
+    const dynamicFontSize = (
+      pxW: number,
+      pxH: number,
+      dimText: string,
+      idText?: string,
+      vertical = false,
+    ) => {
+      const lines = idText ? 2 : 1;
+      const availW = Math.max(4, pxW - 6);
+      const availH = Math.max(4, pxH - 6);
+      const shortSide = Math.min(availW, availH);
+      const longSide = Math.max(availW, availH);
+
+      const byBox = Math.min(availW * 0.32, availH * 0.36);
+
+      const fs = vertical
+        ? Math.min(
+            byBox,
+            (longSide * 0.92) / Math.max(dimText.length, idText?.length || 1),
+            (shortSide * 0.9) / (lines * 1.1),
+          )
+        : Math.min(
+            byBox,
+            availW / (Math.max(dimText.length, idText?.length || 0) * 0.58),
+            availH / (lines * 1.2),
+          );
+
+      return Math.max(6, Math.min(26, fs));
+    };
+
+    // Collect Y-waste metadata for merging across adjacent X columns
+    type YWasteInfo = { xStart: number; xWidth: number; yStart: number; wasteH: number; xNodeValor: number };
+    const yWastes: YWasteInfo[] = [];
+
     tree.filhos.forEach(xNode => {
       for (let ix = 0; ix < xNode.multi; ix++) {
         const cx = xOff;
         let yOff = 0;
+        const strips: JSX.Element[] = [];
+
         xNode.filhos.forEach(yNode => {
           for (let iy = 0; iy < yNode.multi; iy++) {
             const cy = yOff;
+            const zEls: JSX.Element[] = [];
             let zOff = 0;
+
             yNode.filhos.forEach(zNode => {
               for (let iz = 0; iz < zNode.multi; iz++) {
+                const wEls: JSX.Element[] = [];
+
                 if (zNode.filhos.length === 0) {
-                  // Final Piece (Z leaf)
-                  const pW = zNode.valor;
-                  const pH = yNode.valor;
-                  elements.push({ id: zNode.id, x: cx + zOff, y: cy, w: pW, h: pH, label: zNode.label, isPiece: true });
+                  colorIdx++;
+                  const realW = T ? yNode.valor : zNode.valor;
+                  const realH = T ? zNode.valor : yNode.valor;
+                  const isVertical = realH > realW;
+                  const pxW = (T ? yNode.valor : zNode.valor) * scale;
+                  const pxH = (T ? zNode.valor : yNode.valor) * scale;
+                  const dim = dimLabel(zNode.valor, yNode.valor);
+                  const fs = dynamicFontSize(pxW, pxH, dim, zNode.label, isVertical);
+                  wEls.push(
+                    <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
+                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                        {zNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{zNode.label}</span>}
+                        {dim}
+                      </span>
+                    </div>
+                  );
                 } else {
                   let wOff = 0;
                   zNode.filhos.forEach(wNode => {
                     for (let iw = 0; iw < wNode.multi; iw++) {
                       if (wNode.filhos.length === 0) {
-                        // W piece node
-                        elements.push({ id: wNode.id, x: cx + zOff, y: cy + wOff, w: zNode.valor, h: wNode.valor, label: wNode.label, isPiece: true });
+                        colorIdx++;
+                        const realW = T ? wNode.valor : zNode.valor;
+                        const realH = T ? zNode.valor : wNode.valor;
+                        const pxW = realW * scale;
+                        const pxH = realH * scale;
+                        const isVertical = realH > realW;
+                        const dim = dimLabel(zNode.valor, wNode.valor);
+                        const fs = dynamicFontSize(pxW, pxH, dim, wNode.label, isVertical);
+                        wEls.push(
+                          <div
+                            key={`w-${wNode.id}-${iw}`}
+                            className={`${selectedId === wNode.id ? 'sv-selected' : ''}`}
+                            style={{
+                              ...(T
+                                ? { width: wNode.valor * scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                                : { width: '100%', height: wNode.valor * scale, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                              ),
+                            }}
+                            onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
+                          >
+                            <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                              {wNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{wNode.label}</span>}
+                              {dim}
+                            </span>
+                          </div>
+                        );
                       } else {
                         // W with Q children
                         let qOff = 0;
+                        const qEls: JSX.Element[] = [];
                         wNode.filhos.forEach(qNode => {
                           for (let iq = 0; iq < qNode.multi; iq++) {
-                            elements.push({ id: qNode.id, x: cx + zOff + qOff, y: cy + wOff, w: qNode.valor, h: wNode.valor, label: qNode.label, isPiece: true });
+                            colorIdx++;
+                            const realW = T ? wNode.valor : qNode.valor;
+                            const realH = T ? qNode.valor : wNode.valor;
+                            const pxW = realW * scale;
+                            const pxH = realH * scale;
+                            const isVertical = realH > realW;
+                            const dim = dimLabel(qNode.valor, wNode.valor);
+                            const fs = dynamicFontSize(pxW, pxH, dim, qNode.label, isVertical);
+                            qEls.push(
+                              <div
+                                key={`q-${qNode.id}-${iq}`}
+                                className={`${selectedId === qNode.id ? 'sv-selected' : ''}`}
+                                style={{
+                                  position: 'absolute',
+                                  ...(T
+                                    ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qNode.valor * scale }
+                                    : { left: qOff * scale, bottom: 0, width: qNode.valor * scale, height: wNode.valor * scale }
+                                  ),
+                                  background: PIECE_BG,
+                                  border: '0.5px solid hsl(0 0% 40%)',
+                                  boxSizing: 'border-box' as const,
+                                  cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}
+                                onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
+                              >
+                                <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                  {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
+                                  {dim}
+                                </span>
+                              </div>
+                            );
                             qOff += qNode.valor;
                           }
                         });
-                        // Q waste (horizontal space in W)
-                        if (zNode.valor - qOff > 0.5) wastes.push({ x: cx + zOff + qOff, y: cy + wOff, w: zNode.valor - qOff, h: wNode.valor });
+
+                        // Q waste
+                        const qParentDim = T ? zNode.valor : zNode.valor;
+                        const qWaste = qParentDim - qOff;
+                        if (qWaste > 0 && qWaste * scale >= 4) {
+                          qEls.push(
+                            <div key="sq" className="sv-waste" style={{
+                              position: 'absolute',
+                              ...(T
+                                ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qWaste * scale }
+                                : { left: qOff * scale, bottom: 0, width: qWaste * scale, height: wNode.valor * scale }
+                              ),
+                            }}>
+                              <span className="sv-waste-label">{dimLabel(qWaste, wNode.valor)}</span>
+                            </div>
+                          );
+                        }
+
+                        wEls.push(
+                          <div
+                            key={`w-${wNode.id}-${iw}`}
+                            className={`${selectedId === wNode.id ? 'sv-selected' : ''}`}
+                            style={{
+                              position: 'relative', overflow: 'hidden',
+                              ...(T
+                                ? { width: wNode.valor * scale, height: '100%', borderRight: '0.5px solid hsl(0 0% 40%)' }
+                                : { width: '100%', height: wNode.valor * scale, borderTop: '0.5px solid hsl(0 0% 40%)' }
+                              ),
+                              background: PIECE_BG, boxSizing: 'border-box' as const,
+                            }}
+                            onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
+                          >
+                            {qEls}
+                          </div>
+                        );
                       }
                       wOff += wNode.valor;
                     }
                   });
-                  // W waste (vertical space in Z)
-                  if (yNode.valor - wOff > 0.5) wastes.push({ x: cx + zOff, y: cy + wOff, w: zNode.valor, h: yNode.valor - wOff });
+
+                  // W waste (remaining dimension in strip)
+                  const wWaste = yNode.valor - wOff;
+                  if (wWaste > 0 && wWaste * scale >= 4) {
+                    wEls.push(
+                      <div key="sw" className="sv-waste" style={{
+                        ...(T
+                          ? { width: wWaste * scale, height: '100%' }
+                          : { width: '100%', height: wWaste * scale }
+                        ),
+                      }}>
+                        <span className="sv-waste-label">{dimLabel(zNode.valor, wWaste)}</span>
+                      </div>
+                    );
+                  }
                 }
+
+                zEls.push(
+                  <div
+                    key={`z-${zNode.id}-${iz}`}
+                    className={`${selectedId === zNode.id ? 'sv-selected' : ''}`}
+                    style={{
+                      position: 'relative', boxSizing: 'border-box' as const,
+                      ...(T
+                        ? { width: '100%', height: zNode.valor * scale, display: 'flex', flexDirection: 'row' as const, borderTop: '0.5px solid hsl(0 0% 40%)' }
+                        : { height: '100%', width: zNode.valor * scale, display: 'flex', flexDirection: 'column-reverse' as const, borderRight: '0.5px solid hsl(0 0% 40%)' }
+                      ),
+                    }}
+                    onClick={e => { e.stopPropagation(); onSelectNode(zNode.id); }}
+                  >
+                    {wEls}
+                  </div>
+                );
                 zOff += zNode.valor;
               }
             });
-            // Z waste (horizontal space in Y strip)
-            if (xNode.valor - zOff > 0.5) wastes.push({ x: cx + zOff, y: cy, w: xNode.valor - zOff, h: yNode.valor });
+
+            // Z waste (remaining dimension in strip)
+            const zWaste = xNode.valor - zOff;
+            if (zWaste > 0 && zWaste * scale >= 4) {
+              zEls.push(
+                <div key="sz" className="sv-waste" style={{
+                  ...(T
+                    ? { width: '100%', height: zWaste * scale }
+                    : { width: zWaste * scale, height: '100%' }
+                  ),
+                }}>
+                  <span className="sv-waste-label">{dimLabel(zWaste, yNode.valor)}</span>
+                </div>
+              );
+            }
+
+            strips.push(
+              <div
+                key={`y-${yNode.id}-${iy}`}
+                className={`${selectedId === yNode.id ? 'sv-selected' : ''}`}
+                style={{
+                  position: 'absolute', boxSizing: 'border-box' as const,
+                  ...(T
+                    ? { bottom: 0, left: cy * scale, width: yNode.valor * scale, height: '100%', display: 'flex', flexDirection: 'column-reverse' as const }
+                    : { left: 0, bottom: cy * scale, width: '100%', height: yNode.valor * scale, display: 'flex' }
+                  ),
+                }}
+                onClick={e => { e.stopPropagation(); onSelectNode(yNode.id); }}
+              >
+                {zEls}
+              </div>
+            );
             yOff += yNode.valor;
           }
         });
-        // Y waste (vertical space above strips)
-        const totalH = T ? usableW : usableH;
-        if (totalH - yOff > 0.5) wastes.push({ x: cx, y: yOff, w: xNode.valor, h: totalH - yOff });
+
+        // Y waste - collect for merging instead of rendering individually
+        const yDimTotal = T ? usableW : usableH;
+        const yWaste = yDimTotal - yOff;
+        if (yWaste > 0 && yWaste * scale >= 4) {
+          yWastes.push({ xStart: cx, xWidth: xNode.valor, yStart: yOff, wasteH: yWaste, xNodeValor: xNode.valor });
+        }
+
+        els.push(
+          <div
+            key={`x-${xNode.id}-${ix}`}
+            className={`${selectedId === xNode.id ? 'sv-selected' : ''}`}
+            style={{
+              position: 'absolute', boxSizing: 'border-box' as const,
+              ...(T
+                ? { left: 0, bottom: cx * scale, width: usableW * scale, height: xNode.valor * scale }
+                : { bottom: 0, left: cx * scale, width: xNode.valor * scale, height: usableH * scale }
+              ),
+            }}
+            onClick={e => { e.stopPropagation(); onSelectNode(xNode.id); }}
+          >
+            {strips}
+          </div>
+        );
         xOff += xNode.valor;
       }
     });
-    // X waste (horizontal space right of columns)
-    const totalW = T ? usableH : usableW;
-    if (totalW - xOff > 0.5) wastes.push({ x: xOff, y: 0, w: totalW - xOff, h: T ? usableW : usableH });
 
-    // --- Geometrical Merge Algorithm for Wastes ---
-    const mergeRectangles = (rects: { x: number; y: number; w: number; h: number }[]) => {
-      let current = [...rects];
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (let i = 0; i < current.length; i++) {
-          for (let j = i + 1; j < current.length; j++) {
-            const a = current[i]; const b = current[j];
-            // Match vertically (same X, same W, adjacent Y)
-            if (Math.abs(a.x - b.x) < 0.2 && Math.abs(a.w - b.w) < 0.2) {
-              if (Math.abs(a.y + a.h - b.y) < 0.2) { current[i] = { ...a, h: a.h + b.h }; current.splice(j, 1); changed = true; break; }
-              if (Math.abs(b.y + b.h - a.y) < 0.2) { current[i] = { ...b, h: a.h + b.h }; current.splice(j, 1); changed = true; break; }
-            }
-            // Match horizontally (same Y, same H, adjacent X)
-            if (Math.abs(a.y - b.y) < 0.2 && Math.abs(a.h - b.h) < 0.2) {
-              if (Math.abs(a.x + a.w - b.x) < 0.2) { current[i] = { ...a, w: a.w + b.w }; current.splice(j, 1); changed = true; break; }
-              if (Math.abs(b.x + b.w - a.x) < 0.2) { current[i] = { ...b, w: a.w + b.w }; current.splice(j, 1); changed = true; break; }
-            }
-          }
-          if (changed) break;
+    // Merge adjacent Y-wastes with same yStart and wasteH into unified blocks
+    if (yWastes.length > 0) {
+      const merged: Array<{ xStart: number; totalWidth: number; yStart: number; wasteH: number }> = [];
+      let current = { xStart: yWastes[0].xStart, totalWidth: yWastes[0].xWidth, yStart: yWastes[0].yStart, wasteH: yWastes[0].wasteH };
+
+      for (let i = 1; i < yWastes.length; i++) {
+        const w = yWastes[i];
+        const adjacent = Math.abs((current.xStart + current.totalWidth) - w.xStart) < 1;
+        const sameYStart = Math.abs(current.yStart - w.yStart) < 1;
+        const sameWasteH = Math.abs(current.wasteH - w.wasteH) < 1;
+
+        if (adjacent && sameYStart && sameWasteH) {
+          current.totalWidth += w.xWidth;
+        } else {
+          merged.push({ ...current });
+          current = { xStart: w.xStart, totalWidth: w.xWidth, yStart: w.yStart, wasteH: w.wasteH };
         }
       }
-      return current;
-    };
-    const mergedWastes = mergeRectangles(wastes);
+      merged.push(current);
 
-    // --- Render Final JSX ---
-    const dimLabel = (w: number, h: number) => T ? `${Math.round(h)}×${Math.round(w)}` : `${Math.round(w)}×${Math.round(h)}`;
-    
-    const dynamicFontSize = (pxW: number, pxH: number, dimText: string, idText?: string, vertical = false) => {
-      const lines = idText ? 2 : 1;
-      const availW = Math.max(4, pxW - 6); const availH = Math.max(4, pxH - 6);
-      const fs = vertical
-        ? Math.min(Math.min(availW * 0.32, availH * 0.36), (Math.max(availW, availH) * 0.92) / Math.max(dimText.length, idText?.length || 1), (Math.min(availW, availH) * 0.9) / (lines * 1.1))
-        : Math.min(Math.min(availW * 0.32, availH * 0.36), availW / (Math.max(dimText.length, idText?.length || 0) * 0.58), availH / (lines * 1.2));
-      return Math.max(6, Math.min(26, fs));
-    };
+      merged.forEach((m, mi) => {
+        els.push(
+          <div key={`yw-merged-${mi}`} className="sv-waste sv-waste-large" style={{
+            position: 'absolute',
+            ...(T
+              ? { bottom: m.xStart * scale, left: m.yStart * scale, width: m.wasteH * scale, height: m.totalWidth * scale }
+              : { left: m.xStart * scale, bottom: m.yStart * scale, width: m.totalWidth * scale, height: m.wasteH * scale }
+            ),
+          }}>
+            <span className="sv-waste-label">{dimLabel(m.totalWidth, m.wasteH)}</span>
+          </div>
+        );
+      });
+    }
 
-    const renderedPieces = elements.map((p, pi) => {
-      const finalW = T ? p.h : p.w; const finalH = T ? p.w : p.h;
-      const finalX = T ? p.y : p.x; const finalY = T ? p.x : p.y;
-      const dim = dimLabel(p.w, p.h); const isV = finalH > finalW;
-      const fs = dynamicFontSize(finalW * scale, finalH * scale, dim, p.label, isV);
-      return (
-        <div key={`p-${pi}`} className={`sv-piece ${selectedId === p.id ? 'sv-selected' : ''}`}
-          style={{ position: 'absolute', left: finalX * scale, bottom: finalY * scale, width: finalW * scale, height: finalH * scale, background: PIECE_BG, border: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={e => { e.stopPropagation(); onSelectNode(p.id); }}>
-          <span className={`sv-piece-label ${isV ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
-            {p.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{p.label}</span>}
-            {dim}
-          </span>
+    // X waste (remaining dimension)
+    const xDimTotal = T ? usableH : usableW;
+    const xWaste = xDimTotal - xOff;
+    if (xWaste > 0 && xWaste * scale >= 4) {
+      els.push(
+        <div key="sx" className="sv-waste sv-waste-large" style={{
+          position: 'absolute',
+          ...(T
+            ? { left: 0, bottom: xOff * scale, width: usableW * scale, height: xWaste * scale }
+            : { left: xOff * scale, bottom: 0, width: xWaste * scale, height: usableH * scale }
+          ),
+        }}>
+          <span className="sv-waste-label">SOBRA<br />{T ? `${Math.round(usableW)}×${Math.round(xWaste)}` : `${Math.round(xWaste)}×${Math.round(usableH)}`}</span>
         </div>
       );
-    });
+    }
 
-    const renderedWastes = mergedWastes.map((w, wi) => {
-      const finalW = T ? w.h : w.w; const finalH = T ? w.w : w.h;
-      const finalX = T ? w.y : w.x; const finalY = T ? w.x : w.y;
-      return (
-        <div key={`w-${wi}`} className="sv-waste" style={{ position: 'absolute', left: finalX * scale, bottom: finalY * scale, width: finalW * scale, height: finalH * scale }}>
-          <span className="sv-waste-label">{Math.round(w.w)}×{Math.round(w.h)}</span>
-        </div>
-      );
-    });
-
-    return [...renderedPieces, ...renderedWastes];
+    return els;
   }, [scale, selectedId, onSelectNode, usableW, usableH]);
 
   // Calculate per-sheet utilization
