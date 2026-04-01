@@ -2850,6 +2850,11 @@ function runPlacement(
     placedArea += unifyColumnWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
+  // --- COLLAPSE TREE WASTE: merge consecutive waste siblings into unified blocks ---
+  if (remaining.length > 0) {
+    placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
+  }
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
