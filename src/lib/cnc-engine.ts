@@ -305,7 +305,7 @@ function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
 /**
- * AGRUPAMENTO POR MESMA LARGURA EM X (EstratÃ©gia Principal)
+ * AGRUPAMENTO POR MESMA LARGURA EM X (Estratégia Principal)
  *
  * PeÃ§as com a mesma largura (W) sÃ£o empilhadas verticalmente numa Ãºnica coluna X.
  * Cada peÃ§a individual vira um Y strip separado dentro dessa coluna.
@@ -397,7 +397,7 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
 }
 
 /**
- * AGRUPAMENTO POR MESMA ALTURA EM Y (EstratÃ©gia Complementar)
+ * AGRUPAMENTO POR MESMA ALTURA EM Y (Estratégia Complementar)
  * PeÃ§as com a mesma altura sÃ£o colocadas lado a lado, somando larguras.
  */
 function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piece[] {
@@ -619,7 +619,7 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
 
         const individualArea = w * col[0].nh;
         result.push({
-          w,
+          w: colWidth,
           h: colHeight,
           area: individualArea,
           count: col.length,
@@ -1189,7 +1189,7 @@ function fillRectW(
 // ========== GROUP BY COMMON DIMENSION ==========
 
 /**
- * AGRUPAMENTO POR DIMENSÃƒO COMUM (EstratÃ©gia para peÃ§as de larguras diferentes mas mesma altura)
+ * AGRUPAMENTO POR DIMENSÃO COMUM (Estratégia para peças de larguras diferentes mas mesma altura)
  *
  * Detecta a dimensÃ£o mais frequente entre todas as peÃ§as (verificando tanto w quanto h).
  * Orienta todas as peÃ§as para que a dimensÃ£o comum seja a altura.
@@ -1907,8 +1907,8 @@ export function optimizeV6(
     }
   }
 
-  const finalTree = bestTree || createRoot(usableW, usableH);
-  if (bestTransposed) finalTree.transposed = true;
+  let finalTree = bestTree || createRoot(usableW, usableH);
+  if (bestTransposed) finalTree = untransposeTree(finalTree, usableW, usableH);
 
   return {
     tree: finalTree,
@@ -2331,7 +2331,7 @@ export async function optimizeGeneticAsync(
       onProgress({ phase: "Apenas HeurÃ­sticas (sem evoluÃ§Ã£o)", current: 1, total: 1, bestUtil: bestFitness * 100 });
     }
     let finalTree = bestTree || createRoot(usableW, usableH);
-    if (bestTransposed) finalTree.transposed = true;
+    if (bestTransposed) finalTree = untransposeTree(finalTree, usableW, usableH);
 
     // PÃ³s-anÃ¡lise automÃ¡tica
     if (onProgress)
@@ -2366,7 +2366,7 @@ export async function optimizeGeneticAsync(
       const work = buildPieces(ind);
       const eW = ind.transposed ? usableH : usableW;
       const eH = ind.transposed ? usableW : usableH;
-      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead || 1);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -2413,7 +2413,7 @@ export async function optimizeGeneticAsync(
   }
 
   let finalTree = bestTree || createRoot(usableW, usableH);
-  if (bestTransposed) finalTree.transposed = true;
+  if (bestTransposed) finalTree = untransposeTree(finalTree, usableW, usableH);
 
   // PÃ³s-anÃ¡lise automÃ¡tica de reagrupamento
   if (onProgress)
@@ -3165,7 +3165,7 @@ function unifyColumnWaste(
 
           for (const o of oris(pc)) {
             if (o.w <= zNode.valor && o.h <= freeWH) {
-              const score = (zNode.valor - o.w) + (freeWH - o.h) * 0.1;
+              const score = (freeWH - o.w) * yNode.valor + (yNode.valor - o.h) * o.w;
               if (score < bestScore) { bestScore = score; bestOri = o; }
             }
           }
@@ -3775,7 +3775,7 @@ function postOptimizeRegroup(
   let bestArea = originalArea;
   let improved = false;
 
-  // EstratÃ©gia: criar variantes de peÃ§as com agrupamentos forÃ§ados
+  // Estratégia: criar variantes de peças com agrupamentos forçados
   for (const opp of regroupOpportunities) {
     // Cria uma cÃ³pia das peÃ§as originais
     const forcedPieces: Piece[] = [];
@@ -3785,8 +3785,7 @@ function postOptimizeRegroup(
     const groupLabels: string[] = [];
     let sumW = 0;
     for (const p of opp.pieces) {
-      const w = Math.max(p.w, p.h);
-      sumW += w;
+      sumW += Math.max(p.w, p.h);
       if (p.label) {
         groupLabels.push(p.label);
         usedLabels.add(p.label);
@@ -3825,7 +3824,7 @@ function postOptimizeRegroup(
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
-          if (transposed) bestTree.transposed = true;
+          if (transposed) bestTree = untransposeTree(bestTree, usableW, usableH);
           improved = true;
           console.log(
             `[CNC-ENGINE] PÃ³s-anÃ¡lise: Reagrupamento melhorou! ${((originalArea / (usableW * usableH)) * 100).toFixed(1)}% â†’ ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
@@ -3879,7 +3878,7 @@ function postOptimizeRegroup(
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
-          if (transposed) bestTree.transposed = true;
+          if (transposed) bestTree = untransposeTree(bestTree, usableW, usableH);
           improved = true;
           console.log(
             `[CNC-ENGINE] PÃ³s-anÃ¡lise combinada melhorou! â†’ ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
