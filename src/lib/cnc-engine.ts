@@ -398,11 +398,7 @@ function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece
 
 /**
  * AGRUPAMENTO POR MESMA ALTURA EM Y (Estratégia Complementar)
-<<<<<<< HEAD
- * PeÃ§as com a mesma altura sÃ£o colocadas lado a lado, somando larguras.
-=======
  * Peças com a mesma altura são colocadas lado a lado, somando larguras.
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
  */
 function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity): Piece[] {
   const normalized = pieces.map((p) => ({
@@ -623,7 +619,7 @@ function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolean = fal
 
         const individualArea = w * col[0].nh;
         result.push({
-          w: colWidth,
+          w,
           h: colHeight,
           area: individualArea,
           count: col.length,
@@ -1833,15 +1829,11 @@ export function optimizeV6(
   }
 
   let finalTree = bestTree || createRoot(usableW, usableH);
-<<<<<<< HEAD
-  if (bestTransposed) finalTree = untransposeTree(finalTree, usableW, usableH);
-=======
   if (bestTransposed) {
     finalTree.transposed = true;
     // Normalize transposed tree to canonical hierarchy (X,Z,Q=vertical; Y,W=horizontal)
     finalTree = normalizeTree(finalTree, usableW, usableH);
   }
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
 
   return {
     tree: finalTree,
@@ -2264,14 +2256,10 @@ export async function optimizeGeneticAsync(
       onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
     }
     let finalTree = bestTree || createRoot(usableW, usableH);
-<<<<<<< HEAD
-    if (bestTransposed) finalTree = untransposeTree(finalTree, usableW, usableH);
-=======
     if (bestTransposed) {
       finalTree.transposed = true;
       finalTree = normalizeTree(finalTree, usableW, usableH);
     }
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
 
     // Pós-análise automática
     if (onProgress)
@@ -2306,7 +2294,7 @@ export async function optimizeGeneticAsync(
       const work = buildPieces(ind);
       const eW = ind.transposed ? usableH : usableW;
       const eH = ind.transposed ? usableW : usableH;
-      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead || 1);
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -2353,14 +2341,10 @@ export async function optimizeGeneticAsync(
   }
 
   let finalTree = bestTree || createRoot(usableW, usableH);
-<<<<<<< HEAD
-  if (bestTransposed) finalTree = untransposeTree(finalTree, usableW, usableH);
-=======
   if (bestTransposed) {
     finalTree.transposed = true;
     finalTree = normalizeTree(finalTree, usableW, usableH);
   }
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
 
   // Pós-análise automática de reagrupamento
   if (onProgress)
@@ -2986,48 +2970,9 @@ function unifyColumnWaste(
               }
             }
           }
-<<<<<<< HEAD
-        }
-
-        freeZW -= bestOri.w;
-        remaining.splice(i, 1);
-        i--;
-      }
-    }
-  }
-
-  // ==================== PASS 3: Fill W-waste (free height in each Z block) ====================
-  for (const colX of tree.filhos) {
-    if (remaining.length === 0) break;
-    for (const yNode of colX.filhos) {
-      if (remaining.length === 0) break;
-      for (const zNode of yNode.filhos) {
-        if (remaining.length === 0) break;
-        if (zNode.filhos.length === 0) continue;
-
-        const usedW = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
-        let freeWH = yNode.valor - usedW;
-        if (freeWH < 50) continue;
-
-        for (let i = 0; i < remaining.length && freeWH >= 50; i++) {
-          const pc = remaining[i];
-          let bestOri: { w: number; h: number } | null = null;
-          let bestScore = Infinity;
-
-          for (const o of oris(pc)) {
-            if (o.w <= zNode.valor && o.h <= freeWH) {
-              const score = (freeWH - o.w) * yNode.valor + (yNode.valor - o.h) * o.w;
-              if (score < bestScore) { bestScore = score; bestOri = o; }
-            }
-          }
-          if (!bestOri) continue;
-
-          const wId = insertNode(tree, zNode.id, "W", bestOri.h, 1);
-=======
         } else {
           // parentType === "Z", create W sub-row
           const wId = insertNode(tree, parentNode.id, "W", bestOri.h, 1);
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
           const wNode = findNode(tree, wId)!;
           if (pc.label) wNode.label = pc.label;
 
@@ -3854,7 +3799,8 @@ function postOptimizeRegroup(
     const groupLabels: string[] = [];
     let sumW = 0;
     for (const p of opp.pieces) {
-      sumW += Math.max(p.w, p.h);
+      const w = Math.max(p.w, p.h);
+      sumW += w;
       if (p.label) {
         groupLabels.push(p.label);
         usedLabels.add(p.label);
@@ -3893,14 +3839,10 @@ function postOptimizeRegroup(
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
-<<<<<<< HEAD
-          if (transposed) bestTree = untransposeTree(bestTree, usableW, usableH);
-=======
           if (transposed) {
             bestTree.transposed = true;
             bestTree = normalizeTree(bestTree, usableW, usableH);
           }
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
           improved = true;
           console.log(
             `[CNC-ENGINE] Pós-análise: Reagrupamento melhorou! ${((originalArea / (usableW * usableH)) * 100).toFixed(1)}% → ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
@@ -3954,14 +3896,10 @@ function postOptimizeRegroup(
         if (result.area > bestArea) {
           bestArea = result.area;
           bestTree = result.tree;
-<<<<<<< HEAD
-          if (transposed) bestTree = untransposeTree(bestTree, usableW, usableH);
-=======
           if (transposed) {
             bestTree.transposed = true;
             bestTree = normalizeTree(bestTree, usableW, usableH);
           }
->>>>>>> 7af899771b0f2208229e00a654d90c3ed6c73f9d
           improved = true;
           console.log(
             `[CNC-ENGINE] Pós-análise combinada melhorou! → ${((bestArea / (usableW * usableH)) * 100).toFixed(1)}%`,
