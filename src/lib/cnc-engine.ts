@@ -2855,6 +2855,9 @@ function runPlacement(
     placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
+  // --- STRUCTURAL WASTE MERGE: unify waste across X-columns ---
+  mergeXColumnWaste(tree);
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
