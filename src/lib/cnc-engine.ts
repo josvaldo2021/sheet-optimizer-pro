@@ -2855,6 +2855,9 @@ function runPlacement(
     placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
+  // --- STRUCTURAL WASTE MERGE: unify waste across X-columns ---
+  mergeXColumnWaste(tree);
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
@@ -4241,11 +4244,169 @@ export function normalizeTree(tree: TreeNode, usableW: number, usableH: number):
   // Compress multi
   compressMulti(canonical);
 
-  // Transfer labels from original rects
-  // (already done during buildCanonicalTree)
+  // Merge X-columns structurally where waste Y-nodes exist
+  mergeXColumnWaste(canonical);
 
   // Remove transposed flag — tree is now in canonical form
   canonical.transposed = false;
 
   return canonical;
+}
+
+/**
+ * Verifica se um nó é "sobra pura" — sem peças alocadas.
+ * Um nó folha sem label é sobra. Um nó com filhos é sobra se TODOS os filhos são sobra.
+ */
+function isWasteNodeGlobal(node: TreeNode): boolean {
+  if (node.filhos.length === 0) return !node.label;
+  return node.filhos.every(c => isWasteNodeGlobal(c));
+}
+
+/**
+ * Deep clone a TreeNode, assigning new IDs.
+ */
+function deepCloneNode(node: TreeNode): TreeNode {
+  return {
+    id: gid(),
+    tipo: node.tipo,
+    valor: node.valor,
+    multi: node.multi,
+    filhos: node.filhos.map(c => deepCloneNode(c)),
+    label: node.label,
+  };
+}
+
+/**
+ * STRUCTURAL WASTE MERGE FOR X-COLUMNS
+ * 
+ * Detects X-columns with multi>1 that contain waste Y-nodes and expands them
+ * into a single wider X-column where waste Y-nodes become unified structural blocks.
+ * 
+ * Also detects adjacent X-columns (multi=1) with matching waste Y-strip patterns
+ * and merges them similarly.
+ * 
+ * Example:
+ *   X(917, multi=2) → Y(372, waste) + Y(676, pieces)
+ * Becomes:
+ *   X(1834, multi=1) → Y(372, waste unified) + Y(676, Z pieces duplicated)
+ * 
+ * This ensures waste is structurally represented as a single node
+ * rather than being visually merged by the viewer.
+ */
+function mergeXColumnWaste(tree: TreeNode): void {
+  // === PHASE 1: Expand X-columns with multi>1 containing waste ===
+  for (let i = 0; i < tree.filhos.length; i++) {
+    const x = tree.filhos[i];
+    if (x.multi <= 1) continue;
+
+    // Check if this X-column has any waste Y-nodes
+    const hasWasteY = x.filhos.some(y => isWasteNodeGlobal(y));
+    if (!hasWasteY) continue;
+
+    const origMulti = x.multi;
+    const origWidth = x.valor;
+    x.valor = origWidth * origMulti;
+    x.multi = 1;
+
+    console.log(`[MERGE-X-WASTE] Expanding X(${origWidth}, multi=${origMulti}) → X(${x.valor}, multi=1)`);
+
+    for (const y of x.filhos) {
+      if (isWasteNodeGlobal(y)) {
+        // Waste Y-node: clear children to become a unified structural block
+        y.filhos = [];
+        y.label = undefined;
+      } else {
+        // Piece Y-node: duplicate Z-children for each repetition
+        const origZChildren = y.filhos.map(z => deepCloneNode(z));
+        y.filhos = [];
+        for (let m = 0; m < origMulti; m++) {
+          for (const z of origZChildren) {
+            const copy = deepCloneNode(z);
+            y.filhos.push(copy);
+          }
+        }
+        // Re-compress adjacent identical Z-children
+        compressMultiSiblings(y);
+      }
+    }
+  }
+
+  // === PHASE 2: Merge adjacent X-columns (multi=1) with matching waste Y-patterns ===
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < tree.filhos.length - 1; i++) {
+      const xA = tree.filhos[i];
+      const xB = tree.filhos[i + 1];
+      if (xA.multi !== 1 || xB.multi !== 1) continue;
+
+      // Check if Y-strip patterns match (same number of Y-children with same heights)
+      if (xA.filhos.length !== xB.filhos.length) continue;
+      if (xA.filhos.length === 0) continue;
+
+      let yMatch = true;
+      let hasAnyWaste = false;
+      for (let j = 0; j < xA.filhos.length; j++) {
+        const yA = xA.filhos[j];
+        const yB = xB.filhos[j];
+        if (Math.abs(yA.valor - yB.valor) > 0.5 || yA.multi !== yB.multi) {
+          yMatch = false;
+          break;
+        }
+        if (isWasteNodeGlobal(yA) && isWasteNodeGlobal(yB)) {
+          hasAnyWaste = true;
+        }
+      }
+
+      if (!yMatch || !hasAnyWaste) continue;
+
+      // Merge xB into xA
+      const newWidth = xA.valor + xB.valor;
+      console.log(`[MERGE-X-WASTE] Merging adjacent X(${xA.valor}) + X(${xB.valor}) → X(${newWidth})`);
+      xA.valor = newWidth;
+
+      for (let j = 0; j < xA.filhos.length; j++) {
+        const yA = xA.filhos[j];
+        const yB = xB.filhos[j];
+
+        if (isWasteNodeGlobal(yA) && isWasteNodeGlobal(yB)) {
+          // Both waste: keep yA as unified waste block
+          yA.filhos = [];
+          yA.label = undefined;
+        } else {
+          // Merge Z-children from yB into yA
+          for (const zB of yB.filhos) {
+            const copy = deepCloneNode(zB);
+            yA.filhos.push(copy);
+          }
+          // Re-compress
+          compressMultiSiblings(yA);
+        }
+      }
+
+      // Remove xB
+      tree.filhos.splice(i + 1, 1);
+      merged = true;
+      break; // restart scan
+    }
+  }
+}
+
+/**
+ * Compress adjacent identical siblings within a single node (local version).
+ */
+function compressMultiSiblings(node: TreeNode): void {
+  if (node.filhos.length < 2) return;
+  const compressed: TreeNode[] = [];
+  for (const child of node.filhos) {
+    if (compressed.length > 0) {
+      const last = compressed[compressed.length - 1];
+      if (nodesStructurallyEqual(last, child)) {
+        last.multi += child.multi;
+        continue;
+      }
+    }
+    compressed.push(child);
+  }
+  node.filhos = compressed;
 }
