@@ -2850,6 +2850,11 @@ function runPlacement(
     placedArea += unifyColumnWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
+  // --- COLLAPSE TREE WASTE: merge consecutive waste siblings into unified blocks ---
+  if (remaining.length > 0) {
+    placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
+  }
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
@@ -3102,6 +3107,392 @@ function unifyColumnWaste(
  * Validates that no column (X node) has Y strips whose total height exceeds usableH.
  * If overflow is detected, removes excess Y strips from the end and adjusts placedArea.
  */
+// ========== STRUCTURAL WASTE COLLAPSE ==========
+
+/**
+ * COLAPSO ESTRUTURAL DE SOBRAS
+ *
+ * Percorre a árvore identificando nós irmãos consecutivos que representam
+ * sobras (sem peças alocadas). Colapsa-os em um único nó com a soma das
+ * dimensões, criando um espaço unificado onde peças restantes podem caber.
+ *
+ * Regras (do documento de especificação):
+ * - Mesmo eixo (tipo do nó)
+ * - Mesmo contexto (mesmo nó pai)
+ * - Cortes consecutivos
+ * - Regiões contíguas
+ * - Mesma largura → colapso Y/W (horizontal)
+ * - Mesma altura → colapso X/Z/Q (vertical)
+ *
+ * Exemplo: Y(200) + Y(150) + Y(100) todos sem peças → Y(450)
+ */
+function collapseTreeWaste(
+  tree: TreeNode,
+  remaining: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number,
+): number {
+  if (remaining.length === 0) return 0;
+  let addedArea = 0;
+
+  /**
+   * Verifica se um nó é "sobra pura" — sem peças alocadas.
+   * Um nó folha sem label é sobra. Um nó com filhos é sobra se TODOS os filhos são sobra.
+   */
+  function isWasteNode(node: TreeNode): boolean {
+    if (node.filhos.length === 0) return !node.label;
+    return node.filhos.every(c => isWasteNode(c));
+  }
+
+  /**
+   * Tenta colapsar nós irmãos consecutivos que são sobra pura dentro de um pai.
+   * Retorna a área preenchida com peças nos espaços colapsados.
+   */
+  function collapseLevel(
+    parent: TreeNode,
+    getSpaceW: (totalVal: number) => number,
+    getSpaceH: (totalVal: number) => number,
+    childType: NodeType,
+    fillFn: (collapsedNode: TreeNode, spaceW: number, spaceH: number) => number,
+  ): number {
+    let levelArea = 0;
+    let modified = true;
+
+    while (modified && remaining.length > 0) {
+      modified = false;
+
+      for (let i = 0; i < parent.filhos.length && remaining.length > 0; i++) {
+        // Find run of consecutive waste nodes
+        if (!isWasteNode(parent.filhos[i])) continue;
+
+        let j = i;
+        let totalVal = 0;
+        while (j < parent.filhos.length && isWasteNode(parent.filhos[j])) {
+          totalVal += parent.filhos[j].valor * parent.filhos[j].multi;
+          j++;
+        }
+
+        const runLength = j - i;
+        if (runLength < 2 || totalVal < 50) {
+          i = j - 1;
+          continue;
+        }
+
+        const spaceW = getSpaceW(totalVal);
+        const spaceH = getSpaceH(totalVal);
+
+        // Check if any remaining piece fits in the collapsed space
+        const canFit = remaining.some(p =>
+          oris(p).some(o => o.w <= spaceW && o.h <= spaceH)
+        );
+
+        if (!canFit) {
+          i = j - 1;
+          continue;
+        }
+
+        console.log(
+          `[COLLAPSE] ${childType} level: merging ${runLength} waste nodes (total=${totalVal}mm) → space ${spaceW}×${spaceH}mm`
+        );
+
+        // Remove individual waste nodes
+        const removed = parent.filhos.splice(i, runLength);
+
+        // Create one collapsed node with the summed dimension
+        const collapsedId = gid();
+        const collapsed: TreeNode = {
+          id: collapsedId,
+          tipo: childType,
+          valor: totalVal,
+          multi: 1,
+          filhos: [],
+        };
+        parent.filhos.splice(i, 0, collapsed);
+
+        // Fill the collapsed space
+        const filled = fillFn(collapsed, spaceW, spaceH);
+        levelArea += filled;
+
+        if (filled > 0) {
+          modified = true;
+          console.log(
+            `[COLLAPSE] Filled ${filled.toFixed(0)}mm² in collapsed ${childType} node`
+          );
+        } else {
+          // Nothing fit — restore original waste nodes
+          parent.filhos.splice(i, 1);
+          parent.filhos.splice(i, 0, ...removed);
+        }
+
+        break; // restart scan after modification
+      }
+    }
+
+    return levelArea;
+  }
+
+  // === LEVEL Y: Collapse consecutive waste Y nodes in each X column ===
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+
+    addedArea += collapseLevel(
+      colX,
+      (_totalVal) => colX.valor,        // spaceW = column width
+      (totalVal) => totalVal,            // spaceH = summed Y heights
+      'Y',
+      (collapsedY, spaceW, spaceH) => {
+        let filled = 0;
+        let freeH = spaceH;
+
+        while (freeH > 0 && remaining.length > 0) {
+          let bestIdx = -1;
+          let bestO: { w: number; h: number } | null = null;
+          let bestArea = 0;
+
+          for (let i = 0; i < remaining.length; i++) {
+            for (const o of oris(remaining[i])) {
+              if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
+                bestArea = o.w * o.h;
+                bestIdx = i;
+                bestO = o;
+              }
+            }
+          }
+
+          if (bestIdx < 0 || !bestO) break;
+
+          const pc = remaining[bestIdx];
+          let consumed = bestO.h;
+          const residualH = freeH - bestO.h;
+          if (residualH > 0 && !canResidualFitAnyPiece(spaceW, residualH, remaining, minBreak)) {
+            consumed = freeH;
+          }
+
+          // Adjust collapsed Y node's valor to match consumed height if needed
+          // Create a sub-Y strip inside the collapsed node isn't valid — 
+          // instead we directly create Z children
+          const zId = gid();
+          const zNode: TreeNode = {
+            id: zId,
+            tipo: 'Z',
+            valor: bestO.w,
+            multi: 1,
+            filhos: [],
+            label: pc.label,
+          };
+          collapsedY.filhos.push(zNode);
+
+          // If piece is narrower than column, add W subdivision
+          if (bestO.w < spaceW) {
+            // Lateral fill in same Y strip
+            let freeZW = spaceW - bestO.w;
+            for (let k = 0; k < remaining.length && freeZW > 0; k++) {
+              if (k === bestIdx) continue;
+              const lpc = remaining[k];
+              for (const o of oris(lpc)) {
+                if (o.w <= freeZW && o.h <= consumed) {
+                  const lateralZ: TreeNode = {
+                    id: gid(),
+                    tipo: 'Z',
+                    valor: o.w,
+                    multi: 1,
+                    filhos: [],
+                    label: lpc.label,
+                  };
+                  collapsedY.filhos.push(lateralZ);
+                  freeZW -= o.w;
+                  filled += o.w * o.h;
+                  remaining.splice(k, 1);
+                  if (k < bestIdx) bestIdx--;
+                  k--;
+                  break;
+                }
+              }
+            }
+          }
+
+          filled += bestO.w * bestO.h;
+          freeH -= consumed;
+          remaining.splice(bestIdx, 1);
+        }
+
+        // Adjust the collapsed Y valor to actual used height if partially filled
+        if (freeH > 0 && collapsedY.filhos.length > 0) {
+          collapsedY.valor = spaceH - freeH;
+        }
+
+        return filled;
+      },
+    );
+  }
+
+  // === LEVEL Z: Collapse consecutive waste Z nodes in each Y strip ===
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+
+      addedArea += collapseLevel(
+        yNode,
+        (totalVal) => totalVal,            // spaceW = summed Z widths
+        (_totalVal) => yNode.valor,         // spaceH = Y strip height
+        'Z',
+        (collapsedZ, spaceW, spaceH) => {
+          let filled = 0;
+          let freeW = spaceW;
+
+          while (freeW > 0 && remaining.length > 0) {
+            let bestIdx = -1;
+            let bestO: { w: number; h: number } | null = null;
+            let bestArea = 0;
+
+            for (let i = 0; i < remaining.length; i++) {
+              for (const o of oris(remaining[i])) {
+                if (o.w <= freeW && o.h <= spaceH && o.w * o.h > bestArea) {
+                  bestArea = o.w * o.h;
+                  bestIdx = i;
+                  bestO = o;
+                }
+              }
+            }
+
+            if (bestIdx < 0 || !bestO) break;
+
+            const pc = remaining[bestIdx];
+            // Create W children inside the collapsed Z
+            const wNode: TreeNode = {
+              id: gid(),
+              tipo: 'W',
+              valor: bestO.h,
+              multi: 1,
+              filhos: [],
+              label: pc.label,
+            };
+            collapsedZ.filhos.push(wNode);
+
+            // If piece doesn't fill full height, add Q subdivision
+            if (bestO.w < freeW) {
+              // Mark width via Q node
+              const qNode: TreeNode = {
+                id: gid(),
+                tipo: 'Q',
+                valor: bestO.w,
+                multi: 1,
+                filhos: [],
+                label: pc.label,
+              };
+              wNode.filhos.push(qNode);
+            }
+
+            // Vertical W fill within the same Z column
+            let freeWH = spaceH - bestO.h;
+            for (let k = 0; k < remaining.length && freeWH > 0; k++) {
+              if (k === bestIdx) continue;
+              const lpc = remaining[k];
+              for (const o of oris(lpc)) {
+                if (o.w <= bestO.w && o.h <= freeWH) {
+                  const wNode2: TreeNode = {
+                    id: gid(),
+                    tipo: 'W',
+                    valor: o.h,
+                    multi: 1,
+                    filhos: [],
+                    label: lpc.label,
+                  };
+                  collapsedZ.filhos.push(wNode2);
+                  filled += o.w * o.h;
+                  freeWH -= o.h;
+                  remaining.splice(k, 1);
+                  if (k < bestIdx) bestIdx--;
+                  k--;
+                  break;
+                }
+              }
+            }
+
+            filled += bestO.w * bestO.h;
+            freeW -= bestO.w;
+            remaining.splice(bestIdx, 1);
+          }
+
+          // Adjust collapsed Z valor if partially used
+          if (freeW > 0 && collapsedZ.filhos.length > 0) {
+            collapsedZ.valor = spaceW - freeW;
+          }
+
+          return filled;
+        },
+      );
+    }
+  }
+
+  // === LEVEL W: Collapse consecutive waste W nodes in each Z node ===
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+      for (const zNode of yNode.filhos) {
+        if (remaining.length === 0) break;
+
+        addedArea += collapseLevel(
+          zNode,
+          (_totalVal) => zNode.valor,        // spaceW = Z width
+          (totalVal) => totalVal,             // spaceH = summed W heights
+          'W',
+          (collapsedW, spaceW, spaceH) => {
+            let filled = 0;
+
+            // Try to fit the best piece
+            let bestIdx = -1;
+            let bestO: { w: number; h: number } | null = null;
+            let bestArea = 0;
+
+            for (let i = 0; i < remaining.length; i++) {
+              for (const o of oris(remaining[i])) {
+                if (o.w <= spaceW && o.h <= spaceH && o.w * o.h > bestArea) {
+                  bestArea = o.w * o.h;
+                  bestIdx = i;
+                  bestO = o;
+                }
+              }
+            }
+
+            if (bestIdx >= 0 && bestO) {
+              const pc = remaining[bestIdx];
+              collapsedW.label = pc.label;
+
+              // If piece is narrower than Z, add Q node
+              if (bestO.w < spaceW) {
+                const qNode: TreeNode = {
+                  id: gid(),
+                  tipo: 'Q',
+                  valor: bestO.w,
+                  multi: 1,
+                  filhos: [],
+                  label: pc.label,
+                };
+                collapsedW.filhos.push(qNode);
+              }
+
+              filled += bestO.w * bestO.h;
+              remaining.splice(bestIdx, 1);
+            }
+
+            return filled;
+          },
+        );
+      }
+    }
+  }
+
+  if (addedArea > 0) {
+    console.log(`[COLLAPSE] Total area recovered: ${addedArea.toFixed(0)}mm²`);
+  }
+
+  return addedArea;
+}
+
 function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, placedArea: number): number {
   for (const colX of tree.filhos) {
     let totalH = 0;
