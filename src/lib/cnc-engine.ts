@@ -2855,6 +2855,11 @@ function runPlacement(
     placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
+  // --- REGROUP ADJACENT STRIPS: merge Y/Z strips to consolidate waste and fit more pieces ---
+  if (remaining.length > 0) {
+    placedArea += regroupAdjacentStrips(tree, remaining, usableW, usableH, minBreak);
+  }
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
