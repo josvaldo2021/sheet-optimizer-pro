@@ -3884,6 +3884,124 @@ function regroupAdjacentStrips(
     }
   }
 
+  // Also try regrouping W nodes within each Z node (vertical consolidation)
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+      for (const zNode of yNode.filhos) {
+        if (remaining.length === 0) break;
+        if (zNode.filhos.length < 2) continue;
+
+        let wModified = true;
+        while (wModified && remaining.length > 0) {
+          wModified = false;
+
+          for (let i = 0; i < zNode.filhos.length - 1 && remaining.length > 0; i++) {
+            for (let groupSize = Math.min(zNode.filhos.length - i, 4); groupSize >= 2; groupSize--) {
+              const wGroup = zNode.filhos.slice(i, i + groupSize);
+
+              const hasWaste = wGroup.some(w => isWasteSubtree(w));
+              if (!hasWaste) continue;
+
+              const combinedH = wGroup.reduce((s, w) => s + w.valor * w.multi, 0);
+              if (combinedH > yNode.valor) continue;
+
+              const zWidth = zNode.valor;
+
+              const canFit = remaining.some(p =>
+                oris(p).some(o => o.w <= zWidth && o.h <= combinedH)
+              );
+              if (!canFit) continue;
+
+              // Extract pieces from W group
+              const piecesInGroup: Piece[] = [];
+              for (const wNode of wGroup) {
+                if (wNode.filhos.length === 0 && wNode.label) {
+                  piecesInGroup.push({ w: zWidth, h: wNode.valor, area: zWidth * wNode.valor, label: wNode.label });
+                } else {
+                  for (const qNode of wNode.filhos) {
+                    if (qNode.label) {
+                      piecesInGroup.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                    }
+                  }
+                }
+              }
+
+              // Create merged W node and greedy Q-stacking
+              const mergedW: TreeNode = { id: gid(), tipo: 'W', valor: combinedH, multi: 1, filhos: [] };
+              const placedHere: Piece[] = [];
+              const newFromRemaining: number[] = [];
+              let usedW = 0;
+
+              // All candidates
+              const allToPlace = [...piecesInGroup];
+              for (let ri = 0; ri < remaining.length; ri++) {
+                for (const o of oris(remaining[ri])) {
+                  if (o.w <= zWidth && o.h <= combinedH) {
+                    allToPlace.push(remaining[ri]);
+                    break;
+                  }
+                }
+              }
+
+              // Greedy Q-stacking (horizontal within W)
+              while (usedW < zWidth) {
+                let bestIdx = -1;
+                let bestO: { w: number; h: number } | null = null;
+                let bestArea = 0;
+
+                for (let k = 0; k < allToPlace.length; k++) {
+                  if (placedHere.includes(allToPlace[k])) continue;
+                  for (const o of oris(allToPlace[k])) {
+                    if (o.w <= zWidth - usedW && o.h <= combinedH && o.w * o.h > bestArea) {
+                      bestArea = o.w * o.h;
+                      bestIdx = k;
+                      bestO = o;
+                    }
+                  }
+                }
+
+                if (bestIdx < 0 || !bestO) break;
+
+                const qNode: TreeNode = { id: gid(), tipo: 'Q', valor: bestO.w, multi: 1, filhos: [], label: allToPlace[bestIdx].label };
+                mergedW.filhos.push(qNode);
+                placedHere.push(allToPlace[bestIdx]);
+
+                const remIdx = remaining.indexOf(allToPlace[bestIdx]);
+                if (remIdx >= 0) {
+                  newFromRemaining.push(remIdx);
+                }
+                usedW += bestO.w;
+              }
+
+              const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
+              if (!allOrigPlaced || newFromRemaining.length === 0) continue;
+
+              console.log(
+                `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
+                `fitted ${newFromRemaining.length} new piece(s)`
+              );
+
+              zNode.filhos.splice(i, groupSize, mergedW);
+
+              const sortedIndices = [...newFromRemaining].sort((a, b) => b - a);
+              let addedArea = 0;
+              for (const idx of sortedIndices) {
+                addedArea += remaining[idx].area;
+                remaining.splice(idx, 1);
+              }
+              totalAdded += addedArea;
+              wModified = true;
+              break;
+            }
+            if (wModified) break;
+          }
+        }
+      }
+    }
+  }
+
   if (totalAdded > 0) {
     console.log(`[REGROUP] Total area recovered: ${totalAdded.toFixed(0)}mm²`);
   }
