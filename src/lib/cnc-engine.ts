@@ -2855,6 +2855,11 @@ function runPlacement(
     placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
+  // --- REGROUP ADJACENT STRIPS: merge Y/Z strips to consolidate waste and fit more pieces ---
+  if (remaining.length > 0) {
+    placedArea += regroupAdjacentStrips(tree, remaining, usableW, usableH, minBreak);
+  }
+
   // --- VALIDATION: clamp columns that exceed usableH ---
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
@@ -3491,6 +3496,406 @@ function collapseTreeWaste(
   }
 
   return addedArea;
+}
+
+/**
+ * AGRUPAMENTO INTELIGENTE DE SOBRAS
+ *
+ * Estratégia: detectar faixas Y adjacentes dentro de uma coluna X onde a combinação
+ * das alturas permite um layout mais compacto. Extrai as peças das faixas adjacentes,
+ * reconstrói a sub-árvore com a altura combinada, e tenta encaixar peças restantes
+ * no espaço consolidado.
+ *
+ * Regras do documento:
+ * - Mesmo eixo, mesmo contexto, cortes consecutivos, regiões contíguas
+ * - Respeita hierarquia de cortes guilhotinados (X→Y→Z→W→Q)
+ * - Trabalha com relações geométricas (sem depender de dimensões fixas)
+ */
+function regroupAdjacentStrips(
+  tree: TreeNode,
+  remaining: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number,
+): number {
+  if (remaining.length === 0) return 0;
+  let totalAdded = 0;
+
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    if (colX.filhos.length < 2) continue;
+
+    let modified = true;
+    while (modified && remaining.length > 0) {
+      modified = false;
+
+      // Try merging consecutive Y strips (groups of 2, 3, ...)
+      for (let i = 0; i < colX.filhos.length - 1 && remaining.length > 0; i++) {
+        // Try progressively larger groups starting from 2
+        for (let groupSize = Math.min(colX.filhos.length - i, 5); groupSize >= 2; groupSize--) {
+          const yGroup = colX.filhos.slice(i, i + groupSize);
+          const combinedH = yGroup.reduce((s, y) => s + y.valor * y.multi, 0);
+
+          // Skip if combined height exceeds usable height
+          if (combinedH > usableH) continue;
+
+          // Extract all pieces from the Y group
+          const extractedPieces: Piece[] = [];
+          const extractedRects: AbsRect[] = [];
+
+          let yOff = 0;
+          for (const yNode of yGroup) {
+            for (let iy = 0; iy < yNode.multi; iy++) {
+              let zOff = 0;
+              for (const zNode of yNode.filhos) {
+                for (let iz = 0; iz < zNode.multi; iz++) {
+                  if (zNode.filhos.length === 0) {
+                    if (zNode.label) {
+                      extractedPieces.push({ w: zNode.valor, h: yNode.valor, area: zNode.valor * yNode.valor, label: zNode.label });
+                      extractedRects.push({ x: zOff, y: yOff, w: zNode.valor, h: yNode.valor, label: zNode.label });
+                    }
+                  } else {
+                    let wOff = 0;
+                    for (const wNode of zNode.filhos) {
+                      for (let iw = 0; iw < wNode.multi; iw++) {
+                        if (wNode.filhos.length === 0) {
+                          if (wNode.label) {
+                            extractedPieces.push({ w: zNode.valor, h: wNode.valor, area: zNode.valor * wNode.valor, label: wNode.label });
+                            extractedRects.push({ x: zOff, y: yOff + wOff, w: zNode.valor, h: wNode.valor, label: wNode.label });
+                          }
+                        } else {
+                          for (const qNode of wNode.filhos) {
+                            for (let iq = 0; iq < qNode.multi; iq++) {
+                              if (qNode.label) {
+                                extractedPieces.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                                extractedRects.push({ x: zOff + (iq > 0 ? qNode.valor * iq : 0), y: yOff + wOff, w: qNode.valor, h: wNode.valor, label: qNode.label });
+                              }
+                            }
+                          }
+                        }
+                        wOff += wNode.valor;
+                      }
+                    }
+                  }
+                  zOff += zNode.valor;
+                }
+              }
+              yOff += yNode.valor;
+            }
+          }
+
+          if (extractedPieces.length === 0) continue;
+
+          const colW = colX.valor;
+          const oldArea = extractedPieces.reduce((s, p) => s + p.area, 0);
+
+          // Check if any remaining piece could fit in the combined space
+          const wasteArea = colW * combinedH - oldArea;
+          const canFitNew = remaining.some(p =>
+            oris(p).some(o => o.w * o.h <= wasteArea && o.w <= colW && o.h <= combinedH)
+          );
+
+          if (!canFitNew) continue;
+
+          // Build a mini-inventory: extracted pieces + candidates from remaining
+          const candidateRemaining = [...remaining];
+          const allPieces: Piece[] = [...extractedPieces];
+
+          // Greedy placement in the combined Y space
+          const newYNode: TreeNode = { id: gid(), tipo: 'Y', valor: combinedH, multi: 1, filhos: [] };
+          let freeH = combinedH;
+          const placed: Piece[] = [];
+          const usedFromRemaining: number[] = [];
+
+          // Sort all available pieces (extracted + remaining) by area desc for greedy placement
+          const allCandidates = [
+            ...allPieces.map((p, idx) => ({ piece: p, source: 'extracted' as const, idx })),
+            ...candidateRemaining.map((p, idx) => ({ piece: p, source: 'remaining' as const, idx })),
+          ];
+
+          // Place column by column (Z nodes) within the combined Y
+          let usedW = 0;
+
+          while (usedW < colW && (placed.length < allPieces.length || usedFromRemaining.length > 0 || allCandidates.length > 0)) {
+            // Find best piece for a new Z column
+            let bestCandidate: typeof allCandidates[0] | null = null;
+            let bestOri: { w: number; h: number } | null = null;
+            let bestScore = Infinity;
+
+            for (const c of allCandidates) {
+              if (c.source === 'remaining' && usedFromRemaining.includes(c.idx)) continue;
+              if (c.source === 'extracted' && placed.some(pp => pp === c.piece)) continue;
+
+              for (const o of oris(c.piece)) {
+                if (o.w <= colW - usedW && o.h <= combinedH) {
+                  const score = scoreFit(colW - usedW, combinedH, o.w, o.h, []);
+                  if (score < bestScore) {
+                    bestScore = score;
+                    bestCandidate = c;
+                    bestOri = o;
+                  }
+                }
+              }
+            }
+
+            if (!bestCandidate || !bestOri) break;
+
+            // Create Z node for this piece
+            const zNode: TreeNode = { id: gid(), tipo: 'Z', valor: bestOri.w, multi: 1, filhos: [] };
+
+            // Stack W nodes vertically in this Z column
+            let usedH = 0;
+            const wNode: TreeNode = { id: gid(), tipo: 'W', valor: bestOri.h, multi: 1, filhos: [], label: bestCandidate.piece.label };
+
+            if (bestOri.w < colW - usedW || bestOri.h < combinedH) {
+              // Not a perfect Z leaf - need W subdivision
+              zNode.filhos.push(wNode);
+            } else {
+              zNode.label = bestCandidate.piece.label;
+            }
+
+            if (bestCandidate.source === 'remaining') {
+              usedFromRemaining.push(bestCandidate.idx);
+            }
+            placed.push(bestCandidate.piece);
+            usedH += bestOri.h;
+
+            // Fill remaining height in this Z column with more pieces
+            const zWidth = bestOri.w;
+            while (usedH < combinedH) {
+              let bestFill: typeof allCandidates[0] | null = null;
+              let bestFillOri: { w: number; h: number } | null = null;
+              let bestFillArea = 0;
+
+              for (const c of allCandidates) {
+                if (c === bestCandidate) continue;
+                if (c.source === 'remaining' && usedFromRemaining.includes(c.idx)) continue;
+                if (c.source === 'extracted' && placed.some(pp => pp === c.piece)) continue;
+
+                for (const o of oris(c.piece)) {
+                  if (o.w <= zWidth && o.h <= combinedH - usedH && o.w * o.h > bestFillArea) {
+                    bestFillArea = o.w * o.h;
+                    bestFill = c;
+                    bestFillOri = o;
+                  }
+                }
+              }
+
+              if (!bestFill || !bestFillOri) break;
+
+              const fillW: TreeNode = { id: gid(), tipo: 'W', valor: bestFillOri.h, multi: 1, filhos: [], label: bestFill.piece.label };
+
+              if (bestFillOri.w < zWidth) {
+                // Need Q subdivision
+                const qNode: TreeNode = { id: gid(), tipo: 'Q', valor: bestFillOri.w, multi: 1, filhos: [], label: bestFill.piece.label };
+                fillW.filhos.push(qNode);
+                fillW.label = undefined;
+              }
+
+              zNode.filhos.push(fillW);
+
+              if (bestFill.source === 'remaining') {
+                usedFromRemaining.push(bestFill.idx);
+              }
+              placed.push(bestFill.piece);
+              usedH += bestFillOri.h;
+            }
+
+            newYNode.filhos.push(zNode);
+            usedW += zWidth;
+
+            // Check if all extracted pieces are placed
+            const allExtractedPlaced = allPieces.every(ep => placed.includes(ep));
+            if (allExtractedPlaced && usedFromRemaining.length === 0) {
+              // No improvement - all original pieces placed but no new ones
+              // Keep going to try to fit remaining pieces
+            }
+          }
+
+          // Validate: all extracted pieces must be placed
+          const allExtractedPlaced = allPieces.every(ep => placed.includes(ep));
+          if (!allExtractedPlaced) continue; // regrouping failed, skip
+
+          // Check improvement: did we fit any new pieces from remaining?
+          if (usedFromRemaining.length === 0) continue; // no improvement
+
+          // Success! Replace the Y group with the new merged Y node
+          console.log(
+            `[REGROUP] Merged ${groupSize} Y strips (${yGroup.map(y => `Y${y.valor}`).join('+')} = Y${combinedH}) in X${colX.valor}, ` +
+            `fitted ${usedFromRemaining.length} new piece(s)`
+          );
+
+          // Adjust newYNode.valor to actual used height if we didn't fill everything
+          // Remove the old Y nodes and insert the new one
+          colX.filhos.splice(i, groupSize, newYNode);
+
+          // Add remaining waste as a separate Y node if there's leftover height
+          const actualUsedH = newYNode.filhos.reduce((s, z) => {
+            // The height is defined by W children if present, else by the Y parent
+            return combinedH; // The Y node already has the combined height
+          }, 0);
+
+          // Remove placed remaining pieces from the remaining array
+          // Sort indices descending to avoid index shifting
+          const sortedIndices = [...usedFromRemaining].sort((a, b) => b - a);
+          let addedArea = 0;
+          for (const idx of sortedIndices) {
+            addedArea += remaining[idx].area;
+            remaining.splice(idx, 1);
+          }
+
+          totalAdded += addedArea;
+          modified = true;
+          break; // restart scan for this column
+        }
+
+        if (modified) break;
+      }
+    }
+  }
+
+  // Also try regrouping Z nodes within each Y strip (horizontal consolidation)
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+      if (yNode.filhos.length < 2) continue;
+
+      let modified = true;
+      while (modified && remaining.length > 0) {
+        modified = false;
+
+        for (let i = 0; i < yNode.filhos.length - 1 && remaining.length > 0; i++) {
+          for (let groupSize = Math.min(yNode.filhos.length - i, 4); groupSize >= 2; groupSize--) {
+            const zGroup = yNode.filhos.slice(i, i + groupSize);
+
+            // Only merge if at least some are waste
+            const hasWaste = zGroup.some(z => isWasteSubtree(z));
+            if (!hasWaste) continue;
+
+            const combinedW = zGroup.reduce((s, z) => s + z.valor * z.multi, 0);
+            if (combinedW > colX.valor) continue;
+
+            const stripH = yNode.valor;
+
+            // Check if any remaining piece fits
+            const canFit = remaining.some(p =>
+              oris(p).some(o => o.w <= combinedW && o.h <= stripH)
+            );
+            if (!canFit) continue;
+
+            // Extract pieces from the Z group
+            const piecesInGroup: Piece[] = [];
+            for (const zNode of zGroup) {
+              if (zNode.filhos.length === 0 && zNode.label) {
+                piecesInGroup.push({ w: zNode.valor, h: stripH, area: zNode.valor * stripH, label: zNode.label });
+              } else {
+                for (const wNode of zNode.filhos) {
+                  if (wNode.filhos.length === 0 && wNode.label) {
+                    piecesInGroup.push({ w: zNode.valor, h: wNode.valor, area: zNode.valor * wNode.valor, label: wNode.label });
+                  } else {
+                    for (const qNode of wNode.filhos) {
+                      if (qNode.label) {
+                        piecesInGroup.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // Create merged Z node and try to place everything
+            const mergedZ: TreeNode = { id: gid(), tipo: 'Z', valor: combinedW, multi: 1, filhos: [] };
+            let usedH = 0;
+            const allToPlace = [...piecesInGroup];
+            const newFromRemaining: number[] = [];
+
+            // Add candidates from remaining
+            for (let ri = 0; ri < remaining.length; ri++) {
+              for (const o of oris(remaining[ri])) {
+                if (o.w <= combinedW && o.h <= stripH) {
+                  allToPlace.push(remaining[ri]);
+                  break;
+                }
+              }
+            }
+
+            // Greedy W-stacking
+            const placedHere: Piece[] = [];
+            while (usedH < stripH) {
+              let bestIdx = -1;
+              let bestO: { w: number; h: number } | null = null;
+              let bestArea = 0;
+
+              for (let k = 0; k < allToPlace.length; k++) {
+                if (placedHere.includes(allToPlace[k])) continue;
+                for (const o of oris(allToPlace[k])) {
+                  if (o.w <= combinedW && o.h <= stripH - usedH && o.w * o.h > bestArea) {
+                    bestArea = o.w * o.h;
+                    bestIdx = k;
+                    bestO = o;
+                  }
+                }
+              }
+
+              if (bestIdx < 0 || !bestO) break;
+
+              const wNode: TreeNode = { id: gid(), tipo: 'W', valor: bestO.h, multi: 1, filhos: [], label: allToPlace[bestIdx].label };
+              if (bestO.w < combinedW) {
+                const qNode: TreeNode = { id: gid(), tipo: 'Q', valor: bestO.w, multi: 1, filhos: [], label: allToPlace[bestIdx].label };
+                wNode.filhos.push(qNode);
+                wNode.label = undefined;
+              }
+              mergedZ.filhos.push(wNode);
+              placedHere.push(allToPlace[bestIdx]);
+
+              // Track if this came from remaining
+              const remIdx = remaining.indexOf(allToPlace[bestIdx]);
+              if (remIdx >= 0) {
+                newFromRemaining.push(remIdx);
+              }
+              usedH += bestO.h;
+            }
+
+            // Validate: all original pieces must be placed
+            const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
+            if (!allOrigPlaced || newFromRemaining.length === 0) continue;
+
+            console.log(
+              `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
+              `fitted ${newFromRemaining.length} new piece(s)`
+            );
+
+            yNode.filhos.splice(i, groupSize, mergedZ);
+
+            const sortedIndices = [...newFromRemaining].sort((a, b) => b - a);
+            let addedArea = 0;
+            for (const idx of sortedIndices) {
+              addedArea += remaining[idx].area;
+              remaining.splice(idx, 1);
+            }
+            totalAdded += addedArea;
+            modified = true;
+            break;
+          }
+          if (modified) break;
+        }
+      }
+    }
+  }
+
+  if (totalAdded > 0) {
+    console.log(`[REGROUP] Total area recovered: ${totalAdded.toFixed(0)}mm²`);
+  }
+
+  return totalAdded;
+}
+
+/** Check if a subtree is pure waste (no labels anywhere) */
+function isWasteSubtree(node: TreeNode): boolean {
+  if (node.label) return false;
+  if (node.filhos.length === 0) return !node.label;
+  return node.filhos.every(c => isWasteSubtree(c));
 }
 
 function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, placedArea: number): number {
