@@ -3589,13 +3589,18 @@ function regroupAdjacentStrips(
           const colW = colX.valor;
           const oldArea = extractedPieces.reduce((s, p) => s + p.area, 0);
 
-          // Check if any remaining piece could fit in the combined space
+          // Check if consolidation is worthwhile:
+          // Either remaining pieces could fit, or waste is fragmented across strips
           const wasteArea = colW * combinedH - oldArea;
-          const canFitNew = remaining.some(p =>
+          const hasWasteToConsolidate = yGroup.length >= 2 && yGroup.some(y => {
+            const yPieceW = y.filhos.reduce((s, z) => s + z.valor * z.multi, 0);
+            return yPieceW < colW; // has Z-waste on the side
+          });
+          const canFitNew = remaining.length > 0 && remaining.some(p =>
             oris(p).some(o => o.w * o.h <= wasteArea && o.w <= colW && o.h <= combinedH)
           );
 
-          if (!canFitNew) continue;
+          if (!canFitNew && !hasWasteToConsolidate) continue;
 
           // Build a mini-inventory: extracted pieces + candidates from remaining
           const candidateRemaining = [...remaining];
