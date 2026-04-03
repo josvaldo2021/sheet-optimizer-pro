@@ -3518,7 +3518,7 @@ function regroupAdjacentStrips(
   usableH: number,
   minBreak: number,
 ): number {
-  if (remaining.length === 0) return 0;
+  // Note: we proceed even when remaining.length === 0 to consolidate fragmented waste
   let totalAdded = 0;
 
   for (const colX of tree.filhos) {
