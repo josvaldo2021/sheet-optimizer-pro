@@ -3980,7 +3980,9 @@ function regroupAdjacentStrips(
               }
 
               const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
-              if (!allOrigPlaced || newFromRemaining.length === 0) continue;
+              if (!allOrigPlaced) continue;
+              const wWasteConsolidated = groupSize > 1 && hasWaste;
+              if (newFromRemaining.length === 0 && !wWasteConsolidated) continue;
 
               console.log(
                 `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
