@@ -3526,7 +3526,7 @@ function regroupAdjacentStrips(
     if (colX.filhos.length < 2) continue;
 
     let modified = true;
-    while (modified && remaining.length > 0) {
+    while (modified) {
       modified = false;
 
       // Try merging consecutive Y strips (groups of 2, 3, ...)
