@@ -3762,16 +3762,14 @@ function regroupAdjacentStrips(
 
   // Also try regrouping Z nodes within each Y strip (horizontal consolidation)
   for (const colX of tree.filhos) {
-    if (remaining.length === 0) break;
     for (const yNode of colX.filhos) {
-      if (remaining.length === 0) break;
       if (yNode.filhos.length < 2) continue;
 
       let modified = true;
-      while (modified && remaining.length > 0) {
+      while (modified) {
         modified = false;
 
-        for (let i = 0; i < yNode.filhos.length - 1 && remaining.length > 0; i++) {
+        for (let i = 0; i < yNode.filhos.length - 1; i++) {
           for (let groupSize = Math.min(yNode.filhos.length - i, 4); groupSize >= 2; groupSize--) {
             const zGroup = yNode.filhos.slice(i, i + groupSize);
 
