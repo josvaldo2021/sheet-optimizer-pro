@@ -3530,7 +3530,7 @@ function regroupAdjacentStrips(
       modified = false;
 
       // Try merging consecutive Y strips (groups of 2, 3, ...)
-      for (let i = 0; i < colX.filhos.length - 1 && remaining.length > 0; i++) {
+      for (let i = 0; i < colX.filhos.length - 1; i++) {
         // Try progressively larger groups starting from 2
         for (let groupSize = Math.min(colX.filhos.length - i, 5); groupSize >= 2; groupSize--) {
           const yGroup = colX.filhos.slice(i, i + groupSize);
