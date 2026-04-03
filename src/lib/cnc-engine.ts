@@ -3721,8 +3721,9 @@ function regroupAdjacentStrips(
           const allExtractedPlaced = allPieces.every(ep => placed.includes(ep));
           if (!allExtractedPlaced) continue; // regrouping failed, skip
 
-          // Check improvement: did we fit any new pieces from remaining?
-          if (usedFromRemaining.length === 0) continue; // no improvement
+          // Allow merge if: new pieces were fitted OR waste was consolidated (fewer Y-strips)
+          const wasteConsolidated = groupSize > 1; // merging multiple Y-strips into one consolidates waste
+          if (usedFromRemaining.length === 0 && !wasteConsolidated) continue;
 
           // Success! Replace the Y group with the new merged Y node
           console.log(
