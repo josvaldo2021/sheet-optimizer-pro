@@ -3863,7 +3863,10 @@ function regroupAdjacentStrips(
 
             // Validate: all original pieces must be placed
             const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
-            if (!allOrigPlaced || newFromRemaining.length === 0) continue;
+            if (!allOrigPlaced) continue;
+            // Allow merge for waste consolidation even without new pieces
+            const zWasteConsolidated = groupSize > 1 && hasWaste;
+            if (newFromRemaining.length === 0 && !zWasteConsolidated) continue;
 
             console.log(
               `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
