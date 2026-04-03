@@ -1738,71 +1738,71 @@ export function optimizeV6(
     : useGrouping === false
       ? [pieces, rotatedPieces]
       : [
-          pieces,
-          rotatedPieces,
-          // PRIMARY: Agrupamento por mesma largura em X (empilhamento vertical)
-          groupPiecesBySameWidth(pieces, usableH),
-          groupPiecesBySameWidth(rotatedPieces, usableH),
-          groupPiecesBySameWidth(pieces), // sem limite de altura
-          groupPiecesBySameWidth(rotatedPieces),
-          // COMPLEMENTAR: Agrupamento por mesma altura em Y (lado a lado)
-          groupPiecesBySameHeight(pieces, usableW),
-          groupPiecesBySameHeight(rotatedPieces, usableW),
-          groupPiecesBySameHeight(pieces),
-          groupPiecesBySameHeight(rotatedPieces),
-          // Fill-row strategies
-          groupPiecesFillRow(pieces, usableW),
-          groupPiecesFillRow(rotatedPieces, usableW),
-          groupPiecesFillRow(pieces, usableW, true),
-          groupPiecesFillRow(rotatedPieces, usableW, true),
-          // Fill-col strategies
-          groupPiecesFillCol(pieces, usableH),
-          groupPiecesFillCol(rotatedPieces, usableH),
-          groupPiecesFillCol(pieces, usableH, true),
-          groupPiecesFillCol(rotatedPieces, usableH, true),
-          // Combined: fill-row on width-grouped pieces
-          groupPiecesFillRow(groupPiecesBySameWidth(pieces, usableH), usableW),
-          groupPiecesFillRow(groupPiecesBySameHeight(pieces, usableW), usableW),
-          // Column-width/height maximizing
-          groupPiecesColumnWidth(pieces, usableW),
-          groupPiecesColumnWidth(rotatedPieces, usableW),
-          groupPiecesColumnHeight(pieces, usableH),
-          groupPiecesColumnHeight(rotatedPieces, usableH),
-          // Band strategies
-          groupPiecesBandFirst(pieces, usableW),
-          groupPiecesBandFirst(rotatedPieces, usableW),
-          groupPiecesBandFirst(pieces, usableW, true),
-          groupPiecesBandFirst(rotatedPieces, usableW, true),
-          groupPiecesBandLast(pieces, usableW),
-          groupPiecesBandLast(rotatedPieces, usableW),
-          // NOVO: Agrupamento por dimensão comum (peças de larguras diferentes mas mesma altura)
-          groupByCommonDimension(pieces, usableW, usableH),
-          groupByCommonDimension(rotatedPieces, usableW, usableH),
-          groupByCommonDimension(pieces, usableW, usableH, 0.3),
-          groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
-          groupByCommonDimensionTransposed(pieces, usableW, usableH),
-          groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
-          // NOVO: Strip Packing com DP (tolerâncias variadas)
-          groupStripPackingDP(pieces, usableW, usableH, 0),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 0),
-          groupStripPackingDP(pieces, usableW, usableH, 5),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 5),
-          groupStripPackingDP(pieces, usableW, usableH, 30),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 30),
-          groupStripPackingDP(pieces, usableW, usableH, 100),
-          groupStripPackingDP(pieces, usableW, usableH, 5, "raw"),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 5, "raw"),
-          // Strip Packing DP Transposed (colunas verticais)
-          groupStripPackingDPTransposed(pieces, usableW, usableH, 0),
-          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 0),
-          groupStripPackingDPTransposed(pieces, usableW, usableH, 5),
-          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 5),
-          // Common Dimension + DP
-          groupCommonDimensionDP(pieces, usableW, usableH),
-          groupCommonDimensionDP(rotatedPieces, usableW, usableH),
-          groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
-          groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
-        ];
+        pieces,
+        rotatedPieces,
+        // PRIMARY: Agrupamento por mesma largura em X (empilhamento vertical)
+        groupPiecesBySameWidth(pieces, usableH),
+        groupPiecesBySameWidth(rotatedPieces, usableH),
+        groupPiecesBySameWidth(pieces), // sem limite de altura
+        groupPiecesBySameWidth(rotatedPieces),
+        // COMPLEMENTAR: Agrupamento por mesma altura em Y (lado a lado)
+        groupPiecesBySameHeight(pieces, usableW),
+        groupPiecesBySameHeight(rotatedPieces, usableW),
+        groupPiecesBySameHeight(pieces),
+        groupPiecesBySameHeight(rotatedPieces),
+        // Fill-row strategies
+        groupPiecesFillRow(pieces, usableW),
+        groupPiecesFillRow(rotatedPieces, usableW),
+        groupPiecesFillRow(pieces, usableW, true),
+        groupPiecesFillRow(rotatedPieces, usableW, true),
+        // Fill-col strategies
+        groupPiecesFillCol(pieces, usableH),
+        groupPiecesFillCol(rotatedPieces, usableH),
+        groupPiecesFillCol(pieces, usableH, true),
+        groupPiecesFillCol(rotatedPieces, usableH, true),
+        // Combined: fill-row on width-grouped pieces
+        groupPiecesFillRow(groupPiecesBySameWidth(pieces, usableH), usableW),
+        groupPiecesFillRow(groupPiecesBySameHeight(pieces, usableW), usableW),
+        // Column-width/height maximizing
+        groupPiecesColumnWidth(pieces, usableW),
+        groupPiecesColumnWidth(rotatedPieces, usableW),
+        groupPiecesColumnHeight(pieces, usableH),
+        groupPiecesColumnHeight(rotatedPieces, usableH),
+        // Band strategies
+        groupPiecesBandFirst(pieces, usableW),
+        groupPiecesBandFirst(rotatedPieces, usableW),
+        groupPiecesBandFirst(pieces, usableW, true),
+        groupPiecesBandFirst(rotatedPieces, usableW, true),
+        groupPiecesBandLast(pieces, usableW),
+        groupPiecesBandLast(rotatedPieces, usableW),
+        // NOVO: Agrupamento por dimensão comum (peças de larguras diferentes mas mesma altura)
+        groupByCommonDimension(pieces, usableW, usableH),
+        groupByCommonDimension(rotatedPieces, usableW, usableH),
+        groupByCommonDimension(pieces, usableW, usableH, 0.3),
+        groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
+        groupByCommonDimensionTransposed(pieces, usableW, usableH),
+        groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
+        // NOVO: Strip Packing com DP (tolerâncias variadas)
+        groupStripPackingDP(pieces, usableW, usableH, 0),
+        groupStripPackingDP(rotatedPieces, usableW, usableH, 0),
+        groupStripPackingDP(pieces, usableW, usableH, 5),
+        groupStripPackingDP(rotatedPieces, usableW, usableH, 5),
+        groupStripPackingDP(pieces, usableW, usableH, 30),
+        groupStripPackingDP(rotatedPieces, usableW, usableH, 30),
+        groupStripPackingDP(pieces, usableW, usableH, 100),
+        groupStripPackingDP(pieces, usableW, usableH, 5, "raw"),
+        groupStripPackingDP(rotatedPieces, usableW, usableH, 5, "raw"),
+        // Strip Packing DP Transposed (colunas verticais)
+        groupStripPackingDPTransposed(pieces, usableW, usableH, 0),
+        groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 0),
+        groupStripPackingDPTransposed(pieces, usableW, usableH, 5),
+        groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 5),
+        // Common Dimension + DP
+        groupCommonDimensionDP(pieces, usableW, usableH),
+        groupCommonDimensionDP(rotatedPieces, usableW, usableH),
+        groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
+        groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
+      ];
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
@@ -1834,6 +1834,11 @@ export function optimizeV6(
     // Normalize transposed tree to canonical hierarchy (X,Z,Q=vertical; Y,W=horizontal)
     finalTree = normalizeTree(finalTree, usableW, usableH);
   }
+
+  // --- CONSOLIDAÇÃO DE SOBRAS: Regra de Colapso de Cortes ---
+  // Funde cortes consecutivos no mesmo eixo/contexto para obter sobras desfragmentadas.
+  // Executado uma vez sobre a árvore final escolhida, conforme o documento.
+  consolidateWasteByCollapsingCuts(finalTree, usableW, usableH);
 
   return {
     tree: finalTree,
@@ -2834,7 +2839,7 @@ function runPlacement(
               // Lateral fill: try more Z columns with W-stacking
               let freeZW = col.valor - bestFit.pieceW;
 
-              for (let i = 0; i < remaining.length && freeZW > 0; ) {
+              for (let i = 0; i < remaining.length && freeZW > 0;) {
                 const pc = remaining[i];
                 let lateralOri: { w: number; h: number } | null = null;
 
@@ -2857,7 +2862,7 @@ function runPlacement(
 
                   // Stack more pieces vertically in this lateral Z column
                   let latUsedH = lateralOri.h;
-                  for (let j = 0; j < remaining.length && latUsedH + lateralOri.h <= combinedH; ) {
+                  for (let j = 0; j < remaining.length && latUsedH + lateralOri.h <= combinedH;) {
                     const lpc = remaining[j];
                     let stackOri: { w: number; h: number } | null = null;
                     for (const o of oris(lpc)) {
@@ -4101,6 +4106,310 @@ function isWasteSubtree(node: TreeNode): boolean {
   return node.filhos.every(c => isWasteSubtree(c));
 }
 
+// ========== COLAPSO DE CORTES (CUT COLLAPSE RULE) ==========
+// Implementa as regras do documento agrupamento_sobras_plano_corte.md:
+// "Sempre que o algoritmo identificar uma oportunidade de agrupamento,
+//  ele deve refazer as coordenadas que compõe o layout analisado
+//  e refazer o layout somando as dimensões para obter uma sobra desfragmentada."
+//
+// Condições (do documento):
+//  - Mesmo eixo
+//  - Mesmo contexto (mesmo pai)
+//  - Cortes consecutivos
+//  - Regiões contíguas
+
+/**
+ * Retorna o padrão de alturas W de um nó Z.
+ * - [] se Z é folha (peça ocupa toda a altura Y)
+ * - [h1, h2, ...] se Z tem filhos W com alturas nessa sequência
+ * - null se estrutura é incompatível para colapso
+ */
+function getZWHeightPattern(zNode: TreeNode): number[] | null {
+  if (zNode.filhos.length === 0) return []; // Z folha
+  const pattern: number[] = [];
+  for (const w of zNode.filhos) {
+    if (w.tipo !== 'W') return null; // estrutura inesperada
+    pattern.push(w.valor * w.multi);
+  }
+  return pattern;
+}
+
+/**
+ * COLAPSO Z→Q: Colapsa nós Z adjacentes com o mesmo padrão de alturas W
+ * em um único nó Z mais largo, com subdivisões Q dentro de cada W row.
+ *
+ * Regra de Colapso (do documento):
+ *   Z(a) + Z(b) + Z(c)  [mesmo padrão W]
+ *   → Z(a+b+c) com W rows e Q(a), Q(b), Q(c) dentro de cada row
+ *
+ * Exemplo do documento (10 peças 917×725 em 3210mm):
+ *   Z917 → [W725, W725]
+ *   Z917 → [W725, W725]
+ *   Z917 → [W725, W725]
+ *   → Z2751 → [W725 → [Q917, Q917, Q917], W725 → [Q917, Q917, Q917]]
+ */
+function collapseAdjacentZIntoQ(yNode: TreeNode): void {
+  let modified = true;
+  while (modified) {
+    modified = false;
+
+    for (let start = 0; start < yNode.filhos.length - 1; start++) {
+      const z0 = yNode.filhos[start];
+      if (z0.tipo !== 'Z') continue;
+
+      const z0Pat = getZWHeightPattern(z0);
+      if (z0Pat === null) continue;
+
+      // Extende o grupo enquanto Z nodes têm o mesmo padrão W
+      let end = start + 1;
+      while (end < yNode.filhos.length) {
+        const zn = yNode.filhos[end];
+        if (zn.tipo !== 'Z') break;
+        const znPat = getZWHeightPattern(zn);
+        if (znPat === null || znPat.length !== z0Pat.length) break;
+        if (!z0Pat.every((v, i) => v === znPat[i])) break;
+        end++;
+      }
+
+      const groupLen = end - start;
+      if (groupLen < 2) continue;
+
+      const group = yNode.filhos.slice(start, end) as TreeNode[];
+      const combinedW = group.reduce((sum, z) => sum + z.valor * z.multi, 0);
+
+      // Constrói o nó Z fundido
+      const mergedZ: TreeNode = {
+        id: gid(), tipo: 'Z', valor: combinedW, multi: 1, filhos: [],
+      };
+
+      if (z0Pat.length === 0) {
+        // Todos os Z são folhas → cria W único com Q para cada Z original
+        const wNode: TreeNode = {
+          id: gid(), tipo: 'W', valor: yNode.valor, multi: 1, filhos: [],
+        };
+        for (const z of group) {
+          for (let rep = 0; rep < z.multi; rep++) {
+            wNode.filhos.push({
+              id: gid(), tipo: 'Q', valor: z.valor, multi: 1, filhos: [],
+              label: z.label,
+            });
+          }
+        }
+        mergedZ.filhos.push(wNode);
+      } else {
+        // Z nodes têm filhos W → cria W rows com Q pieces por coluna Z original
+        const numRows = z0.filhos.length;
+        for (let ri = 0; ri < numRows; ri++) {
+          const rowH = z0.filhos[ri].valor * z0.filhos[ri].multi;
+          const newW: TreeNode = {
+            id: gid(), tipo: 'W', valor: rowH, multi: 1, filhos: [],
+          };
+
+          for (const z of group) {
+            const wChild = z.filhos[ri];
+            if (!wChild) continue;
+
+            if (wChild.filhos.length === 0) {
+              // W folha → vira Q
+              for (let zRep = 0; zRep < z.multi; zRep++) {
+                for (let wRep = 0; wRep < wChild.multi; wRep++) {
+                  newW.filhos.push({
+                    id: gid(), tipo: 'Q', valor: z.valor, multi: 1, filhos: [],
+                    label: wChild.label,
+                  });
+                }
+              }
+            } else {
+              // W já tem Q children → adiciona os Q existentes
+              for (let zRep = 0; zRep < z.multi; zRep++) {
+                for (const q of wChild.filhos) {
+                  newW.filhos.push({
+                    id: gid(), tipo: 'Q', valor: q.valor, multi: q.multi, filhos: [],
+                    label: q.label,
+                  });
+                }
+              }
+            }
+          }
+
+          mergedZ.filhos.push(newW);
+        }
+      }
+
+      // Substitui o grupo pelo Z fundido
+      yNode.filhos.splice(start, groupLen, mergedZ);
+      console.log(
+        `[COLLAPSE-Z→Q] Y${yNode.valor}: fundiu ${groupLen} nós Z` +
+        ` (${group.map(z => `Z${z.valor}×${z.multi}`).join('+')} → Z${combinedW})`
+      );
+      modified = true;
+      break;
+    }
+  }
+}
+
+/**
+ * COLAPSO Y→Y: Funde strips Y consecutivos que têm o mesmo layout de larguras Z.
+ *
+ * Regra de Colapso (do documento):
+ *   Y(a) + Y(b) + Y(c)  [mesmo padrão Z]
+ *   → Y(a+b+c)
+ *
+ * Condições:
+ * - Strips Y consecutivos no mesmo X
+ * - Mesmo número de filhos Z com as mesmas larguras (posição a posição)
+ * - Altura combinada não excede usableH
+ * - Pelo menos um strip tem sobra lateral (Z não preenche X)
+ *   OU tem sobra interna (W children não preenchem Y completamente)
+ */
+function mergeConsecutiveYStrips(colX: TreeNode, usableH: number): void {
+  let modified = true;
+  while (modified) {
+    modified = false;
+
+    for (let i = 0; i < colX.filhos.length - 1; i++) {
+      const y1 = colX.filhos[i];
+      const y2 = colX.filhos[i + 1];
+      const h1 = y1.valor * y1.multi;
+      const h2 = y2.valor * y2.multi;
+      const combinedH = h1 + h2;
+      if (combinedH > usableH + 0.5) continue;
+
+      // Obtém padrões de largura Z de cada Y strip
+      const zNodes1 = y1.filhos.filter(c => c.tipo === 'Z');
+      const zNodes2 = y2.filhos.filter(c => c.tipo === 'Z');
+      if (zNodes1.length === 0 || zNodes2.length === 0) continue;
+      if (zNodes1.length !== zNodes2.length) continue;
+
+      const zWidths1 = zNodes1.map(z => z.valor * z.multi);
+      const zWidths2 = zNodes2.map(z => z.valor * z.multi);
+      if (!zWidths1.every((w, idx) => w === zWidths2[idx])) continue;
+
+      // Verifica se há sobra para consolidar
+      const colW = colX.valor;
+      const y1UsedW = zWidths1.reduce((s, w) => s + w, 0);
+      const y2UsedW = zWidths2.reduce((s, w) => s + w, 0);
+      const hasSideWaste = y1UsedW < colW - 0.5 || y2UsedW < colW - 0.5;
+
+      // Sobra interna: algum Z tem filhos W que não preenchem a altura total do Y
+      const hasInternalWasteY1 = zNodes1.some(z => {
+        if (z.filhos.length === 0) return false;
+        const wSum = z.filhos.reduce((s, w) => s + w.valor * w.multi, 0);
+        return wSum < h1 - 0.5;
+      });
+      const hasInternalWasteY2 = zNodes2.some(z => {
+        if (z.filhos.length === 0) return false;
+        const wSum = z.filhos.reduce((s, w) => s + w.valor * w.multi, 0);
+        return wSum < h2 - 0.5;
+      });
+
+      // Sobra Z folha: Z sem filhos e sem label é uma sobra lateral dentro do Y
+      const hasWasteZLeaf =
+        zNodes1.some(z => z.filhos.length === 0 && !z.label) ||
+        zNodes2.some(z => z.filhos.length === 0 && !z.label);
+
+      if (!hasSideWaste && !hasInternalWasteY1 && !hasInternalWasteY2 && !hasWasteZLeaf) continue;
+
+      console.log(
+        `[COLLAPSE-Y] X${colX.valor}: fundiu Y${h1} + Y${h2} → Y${combinedH}`
+      );
+
+      // Cria Y fundido
+      const mergedY: TreeNode = {
+        id: gid(), tipo: 'Y', valor: combinedH, multi: 1, filhos: [],
+      };
+
+      // Funde cada coluna Z par a par
+      for (let zi = 0; zi < zNodes1.length; zi++) {
+        const z1 = zNodes1[zi];
+        const z2 = zNodes2[zi];
+        const zW = z1.valor * z1.multi; // larguras são iguais (verificado acima)
+
+        const mergedZ: TreeNode = {
+          id: gid(), tipo: 'Z', valor: zW, multi: 1, filhos: [],
+        };
+
+        // Transfere W children de z1
+        if (z1.filhos.length === 0) {
+          // Z folha → cria W node com a altura do Y1
+          mergedZ.filhos.push({
+            id: gid(), tipo: 'W', valor: h1, multi: 1, filhos: [],
+            label: z1.label,
+          });
+        } else {
+          for (const w of z1.filhos) {
+            mergedZ.filhos.push({
+              ...w, id: gid(),
+              filhos: w.filhos.map(q => ({ ...q, id: gid() })),
+            });
+          }
+        }
+
+        // Transfere W children de z2
+        if (z2.filhos.length === 0) {
+          // Z folha → cria W node com a altura do Y2
+          mergedZ.filhos.push({
+            id: gid(), tipo: 'W', valor: h2, multi: 1, filhos: [],
+            label: z2.label,
+          });
+        } else {
+          for (const w of z2.filhos) {
+            mergedZ.filhos.push({
+              ...w, id: gid(),
+              filhos: w.filhos.map(q => ({ ...q, id: gid() })),
+            });
+          }
+        }
+
+        mergedY.filhos.push(mergedZ);
+      }
+
+      // Substitui os dois Y strips pelo Y fundido
+      colX.filhos.splice(i, 2, mergedY);
+      modified = true;
+      break;
+    }
+  }
+}
+
+/**
+ * CONSOLIDAÇÃO COMPLETA DE SOBRAS FRAGMENTADAS
+ *
+ * Implementa a Regra de Colapso de Cortes do documento:
+ * "Sempre que o algoritmo identificar uma oportunidade de agrupamento,
+ *  ele deve refazer as coordenadas que compõe o layout analisado
+ *  e refazer o layout somando as dimensões para obter uma sobra desfragmentada."
+ *
+ * Processo em 3 passes:
+ * 1. Z→Q: nós Z adjacentes com mesmo padrão W → Z único com Q subdividisos
+ * 2. Y merge: strips Y consecutivos com mesmo layout Z → Y único
+ * 3. Z→Q novamente: re-aplica após fusão Y (novos padrões podem surgir)
+ */
+function consolidateWasteByCollapsingCuts(
+  tree: TreeNode,
+  usableW: number,
+  usableH: number,
+): void {
+  // Passe 1: Colapso Z→Q
+  for (const colX of tree.filhos) {
+    for (const yNode of colX.filhos) {
+      collapseAdjacentZIntoQ(yNode);
+    }
+  }
+
+  // Passe 2: Fusão Y→Y
+  for (const colX of tree.filhos) {
+    mergeConsecutiveYStrips(colX, usableH);
+  }
+
+  // Passe 3: Re-aplicar Z→Q após fusão Y (novos grupos podem ter surgido)
+  for (const colX of tree.filhos) {
+    for (const yNode of colX.filhos) {
+      collapseAdjacentZIntoQ(yNode);
+    }
+  }
+}
+
 function clampTreeHeights(tree: TreeNode, usableW: number, usableH: number, placedArea: number): number {
   for (const colX of tree.filhos) {
     let totalH = 0;
@@ -4514,8 +4823,242 @@ function postOptimizeRegroup(
     }
   }
 
-  return { tree: bestTree, area: bestArea, improved };
+  //NOVA CHAMADA
+
+  // Substitui as chamadas anteriores de mergeCrossColumnWaste / mergeAndFillSameWidthColumns:
+  const placedLabels = new Set(extractPlacedPieces(bestTree).map(p => p.label).filter(Boolean));
+  const stillRemaining = allPieces.filter(p => !p.label || !placedLabels.has(p.label));
+
+  if (stillRemaining.length > 0) {
+    const unified = unifyAdjacentZWaste(bestTree, stillRemaining, usableW, usableH, minBreak);
+    if (unified > 0) {
+      bestArea += unified;
+      improved = true;
+    }
+  }
+
+  return { tree: bestTree, area: bestArea, improved }; // linha existente
+  //FIM NOVA CHAMADA
+
+
 }
+
+//NOVA FUNÇÃO 
+
+/**
+ * UNIFICAÇÃO DE SOBRAS Z ADJACENTES
+ *
+ * Detecta Y strips consecutivos dentro de uma coluna X onde TODOS têm
+ * sobra Z livre do mesmo lado (direita). Cria um novo Y strip que ocupa
+ * apenas a largura da sobra e a altura combinada dos strips, permitindo
+ * alocar peças que não caberiam em nenhum strip isolado.
+ *
+ * Exemplo real:
+ *   X(2293)
+ *     Y(725) → Z(1834) [peças] → sobra Z = 459mm
+ *     Y(758) → Z(1834) [peças] → sobra Z = 459mm
+ *   → Cria X(459) virtual dentro da coluna, altura = 725+758 = 1483mm
+ *   → Uma peça 400×1000 cabe nesse espaço
+ *
+ * COMO FUNCIONA NA ÁRVORE:
+ * Não move os Y strips — apenas REDUZ cada Z para a largura das peças
+ * e cria um novo Y strip adjacente com a largura da sobra e altura combinada.
+ * Isso requer dividir a coluna X em duas sub-colunas (adiciona nível Z extra).
+ */
+export function unifyAdjacentZWaste(
+  tree: TreeNode,
+  remaining: Piece[],
+  usableW: number,
+  usableH: number,
+  minBreak: number = 0,
+): number {
+  if (remaining.length === 0) return 0;
+  let totalRecovered = 0;
+
+  for (const colX of tree.filhos) {
+    if (colX.filhos.length < 2) continue;
+
+    let modified = true;
+    while (modified && remaining.length > 0) {
+      modified = false;
+
+      // Tenta grupos de Y strips adjacentes (tamanho 2, 3, ...)
+      for (let i = 0; i < colX.filhos.length - 1; i++) {
+        for (let groupSize = 2; groupSize <= colX.filhos.length - i; groupSize++) {
+          const group = colX.filhos.slice(i, i + groupSize);
+
+          // Calcula sobra Z de cada Y no grupo
+          const freeZs = group.map(y => {
+            const usedZ = y.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+            return colX.valor - usedZ;
+          });
+
+          // Todos devem ter sobra Z positiva e similar (±10mm de tolerância)
+          const minFreeZ = Math.min(...freeZs);
+          const maxFreeZ = Math.max(...freeZs);
+          if (minFreeZ < 50) break;
+          if (maxFreeZ - minFreeZ > 10) continue; // sobras muito diferentes
+
+          // Altura combinada da sobra
+          const combinedH = group.reduce((a, y) => a + y.valor * y.multi, 0);
+          const wasteW = minFreeZ; // usa a menor sobra (conservador)
+
+          // Verifica se alguma peça restante cabe nesse espaço combinado
+          const canFit = remaining.some(p =>
+            oris(p).some(o => o.w <= wasteW && o.h <= combinedH)
+          );
+          if (!canFit) continue;
+
+          console.log(
+            `[UNIFY-Z-WASTE] Grupo Y[${i}..${i + groupSize - 1}] em X(${colX.valor}): ` +
+            `sobra ${wasteW}×${combinedH}mm pode receber peça`
+          );
+
+          // Reduz cada Y strip: diminui seu Z para não incluir a sobra
+          for (let k = 0; k < group.length; k++) {
+            const yNode = group[k];
+            const freeZ = freeZs[k];
+            // Encontra o último Z (onde está a sobra — à direita)
+            // Não precisa alterar os Z existentes pois a sobra já está implícita
+            // O novo Y strip abaixo vai ocupar a largura da sobra
+          }
+
+          // Cria um novo Y strip logo após o grupo com altura = combinedH
+          // e largura = wasteW (via Z filho)
+          // Para isso, precisamos criar uma sub-estrutura dentro da coluna X:
+          // A coluna X tem valor = colX.valor (ex: 2293)
+          // Inserimos um novo Y com valor = combinedH
+          // Dentro dele, um Z com valor = wasteW
+          // Dentro do Z, alocamos a peça
+
+          // Mas há um problema: o novo Y teria que coexistir na mesma coluna
+          // sem ultrapassar usableH. Verificamos:
+          const currentUsedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+          // O grupo já está incluído em currentUsedH — não soma de novo
+          // O novo Y vai ocupar combinedH — mas fisicamente ele representa a
+          // SOBRA LATERAL dos Y strips do grupo, não altura adicional.
+          // Portanto não podemos simplesmente inserir um novo Y — a estrutura
+          // guilhotine não permite isso.
+
+          // ABORDAGEM CORRETA: Reorganizar os Y strips do grupo em dois sub-grupos:
+          // Sub-coluna A (largura = colX.valor - wasteW): peças originais
+          // Sub-coluna B (largura = wasteW): espaço livre unificado
+          // Isso exige adicionar um nível Z dentro de cada Y strip do grupo.
+
+          // Para cada Y strip do grupo, adicionamos um Z "container" para as peças
+          // existentes (largura = colX.valor - wasteW) e deixamos o resto livre.
+          // Depois criamos um Y strip extra (fora do grupo) representando a sobra lateral.
+
+          // Na prática: inserimos um novo Y node com altura = combinedH
+          // SUBSTITUINDO o grupo, e dentro dele colocamos:
+          //   Z(colX.valor - wasteW) → peças originais reorganizadas
+          //   Z(wasteW) → espaço livre para nova peça
+
+          const pieceZWidth = colX.valor - wasteW;
+
+          // Extrai as peças existentes do grupo
+          const existingPieces: Array<{ w: number, h: number, label?: string }> = [];
+          for (const yNode of group) {
+            for (const zNode of yNode.filhos) {
+              if (zNode.filhos.length === 0 && zNode.label) {
+                existingPieces.push({ w: zNode.valor, h: yNode.valor, label: zNode.label });
+              } else {
+                for (const wNode of zNode.filhos) {
+                  if (wNode.filhos.length === 0 && wNode.label) {
+                    existingPieces.push({ w: zNode.valor, h: wNode.valor, label: wNode.label });
+                  } else {
+                    for (const qNode of wNode.filhos) {
+                      if (qNode.label) {
+                        existingPieces.push({ w: qNode.valor, h: wNode.valor, label: qNode.label });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // Cria o novo Y unificado
+          const newY: TreeNode = {
+            id: gid(), tipo: 'Y', valor: combinedH, multi: 1, filhos: []
+          };
+
+          // Sub-coluna das peças originais (Z esquerdo)
+          const zPieces: TreeNode = {
+            id: gid(), tipo: 'Z', valor: pieceZWidth, multi: 1, filhos: []
+          };
+
+          // Re-insere as peças originais como W nodes dentro do Z esquerdo
+          for (const ep of existingPieces) {
+            const wNode: TreeNode = {
+              id: gid(), tipo: 'W', valor: ep.h, multi: 1, filhos: [], label: ep.label
+            };
+            if (ep.w < pieceZWidth) {
+              const qNode: TreeNode = {
+                id: gid(), tipo: 'Q', valor: ep.w, multi: 1, filhos: [], label: ep.label
+              };
+              wNode.filhos.push(qNode);
+              wNode.label = undefined;
+            }
+            zPieces.filhos.push(wNode);
+          }
+          newY.filhos.push(zPieces);
+
+          // Sub-coluna da sobra (Z direito) — tenta alocar peças
+          const zWaste: TreeNode = {
+            id: gid(), tipo: 'Z', valor: wasteW, multi: 1, filhos: []
+          };
+
+          let freeHLeft = combinedH;
+          const placedIndices: number[] = [];
+
+          for (let ri = 0; ri < remaining.length && freeHLeft > 0; ri++) {
+            const p = remaining[ri];
+            for (const o of oris(p)) {
+              if (o.w <= wasteW && o.h <= freeHLeft) {
+                if (minBreak > 0 && o.h < minBreak) continue;
+                const wNode: TreeNode = {
+                  id: gid(), tipo: 'W', valor: o.h, multi: 1, filhos: [], label: p.label
+                };
+                if (o.w < wasteW) {
+                  const qNode: TreeNode = {
+                    id: gid(), tipo: 'Q', valor: o.w, multi: 1, filhos: [], label: p.label
+                  };
+                  wNode.filhos.push(qNode);
+                  wNode.label = undefined;
+                }
+                zWaste.filhos.push(wNode);
+                freeHLeft -= o.h;
+                placedIndices.push(ri);
+                totalRecovered += o.w * o.h;
+                console.log(`[UNIFY-Z-WASTE] Alocou ${o.w}×${o.h} na sobra unificada`);
+                break;
+              }
+            }
+          }
+
+          if (placedIndices.length === 0) continue; // nada coube
+
+          newY.filhos.push(zWaste);
+
+          // Substitui o grupo de Y strips pelo novo Y unificado
+          colX.filhos.splice(i, groupSize, newY);
+
+          // Remove peças alocadas
+          placedIndices.sort((a, b) => b - a).forEach(idx => remaining.splice(idx, 1));
+
+          modified = true;
+          break;
+        }
+        if (modified) break;
+      }
+    }
+  }
+
+  return totalRecovered;
+}
+
+//FIM NOVA FUNÇÃO
 
 // ========== CANONICAL TREE NORMALIZATION ==========
 
