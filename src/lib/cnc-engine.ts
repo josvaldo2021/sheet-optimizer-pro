@@ -2855,9 +2855,12 @@ function runPlacement(
     placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
-  // --- REGROUP ADJACENT STRIPS: merge Y/Z strips to consolidate waste and fit more pieces ---
+  // --- REGROUP ADJACENT STRIPS: merge Y/Z/W strips to consolidate waste ---
+  placedArea += regroupAdjacentStrips(tree, remaining, usableW, usableH, minBreak);
+
+  // --- POST-REGROUP VOID FILL: take advantage of consolidated waste ---
   if (remaining.length > 0) {
-    placedArea += regroupAdjacentStrips(tree, remaining, usableW, usableH, minBreak);
+    placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
   }
 
   // --- VALIDATION: clamp columns that exceed usableH ---
@@ -3518,7 +3521,7 @@ function regroupAdjacentStrips(
   usableH: number,
   minBreak: number,
 ): number {
-  if (remaining.length === 0) return 0;
+  // Note: we proceed even when remaining.length === 0 to consolidate fragmented waste
   let totalAdded = 0;
 
   for (const colX of tree.filhos) {
@@ -3526,11 +3529,11 @@ function regroupAdjacentStrips(
     if (colX.filhos.length < 2) continue;
 
     let modified = true;
-    while (modified && remaining.length > 0) {
+    while (modified) {
       modified = false;
 
       // Try merging consecutive Y strips (groups of 2, 3, ...)
-      for (let i = 0; i < colX.filhos.length - 1 && remaining.length > 0; i++) {
+      for (let i = 0; i < colX.filhos.length - 1; i++) {
         // Try progressively larger groups starting from 2
         for (let groupSize = Math.min(colX.filhos.length - i, 5); groupSize >= 2; groupSize--) {
           const yGroup = colX.filhos.slice(i, i + groupSize);
@@ -3589,13 +3592,18 @@ function regroupAdjacentStrips(
           const colW = colX.valor;
           const oldArea = extractedPieces.reduce((s, p) => s + p.area, 0);
 
-          // Check if any remaining piece could fit in the combined space
+          // Check if consolidation is worthwhile:
+          // Either remaining pieces could fit, or waste is fragmented across strips
           const wasteArea = colW * combinedH - oldArea;
-          const canFitNew = remaining.some(p =>
+          const hasWasteToConsolidate = yGroup.length >= 2 && yGroup.some(y => {
+            const yPieceW = y.filhos.reduce((s, z) => s + z.valor * z.multi, 0);
+            return yPieceW < colW; // has Z-waste on the side
+          });
+          const canFitNew = remaining.length > 0 && remaining.some(p =>
             oris(p).some(o => o.w * o.h <= wasteArea && o.w <= colW && o.h <= combinedH)
           );
 
-          if (!canFitNew) continue;
+          if (!canFitNew && !hasWasteToConsolidate) continue;
 
           // Build a mini-inventory: extracted pieces + candidates from remaining
           const candidateRemaining = [...remaining];
@@ -3716,8 +3724,9 @@ function regroupAdjacentStrips(
           const allExtractedPlaced = allPieces.every(ep => placed.includes(ep));
           if (!allExtractedPlaced) continue; // regrouping failed, skip
 
-          // Check improvement: did we fit any new pieces from remaining?
-          if (usedFromRemaining.length === 0) continue; // no improvement
+          // Allow merge if: new pieces were fitted OR waste was consolidated (fewer Y-strips)
+          const wasteConsolidated = groupSize > 1; // merging multiple Y-strips into one consolidates waste
+          if (usedFromRemaining.length === 0 && !wasteConsolidated) continue;
 
           // Success! Replace the Y group with the new merged Y node
           console.log(
@@ -3756,16 +3765,14 @@ function regroupAdjacentStrips(
 
   // Also try regrouping Z nodes within each Y strip (horizontal consolidation)
   for (const colX of tree.filhos) {
-    if (remaining.length === 0) break;
     for (const yNode of colX.filhos) {
-      if (remaining.length === 0) break;
       if (yNode.filhos.length < 2) continue;
 
       let modified = true;
-      while (modified && remaining.length > 0) {
+      while (modified) {
         modified = false;
 
-        for (let i = 0; i < yNode.filhos.length - 1 && remaining.length > 0; i++) {
+        for (let i = 0; i < yNode.filhos.length - 1; i++) {
           for (let groupSize = Math.min(yNode.filhos.length - i, 4); groupSize >= 2; groupSize--) {
             const zGroup = yNode.filhos.slice(i, i + groupSize);
 
@@ -3859,7 +3866,10 @@ function regroupAdjacentStrips(
 
             // Validate: all original pieces must be placed
             const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
-            if (!allOrigPlaced || newFromRemaining.length === 0) continue;
+            if (!allOrigPlaced) continue;
+            // Allow merge for waste consolidation even without new pieces
+            const zWasteConsolidated = groupSize > 1 && hasWaste;
+            if (newFromRemaining.length === 0 && !zWasteConsolidated) continue;
 
             console.log(
               `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
@@ -3886,18 +3896,15 @@ function regroupAdjacentStrips(
 
   // Also try regrouping W nodes within each Z node (vertical consolidation)
   for (const colX of tree.filhos) {
-    if (remaining.length === 0) break;
     for (const yNode of colX.filhos) {
-      if (remaining.length === 0) break;
       for (const zNode of yNode.filhos) {
-        if (remaining.length === 0) break;
         if (zNode.filhos.length < 2) continue;
 
         let wModified = true;
-        while (wModified && remaining.length > 0) {
+        while (wModified) {
           wModified = false;
 
-          for (let i = 0; i < zNode.filhos.length - 1 && remaining.length > 0; i++) {
+          for (let i = 0; i < zNode.filhos.length - 1; i++) {
             for (let groupSize = Math.min(zNode.filhos.length - i, 4); groupSize >= 2; groupSize--) {
               const wGroup = zNode.filhos.slice(i, i + groupSize);
 
@@ -3976,7 +3983,9 @@ function regroupAdjacentStrips(
               }
 
               const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
-              if (!allOrigPlaced || newFromRemaining.length === 0) continue;
+              if (!allOrigPlaced) continue;
+              const wWasteConsolidated = groupSize > 1 && hasWaste;
+              if (newFromRemaining.length === 0 && !wWasteConsolidated) continue;
 
               console.log(
                 `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
