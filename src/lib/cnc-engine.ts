@@ -3893,18 +3893,15 @@ function regroupAdjacentStrips(
 
   // Also try regrouping W nodes within each Z node (vertical consolidation)
   for (const colX of tree.filhos) {
-    if (remaining.length === 0) break;
     for (const yNode of colX.filhos) {
-      if (remaining.length === 0) break;
       for (const zNode of yNode.filhos) {
-        if (remaining.length === 0) break;
         if (zNode.filhos.length < 2) continue;
 
         let wModified = true;
-        while (wModified && remaining.length > 0) {
+        while (wModified) {
           wModified = false;
 
-          for (let i = 0; i < zNode.filhos.length - 1 && remaining.length > 0; i++) {
+          for (let i = 0; i < zNode.filhos.length - 1; i++) {
             for (let groupSize = Math.min(zNode.filhos.length - i, 4); groupSize >= 2; groupSize--) {
               const wGroup = zNode.filhos.slice(i, i + groupSize);
 
