@@ -2627,294 +2627,259 @@ function runPlacement(
         continue;
       }
     }
-    const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
-    const yNode = findNode(tree, yId)!;
 
-    placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);
+    // === PRE-CHECK: Vertical stacking opportunity ===
+    // Before creating Y strip, check if we can stack multiple identical pieces vertically.
+    // Creates ONE combined Y strip (e.g., Y1483) instead of separate strips (Y725+Y725),
+    // consolidating lateral waste into a single tall contiguous block.
+    // KEY INSIGHT (from user analysis): "always cut to the end of the smaller remaining space"
+    // Using the FULL remaining height preserves lateral waste as one piece-sized block.
+    const colFreeH = usableH - col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    const isGroupedPiece = piece.count && piece.count > 1;
 
-    remaining.shift();
-
-    // Lateral Z filling - TWO PASSES:
-    // Pass 1: same-height pieces first (consolidates waste above the Y strip)
-    // Pass 2: shorter pieces with W subdivision
-    let freeZW = col.valor - bestFit.pieceW;
-
-    // Pass 1: exact height matches (these create clean Z nodes with no W waste)
-    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
-      const pc = remaining[i];
-      let bestOri: { w: number; h: number } | null = null;
-      let bestScore = Infinity;
-
-      for (const o of oris(pc)) {
-        if (o.h !== bestFit.pieceH) continue; // Only exact height matches
-        if (minBreak > 0) {
-          const allZPositions = getAllZCutPositionsInColumn(col);
-          const yIndex = col.filhos.indexOf(yNode);
-          const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-          const newCutPos = currentOffset + o.w;
-          if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+    // Find matching pieces for vertical stacking (same dimensions as current piece)
+    const stackCandidateIndices: number[] = [];
+    if (!isGroupedPiece) {
+      for (let i = 1; i < remaining.length; i++) {
+        const pc = remaining[i];
+        if (pc.count && pc.count > 1) continue; // skip grouped pieces
+        if (oris(pc).some(o => o.w === bestFit.pieceW && o.h === bestFit.pieceH)) {
+          stackCandidateIndices.push(i);
         }
-        if (o.w <= freeZW) {
-          const score = freeZW - o.w; // prefer pieces that fill the width best
-          if (score < bestScore) {
-            bestScore = score;
-            bestOri = o;
-          }
-        }
-      }
-
-      if (bestOri) {
-        placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-        freeZW -= bestOri.w;
-        remaining.splice(i, 1);
-        i--;
       }
     }
 
-    // Pass 2: shorter pieces (with W subdivision for remaining width)
-    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
-      const pc = remaining[i];
-      let bestOri: { w: number; h: number } | null = null;
-      let bestScore = Infinity;
+    const maxPossibleStack = Math.min(
+      1 + stackCandidateIndices.length,
+      Math.floor(colFreeH / bestFit.pieceH)
+    );
 
-      for (const o of oris(pc)) {
-        if (minBreak > 0) {
-          const allZPositions = getAllZCutPositionsInColumn(col);
-          const yIndex = col.filhos.indexOf(yNode);
-          const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-          const newCutPos = currentOffset + o.w;
-          if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
-        }
-        if (o.w <= freeZW && o.h <= bestFit.h) {
-          const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
-          if (score < bestScore) {
-            bestScore = score;
-            bestOri = o;
-          }
+    // Check minBreak for stacking
+    let stackViolatesMinBreak = false;
+    if (minBreak > 0 && maxPossibleStack >= 2) {
+      const ySibValues = col.filhos.map(y => y.valor);
+      stackViolatesMinBreak = ySibValues.some(yv => {
+        const diff = Math.abs(yv - bestFit.pieceH);
+        return diff > 0 && diff < minBreak;
+      });
+      if (!stackViolatesMinBreak) {
+        const allZPositions = getAllZCutPositionsInColumn(col);
+        if (violatesZMinBreak([bestFit.pieceW], allZPositions, minBreak, col.filhos.length)) {
+          stackViolatesMinBreak = true;
         }
       }
+    }
 
-      if (bestOri) {
-        // Create the container Z for this lateral piece
-        const zId = insertNode(tree, yNode.id, "Z", bestOri.w, 1);
-        const zNode2 = findNode(tree, zId)!;
+    const useCombinedY = maxPossibleStack >= 2 && !stackViolatesMinBreak && !isGroupedPiece;
 
-        // Sub-fill vertically within this Z width
-        let freeWH = bestFit.h;
+    if (useCombinedY) {
+      // === COMBINED Y STRIP STRATEGY ===
+      // Instead of creating Y725 then trying vertical continuation (which can only fit 1 more
+      // in 758mm remaining), we create Y1483 from the start, stacking ALL matching pieces
+      // inside Z columns with W nodes. This consolidates lateral waste into one tall block.
+      const stackCount = maxPossibleStack;
+      const combinedH_raw = stackCount * bestFit.pieceH;
+      let combinedH = combinedH_raw;
 
-        // This is a nested loop to fill vertically inside the Z strip and we should use createPieceNodes inside it.
-        // But first, we need a way to pass a Z node to createPieceNodes as a parent or refactor createPieceNodes to handle Z parents.
-        // Actually, createPieceNodes creates the Z if we pass it a Y.
-        // If we have a Z, we might need a variant.
-        // Looking at createPieceNodes: it creates Z then W.
-        // For Pass 2, we want to stack multiple pieces vertically in the SAME Z.
-        // So we might need to manually handle the W/Q creation inside the vertical fill.
+      // Extend to full remaining height if residual can't fit any piece (residual dominance)
+      const residualH = colFreeH - combinedH_raw;
+      if (residualH > 0) {
+        const canFitResidual = remaining.some(p =>
+          oris(p).some(o => o.w <= col.valor && o.h <= residualH)
+        );
+        if (!canFitResidual) combinedH = colFreeH;
+      }
 
-        // Actually, let's refactor createPieceNodes to take a generic parent and a target type?
-        // No, let's keep it simple: createPieceNodes handles the "create a piece at this location" logic.
+      const combYId = insertNode(tree, col.id, "Y", combinedH, 1);
+      const combYNode = findNode(tree, combYId)!;
 
-        // Refactoring createPieceNodes to take parent and optionally skip Z creation?
-        // Or just use it as is for the FIRST piece and then manually for subsequent?
+      // Create primary Z column for stacked pieces
+      const zId = insertNode(tree, combYNode.id, "Z", bestFit.pieceW, 1);
+      const zNode = findNode(tree, zId)!;
 
-        // Let's use it as is for the Pass 2 main piece:
-        placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-        // Wait, Pass 2 needs to fill the FULL height bestFit.h.
-        // createPieceNodes will create a Z of bestOri.w and a W of bestOri.h.
-        // The remaining height is bestFit.h - bestOri.h.
+      // Place current piece (first in stack) as W node
+      {
+        const wId = insertNode(tree, zNode.id, "W", bestFit.pieceH, 1);
+        const wNode = findNode(tree, wId)!;
+        if (piece.label) { wNode.label = piece.label; zNode.label = piece.label; }
+        placedArea += bestFit.pieceW * bestFit.pieceH;
+        remaining.shift();
+      }
 
-        const zNodeCurrent = yNode.filhos[yNode.filhos.length - 1]; // The Z created by createPieceNodes
-        let freeWH_remaining = bestFit.h - bestOri.h;
+      // Place additional matching pieces as W nodes in the same Z column
+      let placedCount = 1;
+      const indicesToRemove: number[] = [];
+      for (const origIdx of stackCandidateIndices) {
+        if (placedCount >= stackCount) break;
+        const adjIdx = origIdx - 1; // adjusted for the shift of the first piece
+        if (adjIdx < 0 || adjIdx >= remaining.length) continue;
+        const pc = remaining[adjIdx];
+        const wId = insertNode(tree, zNode.id, "W", bestFit.pieceH, 1);
+        const wNode = findNode(tree, wId)!;
+        if (pc.label) wNode.label = pc.label;
+        placedArea += bestFit.pieceW * bestFit.pieceH;
+        indicesToRemove.push(adjIdx);
+        placedCount++;
+      }
+      // Remove in reverse order to preserve indices
+      indicesToRemove.sort((a, b) => b - a).forEach(idx => remaining.splice(idx, 1));
 
-        for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
-          if (j === i) continue;
-          const pw = remaining[j];
-          for (const wo of oris(pw)) {
-            if (minBreak > 0) {
-              const violatesW = zNodeCurrent.filhos.some((w) => {
-                const diff = Math.abs(w.valor - wo.h);
-                return diff > 0 && diff < minBreak;
-              });
-              if (violatesW) continue;
+      // --- Lateral fill: create more Z columns with W-stacking ---
+      let freeZW = col.valor - bestFit.pieceW;
+
+      for (let i = 0; i < remaining.length && freeZW > 0; ) {
+        const pc = remaining[i];
+        let lateralOri: { w: number; h: number } | null = null;
+
+        for (const o of oris(pc)) {
+          if (o.w <= freeZW && o.h <= bestFit.pieceH) {
+            if (!lateralOri || o.w > lateralOri.w) lateralOri = o;
+          }
+        }
+
+        if (lateralOri) {
+          // Create Z column for this lateral piece
+          const latZId = insertNode(tree, combYNode.id, "Z", lateralOri.w, 1);
+          const latZNode = findNode(tree, latZId)!;
+          const latWId = insertNode(tree, latZNode.id, "W", lateralOri.h, 1);
+          const latWNode = findNode(tree, latWId)!;
+          if (pc.label) { latWNode.label = pc.label; latZNode.label = pc.label; }
+          placedArea += lateralOri.w * lateralOri.h;
+          remaining.splice(i, 1);
+
+          // Stack more pieces vertically in this lateral Z column
+          let latUsedH = lateralOri.h;
+          for (let j = 0; j < remaining.length && latUsedH < combinedH; ) {
+            const lpc = remaining[j];
+            let stackOri: { w: number; h: number } | null = null;
+            for (const o of oris(lpc)) {
+              if (o.w <= lateralOri.w && o.h <= combinedH - latUsedH) {
+                if (!stackOri || o.w * o.h > stackOri.w * stackOri.h) stackOri = o;
+              }
             }
-            if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
-              const actualRotated = wo.w !== pw.w;
-              createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
-
-              placedArea += zNodeCurrent.valor * wo.h;
-              freeWH_remaining -= wo.h;
+            if (stackOri) {
+              const swId = insertNode(tree, latZNode.id, "W", stackOri.h, 1);
+              const swNode = findNode(tree, swId)!;
+              if (lpc.label) swNode.label = lpc.label;
+              placedArea += lateralOri.w * stackOri.h;
+              latUsedH += stackOri.h;
               remaining.splice(j, 1);
-              if (j < i) i--;
-              j--;
-              break;
-            }
-          }
-        }
-
-        freeZW -= bestOri.w;
-        remaining.splice(i, 1);
-        i--;
-      }
-    }
-
-    // --- Vertical continuation: COMBINED Y strip with W-stacking ---
-    // Instead of creating separate Y strips for each piece, create ONE combined Y strip
-    // with Z columns containing W-stacked pieces. This consolidates waste into one tall block.
-    // Example: instead of Y725 + Y725 (each with 459-wide waste) → Y1483 (one 459×1483 waste block)
-    {
-      const usedHAfter = col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-      const freeHRemain = usableH - usedHAfter;
-
-      if (freeHRemain >= bestFit.pieceH && remaining.length > 0) {
-        // Count how many matching pieces can stack vertically
-        const candidates: number[] = [];
-        for (let i = 0; i < remaining.length; i++) {
-          const pc = remaining[i];
-          const matchesOriginal = oris(pc).some((o) => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
-          if (matchesOriginal) candidates.push(i);
-        }
-
-        if (candidates.length > 0) {
-          // Check minBreak for new Y strip
-          let violates = false;
-          if (minBreak > 0) {
-            const ySibValues = col.filhos.map((y) => y.valor);
-            violates = ySibValues.some((yv) => {
-              const diff = Math.abs(yv - bestFit.pieceH);
-              return diff > 0 && diff < minBreak;
-            });
-            if (!violates) {
-              const allZPositions = getAllZCutPositionsInColumn(col);
-              if (violatesZMinBreak([bestFit.pieceW], allZPositions, minBreak, col.filhos.length)) violates = true;
-            }
-          }
-
-          if (!violates) {
-            // How many pieces can stack? Limited by available height
-            const maxStack = Math.min(candidates.length, Math.floor(freeHRemain / bestFit.pieceH));
-
-            if (maxStack >= 2) {
-              // === COMBINED Y STRIP STRATEGY ===
-              // Create ONE Y strip spanning all stacked pieces
-              const combinedH_raw = maxStack * bestFit.pieceH;
-              // Use full remaining height if residual can't fit any piece
-              let combinedH = combinedH_raw;
-              const residualH = freeHRemain - combinedH_raw;
-              if (residualH > 0) {
-                const canFitMore = remaining.some(p =>
-                  oris(p).some(o => o.w <= col.valor && o.h <= residualH)
-                );
-                if (!canFitMore) combinedH = freeHRemain;
-              }
-
-              const combYId = insertNode(tree, col.id, "Y", combinedH, 1);
-              const combYNode = findNode(tree, combYId)!;
-
-              // Build Z columns with W-stacking
-              // First Z column: same width as original piece, stack W nodes
-              const zId = insertNode(tree, combYNode.id, "Z", bestFit.pieceW, 1);
-              const zNode = findNode(tree, zId)!;
-
-              let stackedCount = 0;
-              const usedIndices: number[] = [];
-
-              for (let ci = 0; ci < candidates.length && stackedCount < maxStack; ci++) {
-                const idx = candidates[ci];
-                const pc = remaining[idx];
-                const wId = insertNode(tree, zNode.id, "W", bestFit.pieceH, 1);
-                const wNode = findNode(tree, wId)!;
-                if (pc.label) { wNode.label = pc.label; if (stackedCount === 0) zNode.label = pc.label; }
-                placedArea += bestFit.pieceW * bestFit.pieceH;
-                usedIndices.push(idx);
-                stackedCount++;
-              }
-
-              // Remove placed pieces from remaining (reverse order to keep indices valid)
-              usedIndices.sort((a, b) => b - a).forEach(idx => remaining.splice(idx, 1));
-
-              // Lateral fill: try more Z columns with W-stacking
-              let freeZW = col.valor - bestFit.pieceW;
-
-              for (let i = 0; i < remaining.length && freeZW > 0; ) {
-                const pc = remaining[i];
-                let lateralOri: { w: number; h: number } | null = null;
-
-                for (const o of oris(pc)) {
-                  if (o.w <= freeZW && o.h <= bestFit.pieceH) {
-                    if (!lateralOri || o.w > lateralOri.w) lateralOri = o;
-                  }
-                }
-
-                if (lateralOri) {
-                  // Create Z column for this lateral piece, then try W-stacking
-                  const latZId = insertNode(tree, combYNode.id, "Z", lateralOri.w, 1);
-                  const latZNode = findNode(tree, latZId)!;
-
-                  const latWId = insertNode(tree, latZNode.id, "W", lateralOri.h, 1);
-                  const latWNode = findNode(tree, latWId)!;
-                  if (pc.label) { latWNode.label = pc.label; latZNode.label = pc.label; }
-                  placedArea += lateralOri.w * lateralOri.h;
-                  remaining.splice(i, 1);
-
-                  // Stack more pieces vertically in this lateral Z column
-                  let latUsedH = lateralOri.h;
-                  for (let j = 0; j < remaining.length && latUsedH + lateralOri.h <= combinedH; ) {
-                    const lpc = remaining[j];
-                    let stackOri: { w: number; h: number } | null = null;
-                    for (const o of oris(lpc)) {
-                      if (o.w <= lateralOri.w && o.h <= combinedH - latUsedH) {
-                        if (!stackOri || o.w * o.h > stackOri.w * stackOri.h) stackOri = o;
-                      }
-                    }
-                    if (stackOri) {
-                      const swId = insertNode(tree, latZNode.id, "W", stackOri.h, 1);
-                      const swNode = findNode(tree, swId)!;
-                      if (lpc.label) swNode.label = lpc.label;
-                      placedArea += lateralOri.w * stackOri.h;
-                      latUsedH += stackOri.h;
-                      remaining.splice(j, 1);
-                    } else {
-                      j++;
-                    }
-                  }
-
-                  freeZW -= lateralOri.w;
-                } else {
-                  i++;
-                }
-              }
-
             } else {
-              // Only 1 piece fits: use old single Y strip approach
-              const firstIdx = candidates[0];
-              const firstPc = remaining[firstIdx];
-              const newYId = insertNode(tree, col.id, "Y", bestFit.pieceH, 1);
-              const newYNode = findNode(tree, newYId)!;
-              placedArea += createPieceNodes(tree, newYNode, firstPc, bestFit.pieceW, bestFit.pieceH, bestFit.pieceW !== firstPc.w);
-              remaining.splice(firstIdx, 1);
+              j++;
+            }
+          }
 
-              // Lateral fill
-              let newFreeZW = col.valor - bestFit.pieceW;
-              for (let i = 0; i < remaining.length && newFreeZW > 0; i++) {
-                const pc = remaining[i];
-                let matchOri: { w: number; h: number } | null = null;
-                for (const o of oris(pc)) {
-                  if (o.h !== bestFit.pieceH) continue;
-                  if (o.w > newFreeZW) continue;
-                  if (!matchOri || newFreeZW - o.w < newFreeZW - matchOri.w) matchOri = o;
-                }
-                if (matchOri) {
-                  placedArea += createPieceNodes(tree, newYNode, pc, matchOri.w, matchOri.h, matchOri.w !== pc.w);
-                  newFreeZW -= matchOri.w;
-                  remaining.splice(i, 1);
-                  i--;
-                }
-              }
+          freeZW -= lateralOri.w;
+        } else {
+          i++;
+        }
+      }
+    } else {
+      // === SINGLE Y STRIP: original approach (for grouped pieces or no stacking opportunity) ===
+      const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
+      const yNode = findNode(tree, yId)!;
+
+      placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);
+      remaining.shift();
+
+      // Lateral Z filling - TWO PASSES:
+      // Pass 1: same-height pieces first (consolidates waste above the Y strip)
+      // Pass 2: shorter pieces with W subdivision
+      let freeZW = col.valor - bestFit.pieceW;
+
+      // Pass 1: exact height matches (these create clean Z nodes with no W waste)
+      for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+        const pc = remaining[i];
+        let bestOri: { w: number; h: number } | null = null;
+        let bestScore = Infinity;
+
+        for (const o of oris(pc)) {
+          if (o.h !== bestFit.pieceH) continue; // Only exact height matches
+          if (minBreak > 0) {
+            const allZPositions = getAllZCutPositionsInColumn(col);
+            const yIndex = col.filhos.indexOf(yNode);
+            const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+            const newCutPos = currentOffset + o.w;
+            if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+          }
+          if (o.w <= freeZW) {
+            const score = freeZW - o.w; // prefer pieces that fill the width best
+            if (score < bestScore) {
+              bestScore = score;
+              bestOri = o;
             }
           }
         }
+
+        if (bestOri) {
+          placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+          freeZW -= bestOri.w;
+          remaining.splice(i, 1);
+          i--;
+        }
+      }
+
+      // Pass 2: shorter pieces (with W subdivision for remaining width)
+      for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+        const pc = remaining[i];
+        let bestOri: { w: number; h: number } | null = null;
+        let bestScore = Infinity;
+
+        for (const o of oris(pc)) {
+          if (minBreak > 0) {
+            const allZPositions = getAllZCutPositionsInColumn(col);
+            const yIndex = col.filhos.indexOf(yNode);
+            const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+            const newCutPos = currentOffset + o.w;
+            if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+          }
+          if (o.w <= freeZW && o.h <= bestFit.h) {
+            const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
+            if (score < bestScore) {
+              bestScore = score;
+              bestOri = o;
+            }
+          }
+        }
+
+        if (bestOri) {
+          // Create the container Z for this lateral piece
+          placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+
+          const zNodeCurrent = yNode.filhos[yNode.filhos.length - 1]; // The Z created by createPieceNodes
+          let freeWH_remaining = bestFit.h - bestOri.h;
+
+          for (let j = 0; j < remaining.length && freeWH_remaining > 0; j++) {
+            if (j === i) continue;
+            const pw = remaining[j];
+            for (const wo of oris(pw)) {
+              if (minBreak > 0) {
+                const violatesW = zNodeCurrent.filhos.some((w) => {
+                  const diff = Math.abs(w.valor - wo.h);
+                  return diff > 0 && diff < minBreak;
+                });
+                if (violatesW) continue;
+              }
+              if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
+                const actualRotated = wo.w !== pw.w;
+                createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
+
+                placedArea += zNodeCurrent.valor * wo.h;
+                freeWH_remaining -= wo.h;
+                remaining.splice(j, 1);
+                if (j < i) i--;
+                j--;
+                break;
+              }
+            }
+          }
+
+          freeZW -= bestOri.w;
+          remaining.splice(i, 1);
+          i--;
+        }
       }
     }
-
     // Void filling
     if (remaining.length > 0) {
       placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
