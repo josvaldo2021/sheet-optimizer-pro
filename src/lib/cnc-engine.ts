@@ -3566,7 +3566,6 @@ function regroupAdjacentStrips(
   let totalAdded = 0;
 
   for (const colX of tree.filhos) {
-    if (remaining.length === 0) break;
     if (colX.filhos.length < 2) continue;
 
     let modified = true;
