@@ -482,8 +482,8 @@ export async function optimizeGeneticAsync(
   let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) {
     finalTree.transposed = true;
-    finalTree = normalizeTree(finalTree, usableW, usableH);
   }
+  finalTree = normalizeTree(finalTree, usableW, usableH);
 
   if (onProgress)
     onProgress({
