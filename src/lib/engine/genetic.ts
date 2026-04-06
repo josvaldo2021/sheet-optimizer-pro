@@ -399,10 +399,10 @@ export async function optimizeGeneticAsync(
     }
 
     if (onProgress)
-      onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestFitness * 100 });
+      onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestDisplayUtil });
     const postResult = postOptimizeRegroup(
       finalTree,
-      bestFitness * usableW * usableH,
+      calcPlacedArea(finalTree),
       pieces,
       usableW,
       usableH,
