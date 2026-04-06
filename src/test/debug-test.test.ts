@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { optimizeV6 } from '../src/lib/engine/optimizer';
-import { calcPlacedArea } from '../src/lib/engine/tree-utils';
-import { Piece } from '../src/lib/engine/types';
+import { optimizeV6 } from '@/lib/engine/optimizer';
+import { calcPlacedArea } from '@/lib/engine/tree-utils';
+import { Piece } from '@/lib/engine/types';
 
 describe('debug', () => {
   it('should place 459x1000 with 10x 917x725 on 3210x2400', () => {
@@ -17,8 +17,7 @@ describe('debug', () => {
     
     function printTree(node: any, indent = 0) {
       const prefix = '  '.repeat(indent);
-      const label = node.label ? ` [${node.label}]` : '';
-      console.log(`${prefix}${node.tipo} ${node.valor} x${node.multi}${label}`);
+      console.log(`${prefix}${node.tipo} ${node.valor} x${node.multi}`);
       for (const c of node.filhos) printTree(c, indent + 1);
     }
     printTree(result.tree);
