@@ -103,6 +103,7 @@ export function runPlacement(
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
+  const skipped: Piece[] = [];
 
   while (remaining.length > 0) {
     const piece = remaining[0];
@@ -206,7 +207,7 @@ export function runPlacement(
     }
 
     if (!bestFit) {
-      remaining.shift();
+      skipped.push(remaining.shift()!);
       continue;
     }
 
@@ -225,7 +226,7 @@ export function runPlacement(
         console.warn(
           `[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`,
         );
-        remaining.shift();
+        skipped.push(remaining.shift()!);
         continue;
       }
     }
@@ -465,6 +466,9 @@ export function runPlacement(
       placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
     }
   }
+
+  // Add back skipped pieces to remaining
+  remaining.push(...skipped);
 
   // Post-processing pipeline
   if (remaining.length > 0) {

@@ -53,14 +53,11 @@ export function optimizeV6(
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
-  const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
   const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
 
-  const pieceVariants: Piece[][] = hasLabels
-    ? [pieces, rotatedPieces]
-    : useGrouping === false
+  const pieceVariants: Piece[][] = useGrouping === false
       ? [pieces, rotatedPieces]
       : [
           pieces,
