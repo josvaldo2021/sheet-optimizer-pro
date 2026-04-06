@@ -4,7 +4,7 @@ import { TreeNode, Piece } from './types';
 import { gid, createRoot, findNode, insertNode } from './tree-utils';
 import { oris, scoreFit, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
 import { fillVoids } from './void-filling';
-import { unifyColumnWaste, collapseTreeWaste, regroupAdjacentStrips, clampTreeHeights } from './post-processing';
+import { unifyColumnWaste, collapseTreeWaste, regroupAdjacentStrips, clampTreeHeights, applyResidualDominance } from './post-processing';
 
 /**
  * Internal helper to create the necessary nodes (Z, W, Q) for a piece placement.
