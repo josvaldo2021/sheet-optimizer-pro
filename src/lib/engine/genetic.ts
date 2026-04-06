@@ -36,6 +36,7 @@ function simulateSheets(
 ): {
   fitness: number;
   firstTree: TreeNode;
+  firstSheetRemainingCount: number;
   stat_rejectedByMinBreak: number;
   stat_fragmentCount: number;
   stat_continuity: number;
