@@ -430,7 +430,8 @@ export async function optimizeGeneticAsync(
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
 
-    if (evaluated[0].fitness > bestFitness) {
+    const improved = evaluated[0].fitness > bestFitness;
+    if (improved) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
       bestTransposed = evaluated[0].ind.transposed;
@@ -442,6 +443,7 @@ export async function optimizeGeneticAsync(
         current: g + 1,
         total: generations,
         bestUtil: bestFitness * 100,
+        ...(improved ? { bestTree: buildPreviewTree() } : {}),
       });
     }
 
