@@ -487,5 +487,8 @@ export function runPlacement(
 
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
+  // Apply residual dominance: extend cuts to sheet edge where no piece fits the waste
+  applyResidualDominance(tree, remaining, usableW, usableH, minBreak);
+
   return { tree, area: placedArea, remaining };
 }
