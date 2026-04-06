@@ -103,6 +103,18 @@ export function runPlacement(
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
+  let stalledPlacements = 0;
+
+  const deferCurrentPiece = () => {
+    if (remaining.length <= 1) {
+      stalledPlacements = remaining.length;
+      return;
+    }
+
+    const current = remaining.shift();
+    if (current) remaining.push(current);
+    stalledPlacements++;
+  };
 
   while (remaining.length > 0) {
     const piece = remaining[0];
@@ -206,7 +218,8 @@ export function runPlacement(
     }
 
     if (!bestFit) {
-      remaining.shift();
+      deferCurrentPiece();
+      if (stalledPlacements >= remaining.length) break;
       continue;
     }
 
@@ -225,7 +238,8 @@ export function runPlacement(
         console.warn(
           `[CNC-ENGINE] Main loop: Y insertion would overflow column. usedH=${currentUsedH}, newY=${bestFit.h}, usableH=${usableH}. Skipping piece.`,
         );
-        remaining.shift();
+        deferCurrentPiece();
+        if (stalledPlacements >= remaining.length) break;
         continue;
       }
     }
@@ -310,6 +324,7 @@ export function runPlacement(
         placedCount++;
       }
       indicesToRemove.sort((a, b) => b - a).forEach(idx => remaining.splice(idx, 1));
+      stalledPlacements = 0;
 
       let freeZW = col.valor - bestFit.pieceW;
 
@@ -365,6 +380,7 @@ export function runPlacement(
 
       placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);
       remaining.shift();
+      stalledPlacements = 0;
 
       let freeZW = col.valor - bestFit.pieceW;
 
