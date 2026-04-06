@@ -148,8 +148,8 @@ export function optimizeV6(
   let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) {
     finalTree.transposed = true;
-    finalTree = normalizeTree(finalTree, usableW, usableH);
   }
+  finalTree = normalizeTree(finalTree, usableW, usableH);
 
   return {
     tree: finalTree,

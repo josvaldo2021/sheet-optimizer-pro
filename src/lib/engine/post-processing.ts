@@ -1239,8 +1239,8 @@ export function postOptimizeRegroup(
           bestTree = result.tree;
           if (transposed) {
             bestTree.transposed = true;
-            bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           }
+          bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           improved = true;
         }
       }
@@ -1292,8 +1292,8 @@ export function postOptimizeRegroup(
           bestTree = result.tree;
           if (transposed) {
             bestTree.transposed = true;
-            bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           }
+          bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           improved = true;
         }
       }
