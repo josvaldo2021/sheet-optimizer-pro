@@ -358,18 +358,14 @@ export async function optimizeGeneticAsync(
   };
 
   const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
+  const v6PlacedCount = pieces.length - v6Result.remaining.reduce((s, p) => s + (p.count || 1), 0);
   const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
-  if (v6Util > bestFitness) {
-    bestFitness = v6Util;
+  // Combined fitness: prioritize piece count, then utilization
+  const v6Fitness = v6PlacedCount * 10 + v6Util;
+  if (v6Fitness > bestFitness) {
+    bestFitness = v6Fitness;
     bestTree = JSON.parse(JSON.stringify(v6Result.tree));
     bestTransposed = false;
-  }
-  const v6T = optimizeV6(pieces, usableH, usableW, minBreak);
-  const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
-  if (v6TUtil > bestFitness) {
-    bestFitness = v6TUtil;
-    bestTree = JSON.parse(JSON.stringify(v6T.tree));
-    bestTransposed = true;
   }
 
   if (onProgress) {
