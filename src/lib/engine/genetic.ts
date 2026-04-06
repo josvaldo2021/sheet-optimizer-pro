@@ -202,13 +202,17 @@ export async function optimizeGeneticAsync(
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean; remainingCount: number } {
     const work = buildPieces(ind);
+    const totalPieces = work.reduce((s, p) => s + (p.count || 1), 0);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
     const eW = ind.transposed ? usableH : usableW;
     const eH = ind.transposed ? usableW : usableH;
     const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
+    // Combine: prioritize placing more pieces on the first sheet, then utilization
+    const placedOnFirst = totalPieces - result.firstSheetRemainingCount;
+    const combinedFitness = placedOnFirst * 10 + result.fitness;
+    return { tree: result.firstTree, fitness: combinedFitness, transposed: ind.transposed, remainingCount: result.firstSheetRemainingCount };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
