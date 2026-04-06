@@ -492,11 +492,11 @@ export async function optimizeGeneticAsync(
       phase: "Pós-análise de reagrupamento...",
       current: generations,
       total: generations,
-      bestUtil: bestFitness * 100,
+      bestUtil: bestDisplayUtil,
     });
   const postResult = postOptimizeRegroup(
     finalTree,
-    bestFitness * usableW * usableH,
+    calcPlacedArea(finalTree),
     pieces,
     usableW,
     usableH,
