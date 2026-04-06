@@ -117,6 +117,7 @@ export function optimizeV6(
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
+  let bestRemainingCount = Infinity;
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
 
@@ -128,8 +129,14 @@ export function optimizeV6(
       for (const sortFn of strategies) {
         const sorted = [...variant].sort(sortFn);
         const result = runPlacement(sorted, eW, eH, minBreak);
-        if (result.area > bestArea) {
+        // Count remaining pieces (expanding grouped pieces)
+        const remCount = result.remaining.reduce((s, p) => s + (p.count || 1), 0);
+        // Primary: fewer remaining pieces; Secondary: higher placed area
+        const isBetter = remCount < bestRemainingCount ||
+          (remCount === bestRemainingCount && result.area > bestArea);
+        if (isBetter) {
           bestArea = result.area;
+          bestRemainingCount = remCount;
           bestTree = result.tree;
           bestRemaining = result.remaining;
           bestTransposed = transposed;
