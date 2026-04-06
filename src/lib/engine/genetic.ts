@@ -114,6 +114,7 @@ function simulateSheets(
   return {
     fitness: Math.max(0, fitness),
     firstTree: firstTree || createRoot(usableW, usableH),
+    firstSheetRemainingCount: firstSheetRemCount,
     stat_rejectedByMinBreak: rejectedCount,
     stat_fragmentCount: fragmentCount,
     stat_continuity: continuityScore,
