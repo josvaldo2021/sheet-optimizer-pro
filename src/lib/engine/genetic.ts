@@ -430,10 +430,13 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
+      const totalPieces = work.reduce((s, p) => s + (p.count || 1), 0);
       const eW = ind.transposed ? usableH : usableW;
       const eH = ind.transposed ? usableW : usableH;
       const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
-      return { ind, tree: res.firstTree, fitness: res.fitness };
+      const placedOnFirst = totalPieces - res.firstSheetRemainingCount;
+      const combinedFitness = placedOnFirst * 10 + res.fitness;
+      return { ind, tree: res.firstTree, fitness: combinedFitness, util: res.fitness };
     });
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
@@ -441,6 +444,7 @@ export async function optimizeGeneticAsync(
     const improved = evaluated[0].fitness > bestFitness;
     if (improved) {
       bestFitness = evaluated[0].fitness;
+      bestDisplayUtil = evaluated[0].util * 100;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
       bestTransposed = evaluated[0].ind.transposed;
     }
@@ -450,7 +454,7 @@ export async function optimizeGeneticAsync(
         phase: "Otimização Evolutiva Global",
         current: g + 1,
         total: generations,
-        bestUtil: bestFitness * 100,
+        bestUtil: bestDisplayUtil,
         ...(improved ? { bestTree: buildPreviewTree() } : {}),
       });
     }
