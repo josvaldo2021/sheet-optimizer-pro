@@ -36,6 +36,7 @@ function simulateSheets(
 ): {
   fitness: number;
   firstTree: TreeNode;
+  firstSheetRemainingCount: number;
   stat_rejectedByMinBreak: number;
   stat_fragmentCount: number;
   stat_continuity: number;
@@ -59,13 +60,17 @@ function simulateSheets(
   let rejectedCount = 0;
   let continuityScore = 0;
   let fragmentCount = 0;
+  let firstSheetRemCount = workPieces.reduce((s, p) => s + (p.count || 1), 0);
 
   for (let s = 0; s < maxSheets; s++) {
     if (currentRemaining.length === 0) break;
 
     const countBefore = currentRemaining.length;
     const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
-    if (s === 0) firstTree = res.tree;
+    if (s === 0) {
+      firstTree = res.tree;
+      firstSheetRemCount = res.remaining.reduce((acc, p) => acc + (p.count || 1), 0);
+    }
 
     const placedArea = res.area;
     totalUtil += placedArea / sheetArea;
@@ -109,6 +114,7 @@ function simulateSheets(
   return {
     fitness: Math.max(0, fitness),
     firstTree: firstTree || createRoot(usableW, usableH),
+    firstSheetRemainingCount: firstSheetRemCount,
     stat_rejectedByMinBreak: rejectedCount,
     stat_fragmentCount: fragmentCount,
     stat_continuity: continuityScore,
@@ -196,13 +202,17 @@ export async function optimizeGeneticAsync(
     return work;
   }
 
-  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
+  function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean; remainingCount: number } {
     const work = buildPieces(ind);
+    const totalPieces = work.reduce((s, p) => s + (p.count || 1), 0);
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
     const eW = ind.transposed ? usableH : usableW;
     const eH = ind.transposed ? usableW : usableH;
     const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
-    return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
+    // Combine: prioritize placing more pieces on the first sheet, then utilization
+    const placedOnFirst = totalPieces - result.firstSheetRemainingCount;
+    const combinedFitness = placedOnFirst * 10 + result.fitness;
+    return { tree: result.firstTree, fitness: combinedFitness, transposed: ind.transposed, remainingCount: result.firstSheetRemainingCount };
   }
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
@@ -358,31 +368,29 @@ export async function optimizeGeneticAsync(
   };
 
   const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
+  const v6PlacedCount = pieces.length - v6Result.remaining.reduce((s, p) => s + (p.count || 1), 0);
   const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
-  if (v6Util > bestFitness) {
-    bestFitness = v6Util;
+  // Combined fitness: prioritize piece count, then utilization
+  const v6Fitness = v6PlacedCount * 10 + v6Util;
+  let bestDisplayUtil = v6Util * 100;
+  if (v6Fitness > bestFitness) {
+    bestFitness = v6Fitness;
+    bestDisplayUtil = v6Util * 100;
     bestTree = JSON.parse(JSON.stringify(v6Result.tree));
     bestTransposed = false;
   }
-  const v6T = optimizeV6(pieces, usableH, usableW, minBreak);
-  const v6TUtil = calcPlacedArea(v6T.tree) / (usableW * usableH);
-  if (v6TUtil > bestFitness) {
-    bestFitness = v6TUtil;
-    bestTree = JSON.parse(JSON.stringify(v6T.tree));
-    bestTransposed = true;
-  }
 
   if (onProgress) {
-    onProgress({ phase: "Heurísticas V6 concluídas", current: 0, total: Math.max(1, generations), bestUtil: bestFitness * 100, bestTree: buildPreviewTree() });
+    onProgress({ phase: "Heurísticas V6 concluídas", current: 0, total: Math.max(1, generations), bestUtil: bestDisplayUtil, bestTree: buildPreviewTree() });
   }
 
   if (onProgress && generations > 0) {
-    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestFitness * 100, bestTree: buildPreviewTree() });
+    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestDisplayUtil, bestTree: buildPreviewTree() });
   }
 
   if (generations === 0) {
     if (onProgress) {
-      onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
+      onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestDisplayUtil });
     }
     let finalTree = bestTree || createRoot(usableW, usableH);
     if (bestTransposed) {
@@ -391,10 +399,10 @@ export async function optimizeGeneticAsync(
     }
 
     if (onProgress)
-      onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestFitness * 100 });
+      onProgress({ phase: "Pós-análise de reagrupamento...", current: 1, total: 1, bestUtil: bestDisplayUtil });
     const postResult = postOptimizeRegroup(
       finalTree,
-      bestFitness * usableW * usableH,
+      calcPlacedArea(finalTree),
       pieces,
       usableW,
       usableH,
@@ -422,10 +430,13 @@ export async function optimizeGeneticAsync(
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
+      const totalPieces = work.reduce((s, p) => s + (p.count || 1), 0);
       const eW = ind.transposed ? usableH : usableW;
       const eH = ind.transposed ? usableW : usableH;
       const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
-      return { ind, tree: res.firstTree, fitness: res.fitness };
+      const placedOnFirst = totalPieces - res.firstSheetRemainingCount;
+      const combinedFitness = placedOnFirst * 10 + res.fitness;
+      return { ind, tree: res.firstTree, fitness: combinedFitness, util: res.fitness };
     });
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
@@ -433,6 +444,7 @@ export async function optimizeGeneticAsync(
     const improved = evaluated[0].fitness > bestFitness;
     if (improved) {
       bestFitness = evaluated[0].fitness;
+      bestDisplayUtil = evaluated[0].util * 100;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
       bestTransposed = evaluated[0].ind.transposed;
     }
@@ -442,7 +454,7 @@ export async function optimizeGeneticAsync(
         phase: "Otimização Evolutiva Global",
         current: g + 1,
         total: generations,
-        bestUtil: bestFitness * 100,
+        bestUtil: bestDisplayUtil,
         ...(improved ? { bestTree: buildPreviewTree() } : {}),
       });
     }
@@ -480,11 +492,11 @@ export async function optimizeGeneticAsync(
       phase: "Pós-análise de reagrupamento...",
       current: generations,
       total: generations,
-      bestUtil: bestFitness * 100,
+      bestUtil: bestDisplayUtil,
     });
   const postResult = postOptimizeRegroup(
     finalTree,
-    bestFitness * usableW * usableH,
+    calcPlacedArea(finalTree),
     pieces,
     usableW,
     usableH,
