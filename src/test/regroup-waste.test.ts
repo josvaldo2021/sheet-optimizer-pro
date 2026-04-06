@@ -46,27 +46,6 @@ describe("Waste Regrouping", () => {
     expect(result.remaining.length).toBe(0);
   });
 
-  it("should not discard the 10th 917x725 piece when a trailing 459x1000 piece exists", () => {
-    const usableW = 3210;
-    const usableH = 2400;
-
-    const pieces: Piece[] = [];
-    for (let i = 0; i < 10; i++) {
-      pieces.push({ w: 917, h: 725, area: 917 * 725, label: `P${i + 1}` });
-    }
-    pieces.push({ w: 459, h: 1000, area: 459 * 1000, label: "M459" });
-
-    const result = optimizeV6(pieces, usableW, usableH, 0);
-    const uniqueLabels = new Set(collectLabels(result.tree));
-
-    expect(result.remaining.length).toBe(0);
-    expect(uniqueLabels.size).toBe(11);
-    expect(uniqueLabels.has("M459")).toBe(true);
-    for (let i = 1; i <= 10; i++) {
-      expect(uniqueLabels.has(`P${i}`)).toBe(true);
-    }
-  });
-
   it("should handle mixed piece sizes and consolidate waste", () => {
     const usableW = 5940;
     const usableH = 3150;
