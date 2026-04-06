@@ -357,14 +357,12 @@ export async function optimizeGeneticAsync(
     onProgress({ phase: "Rodando heurísticas V6...", current: 0, total: Math.max(1, generations) });
   }
 
-  // Helper to build a preview-ready tree from the current best
   const buildPreviewTree = (): TreeNode => {
-    let preview = JSON.parse(JSON.stringify(bestTree || createRoot(usableW, usableH)));
+    const preview = JSON.parse(JSON.stringify(bestTree || createRoot(usableW, usableH)));
     if (bestTransposed) {
       preview.transposed = true;
-      preview = normalizeTree(preview, usableW, usableH);
     }
-    return preview;
+    return normalizeTree(preview, usableW, usableH);
   };
 
   const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
