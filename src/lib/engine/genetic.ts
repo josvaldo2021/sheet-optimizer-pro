@@ -60,6 +60,7 @@ function simulateSheets(
   let rejectedCount = 0;
   let continuityScore = 0;
   let fragmentCount = 0;
+  let firstSheetRemCount = workPieces.reduce((s, p) => s + (p.count || 1), 0);
 
   for (let s = 0; s < maxSheets; s++) {
     if (currentRemaining.length === 0) break;
