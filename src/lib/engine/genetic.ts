@@ -66,7 +66,10 @@ function simulateSheets(
 
     const countBefore = currentRemaining.length;
     const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
-    if (s === 0) firstTree = res.tree;
+    if (s === 0) {
+      firstTree = res.tree;
+      firstSheetRemCount = res.remaining.reduce((acc, p) => acc + (p.count || 1), 0);
+    }
 
     const placedArea = res.area;
     totalUtil += placedArea / sheetArea;
