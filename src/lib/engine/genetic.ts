@@ -390,7 +390,7 @@ export async function optimizeGeneticAsync(
 
   if (generations === 0) {
     if (onProgress) {
-      onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
+      onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestDisplayUtil });
     }
     let finalTree = bestTree || createRoot(usableW, usableH);
     if (bestTransposed) {
