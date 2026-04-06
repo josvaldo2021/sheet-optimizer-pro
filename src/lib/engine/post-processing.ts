@@ -1164,9 +1164,14 @@ export function postOptimizeRegroup(
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree);
 
+  const getRegroupHeight = (piece: typeof placedPieces[number]) => piece.h;
+  const getRegroupWidths = (pieces: typeof placedPieces) => pieces.map((piece) => piece.w);
+  const getRegroupTotalWidth = (pieces: typeof placedPieces) =>
+    getRegroupWidths(pieces).reduce((sum, width) => sum + width, 0);
+
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
-    const h = Math.min(p.w, p.h);
+    const h = getRegroupHeight(p);
     if (!heightMap.has(h)) heightMap.set(h, []);
     heightMap.get(h)!.push(p);
   }
@@ -1175,7 +1180,7 @@ export function postOptimizeRegroup(
   for (const [h, group] of heightMap) {
     const cols = new Set(group.map((p) => p.colIndex));
     if (cols.size > 1 && group.length >= 2) {
-      const totalW = group.reduce((sum, p) => sum + Math.max(p.w, p.h), 0);
+      const totalW = getRegroupTotalWidth(group);
       if (totalW <= usableW) {
         regroupOpportunities.push({ height: h, pieces: group });
       }
@@ -1199,10 +1204,9 @@ export function postOptimizeRegroup(
     const usedLabels = new Set<string>();
 
     const groupLabels: string[] = [];
-    let sumW = 0;
+    const individualDims = getRegroupWidths(opp.pieces);
+    const sumW = individualDims.reduce((sum, width) => sum + width, 0);
     for (const p of opp.pieces) {
-      const w = Math.max(p.w, p.h);
-      sumW += w;
       if (p.label) {
         groupLabels.push(p.label);
         usedLabels.add(p.label);
@@ -1216,6 +1220,7 @@ export function postOptimizeRegroup(
       count: opp.pieces.length,
       labels: groupLabels.length > 0 ? groupLabels : undefined,
       groupedAxis: "w",
+      individualDims,
     });
 
     for (const p of allPieces) {
@@ -1253,9 +1258,9 @@ export function postOptimizeRegroup(
 
     for (const opp of regroupOpportunities) {
       const groupLabels: string[] = [];
-      let sumW = 0;
+      const individualDims = getRegroupWidths(opp.pieces);
+      const sumW = individualDims.reduce((sum, width) => sum + width, 0);
       for (const p of opp.pieces) {
-        sumW += Math.max(p.w, p.h);
         if (p.label) {
           groupLabels.push(p.label);
           usedLabels.add(p.label);
@@ -1269,6 +1274,7 @@ export function postOptimizeRegroup(
           count: opp.pieces.length,
           labels: groupLabels.length > 0 ? groupLabels : undefined,
           groupedAxis: "w",
+          individualDims,
         });
       }
     }
