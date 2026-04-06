@@ -372,18 +372,20 @@ export async function optimizeGeneticAsync(
   const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
   // Combined fitness: prioritize piece count, then utilization
   const v6Fitness = v6PlacedCount * 10 + v6Util;
+  let bestDisplayUtil = v6Util * 100;
   if (v6Fitness > bestFitness) {
     bestFitness = v6Fitness;
+    bestDisplayUtil = v6Util * 100;
     bestTree = JSON.parse(JSON.stringify(v6Result.tree));
     bestTransposed = false;
   }
 
   if (onProgress) {
-    onProgress({ phase: "Heurísticas V6 concluídas", current: 0, total: Math.max(1, generations), bestUtil: bestFitness * 100, bestTree: buildPreviewTree() });
+    onProgress({ phase: "Heurísticas V6 concluídas", current: 0, total: Math.max(1, generations), bestUtil: bestDisplayUtil, bestTree: buildPreviewTree() });
   }
 
   if (onProgress && generations > 0) {
-    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestFitness * 100, bestTree: buildPreviewTree() });
+    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestDisplayUtil, bestTree: buildPreviewTree() });
   }
 
   if (generations === 0) {
