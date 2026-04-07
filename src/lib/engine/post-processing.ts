@@ -5,92 +5,13 @@ import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWAr
 import { oris, scoreFit, canResidualFitAnyPiece } from './scoring';
 import { createPieceNodes } from './placement';
 
-// ========== RESIDUAL DOMINANCE ==========
-// Extends cuts to the edge of the sheet/container when the remaining waste
-// cannot fit any piece from the inventory. This eliminates useless thin strips.
-
-export function applyResidualDominance(
-  tree: TreeNode,
-  remaining: Piece[],
-  usableW: number,
-  usableH: number,
-  _minBreak: number = 0,
-): void {
-  // --- X-level: extend last column to consume X-waste ---
-  if (tree.filhos.length > 0) {
-    const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    const xWaste = usableW - usedW;
-    if (xWaste > 0) {
-      const canFit = remaining.some(p =>
-        oris(p).some(o =>
-          (o.w <= xWaste && o.h <= usableH) ||
-          (o.w <= usableW && o.h <= xWaste)
-        )
-      );
-      if (!canFit) {
-        // Extend the last X column to absorb the waste
-        const lastX = tree.filhos[tree.filhos.length - 1];
-        lastX.valor += xWaste;
-      }
-    }
-  }
-
-  // --- Y-level: extend last Y strip in each column to consume Y-waste ---
-  for (const colX of tree.filhos) {
-    if (colX.filhos.length === 0) continue;
-    const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-    const yWaste = usableH - usedH;
-    if (yWaste > 0) {
-      const canFit = remaining.some(p =>
-        oris(p).some(o => o.w <= colX.valor && o.h <= yWaste)
-      );
-      if (!canFit) {
-        const lastY = colX.filhos[colX.filhos.length - 1];
-        lastY.valor += yWaste;
-      }
-    }
-  }
-
-  // --- Z-level: extend last Z node in each Y strip to consume Z-waste ---
-  for (const colX of tree.filhos) {
-    for (const yNode of colX.filhos) {
-      if (yNode.filhos.length === 0) continue;
-      const usedZ = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
-      const zWaste = colX.valor - usedZ;
-      if (zWaste > 0) {
-        const canFit = remaining.some(p =>
-          oris(p).some(o => o.w <= zWaste && o.h <= yNode.valor)
-        );
-        if (!canFit) {
-          const lastZ = yNode.filhos[yNode.filhos.length - 1];
-          lastZ.valor += zWaste;
-        }
-      }
-    }
-  }
-
-  // --- W-level: extend last W node in each Z to consume W-waste ---
-  for (const colX of tree.filhos) {
-    for (const yNode of colX.filhos) {
-      for (const zNode of yNode.filhos) {
-        if (zNode.filhos.length === 0) continue;
-        const usedW = zNode.filhos.reduce((a, w) => a + w.valor * w.multi, 0);
-        const wWaste = yNode.valor - usedW;
-        if (wWaste > 0) {
-          const canFit = remaining.some(p =>
-            oris(p).some(o => o.w <= zNode.valor && o.h <= wWaste)
-          );
-          if (!canFit) {
-            const lastW = zNode.filhos[zNode.filhos.length - 1];
-            lastW.valor += wWaste;
-          }
-        }
-      }
-    }
-  }
-}
-
 interface AbsRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label?: string;
+}
   x: number;
   y: number;
   w: number;
