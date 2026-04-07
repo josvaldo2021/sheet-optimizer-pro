@@ -12,12 +12,6 @@ interface AbsRect {
   h: number;
   label?: string;
 }
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  label?: string;
-}
 
 // ========== UNIFY COLUMN WASTE ==========
 
