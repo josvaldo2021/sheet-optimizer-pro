@@ -5,6 +5,49 @@ import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWAr
 import { oris, scoreFit, canResidualFitAnyPiece } from './scoring';
 import { createPieceNodes } from './placement';
 
+// ========== RESIDUAL DOMINANCE (X & Y only) ==========
+// After all placement, extends X columns and Y strips to consume waste
+// when no remaining piece fits in that waste. This is safe because X and Y
+// are containers — their valor does NOT define piece dimensions (Z/W/Q do).
+
+export function applyResidualDominanceXY(
+  tree: TreeNode,
+  remaining: Piece[],
+  usableW: number,
+  usableH: number,
+): void {
+  // --- X-level: extend last column to consume X-waste ---
+  if (tree.filhos.length > 0) {
+    const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+    const xWaste = usableW - usedW;
+    if (xWaste > 0) {
+      const canFit = remaining.some(p =>
+        oris(p).some(o => o.w <= xWaste && o.h <= usableH)
+      );
+      if (!canFit) {
+        const lastX = tree.filhos[tree.filhos.length - 1];
+        lastX.valor += xWaste;
+      }
+    }
+  }
+
+  // --- Y-level: extend last Y strip in each column to consume Y-waste ---
+  for (const colX of tree.filhos) {
+    if (colX.filhos.length === 0) continue;
+    const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+    const yWaste = usableH - usedH;
+    if (yWaste > 0) {
+      const canFit = remaining.some(p =>
+        oris(p).some(o => o.w <= colX.valor && o.h <= yWaste)
+      );
+      if (!canFit) {
+        const lastY = colX.filhos[colX.filhos.length - 1];
+        lastY.valor += yWaste;
+      }
+    }
+  }
+}
+
 interface AbsRect {
   x: number;
   y: number;

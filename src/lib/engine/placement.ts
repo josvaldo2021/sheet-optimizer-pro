@@ -4,7 +4,7 @@ import { TreeNode, Piece } from './types';
 import { gid, createRoot, findNode, insertNode } from './tree-utils';
 import { oris, scoreFit, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
 import { fillVoids } from './void-filling';
-import { unifyColumnWaste, collapseTreeWaste, regroupAdjacentStrips, clampTreeHeights } from './post-processing';
+import { unifyColumnWaste, collapseTreeWaste, regroupAdjacentStrips, clampTreeHeights, applyResidualDominanceXY } from './post-processing';
 
 /**
  * Internal helper to create the necessary nodes (Z, W, Q) for a piece placement.
@@ -486,6 +486,9 @@ export function runPlacement(
   }
 
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
+
+  // Extend X columns and Y strips to consume waste that can't fit any remaining piece
+  applyResidualDominanceXY(tree, remaining, usableW, usableH);
 
   return { tree, area: placedArea, remaining };
 }
