@@ -36,10 +36,13 @@ describe("Waste Regrouping", () => {
     }
 
     const result = optimizeV6(pieces, usableW, usableH, 0);
+    const labels = collectLabels(result.tree);
+    const placedCount = labels.length;
 
-    console.log(`Y-level test: remaining: ${result.remaining.length}`);
+    console.log(`Y-level test: placed ${placedCount}/10 pieces, remaining: ${result.remaining.length}`);
+    console.log(`Tree structure:`, JSON.stringify(result.tree, ['tipo', 'valor', 'multi', 'filhos', 'label'], 2).substring(0, 2000));
 
-    // All 10 pieces should be placed (remaining = 0)
+    expect(placedCount).toBeGreaterThanOrEqual(10);
     expect(result.remaining.length).toBe(0);
   });
 

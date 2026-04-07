@@ -198,8 +198,23 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
       const nodeValor = vertical ? segBw : segBh;
       const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(nodeValor), multi: 1, filhos: [] };
 
-      // Always subdivide to build the full X→Y→Z→W→Q hierarchy.
-      // Never shortcut a single rect into a leaf — it loses piece dimensions.
+      if (segRects.length === 1) {
+        const r = segRects[0];
+        const fillsW = Math.abs(r.w - segBw) < 1;
+        const fillsH = Math.abs(r.h - segBh) < 1;
+
+        if (fillsW && fillsH) {
+          node.label = r.label;
+          if (levelIdx + 1 < levelSequence.length) {
+            const nextLevel = levelSequence[levelIdx + 1];
+            const childValor = vertical ? Math.round(segBh) : Math.round(segBw);
+            const child: TreeNode = { id: gid(), tipo: nextLevel, valor: childValor, multi: 1, filhos: [], label: r.label };
+            node.filhos.push(child);
+          }
+          parentNode.filhos.push(node);
+          continue;
+        }
+      }
 
       subdivide(node, levelIdx + 1, segRects, segBx, segBy, segBw, segBh);
       parentNode.filhos.push(node);

@@ -53,11 +53,14 @@ export function optimizeV6(
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
+  const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
   const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
 
-  const pieceVariants: Piece[][] = useGrouping === false
+  const pieceVariants: Piece[][] = hasLabels
+    ? [pieces, rotatedPieces]
+    : useGrouping === false
       ? [pieces, rotatedPieces]
       : [
           pieces,
@@ -117,7 +120,6 @@ export function optimizeV6(
 
   let bestTree: TreeNode | null = null;
   let bestArea = 0;
-  let bestRemainingCount = Infinity;
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
 
@@ -129,14 +131,8 @@ export function optimizeV6(
       for (const sortFn of strategies) {
         const sorted = [...variant].sort(sortFn);
         const result = runPlacement(sorted, eW, eH, minBreak);
-        // Count remaining pieces (expanding grouped pieces)
-        const remCount = result.remaining.reduce((s, p) => s + (p.count || 1), 0);
-        // Primary: fewer remaining pieces; Secondary: higher placed area
-        const isBetter = remCount < bestRemainingCount ||
-          (remCount === bestRemainingCount && result.area > bestArea);
-        if (isBetter) {
+        if (result.area > bestArea) {
           bestArea = result.area;
-          bestRemainingCount = remCount;
           bestTree = result.tree;
           bestRemaining = result.remaining;
           bestTransposed = transposed;
@@ -148,8 +144,8 @@ export function optimizeV6(
   let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) {
     finalTree.transposed = true;
+    finalTree = normalizeTree(finalTree, usableW, usableH);
   }
-  finalTree = normalizeTree(finalTree, usableW, usableH);
 
   return {
     tree: finalTree,

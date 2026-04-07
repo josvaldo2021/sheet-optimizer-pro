@@ -5,49 +5,6 @@ import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWAr
 import { oris, scoreFit, canResidualFitAnyPiece } from './scoring';
 import { createPieceNodes } from './placement';
 
-// ========== RESIDUAL DOMINANCE (X & Y only) ==========
-// After all placement, extends X columns and Y strips to consume waste
-// when no remaining piece fits in that waste. This is safe because X and Y
-// are containers — their valor does NOT define piece dimensions (Z/W/Q do).
-
-export function applyResidualDominanceXY(
-  tree: TreeNode,
-  remaining: Piece[],
-  usableW: number,
-  usableH: number,
-): void {
-  // --- X-level: extend last column to consume X-waste ---
-  if (tree.filhos.length > 0) {
-    const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    const xWaste = usableW - usedW;
-    if (xWaste > 0) {
-      const canFit = remaining.some(p =>
-        oris(p).some(o => o.w <= xWaste && o.h <= usableH)
-      );
-      if (!canFit) {
-        const lastX = tree.filhos[tree.filhos.length - 1];
-        lastX.valor += xWaste;
-      }
-    }
-  }
-
-  // --- Y-level: extend last Y strip in each column to consume Y-waste ---
-  for (const colX of tree.filhos) {
-    if (colX.filhos.length === 0) continue;
-    const usedH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
-    const yWaste = usableH - usedH;
-    if (yWaste > 0) {
-      const canFit = remaining.some(p =>
-        oris(p).some(o => o.w <= colX.valor && o.h <= yWaste)
-      );
-      if (!canFit) {
-        const lastY = colX.filhos[colX.filhos.length - 1];
-        lastY.valor += yWaste;
-      }
-    }
-  }
-}
-
 interface AbsRect {
   x: number;
   y: number;
@@ -1207,14 +1164,9 @@ export function postOptimizeRegroup(
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree);
 
-  const getRegroupHeight = (piece: typeof placedPieces[number]) => piece.h;
-  const getRegroupWidths = (pieces: typeof placedPieces) => pieces.map((piece) => piece.w);
-  const getRegroupTotalWidth = (pieces: typeof placedPieces) =>
-    getRegroupWidths(pieces).reduce((sum, width) => sum + width, 0);
-
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
-    const h = getRegroupHeight(p);
+    const h = Math.min(p.w, p.h);
     if (!heightMap.has(h)) heightMap.set(h, []);
     heightMap.get(h)!.push(p);
   }
@@ -1223,7 +1175,7 @@ export function postOptimizeRegroup(
   for (const [h, group] of heightMap) {
     const cols = new Set(group.map((p) => p.colIndex));
     if (cols.size > 1 && group.length >= 2) {
-      const totalW = getRegroupTotalWidth(group);
+      const totalW = group.reduce((sum, p) => sum + Math.max(p.w, p.h), 0);
       if (totalW <= usableW) {
         regroupOpportunities.push({ height: h, pieces: group });
       }
@@ -1247,9 +1199,10 @@ export function postOptimizeRegroup(
     const usedLabels = new Set<string>();
 
     const groupLabels: string[] = [];
-    const individualDims = getRegroupWidths(opp.pieces);
-    const sumW = individualDims.reduce((sum, width) => sum + width, 0);
+    let sumW = 0;
     for (const p of opp.pieces) {
+      const w = Math.max(p.w, p.h);
+      sumW += w;
       if (p.label) {
         groupLabels.push(p.label);
         usedLabels.add(p.label);
@@ -1263,7 +1216,6 @@ export function postOptimizeRegroup(
       count: opp.pieces.length,
       labels: groupLabels.length > 0 ? groupLabels : undefined,
       groupedAxis: "w",
-      individualDims,
     });
 
     for (const p of allPieces) {
@@ -1287,8 +1239,8 @@ export function postOptimizeRegroup(
           bestTree = result.tree;
           if (transposed) {
             bestTree.transposed = true;
+            bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           }
-          bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           improved = true;
         }
       }
@@ -1301,9 +1253,9 @@ export function postOptimizeRegroup(
 
     for (const opp of regroupOpportunities) {
       const groupLabels: string[] = [];
-      const individualDims = getRegroupWidths(opp.pieces);
-      const sumW = individualDims.reduce((sum, width) => sum + width, 0);
+      let sumW = 0;
       for (const p of opp.pieces) {
+        sumW += Math.max(p.w, p.h);
         if (p.label) {
           groupLabels.push(p.label);
           usedLabels.add(p.label);
@@ -1317,7 +1269,6 @@ export function postOptimizeRegroup(
           count: opp.pieces.length,
           labels: groupLabels.length > 0 ? groupLabels : undefined,
           groupedAxis: "w",
-          individualDims,
         });
       }
     }
@@ -1341,8 +1292,8 @@ export function postOptimizeRegroup(
           bestTree = result.tree;
           if (transposed) {
             bestTree.transposed = true;
+            bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           }
-          bestTree = normalizeTreeFn(bestTree, usableW, usableH);
           improved = true;
         }
       }
