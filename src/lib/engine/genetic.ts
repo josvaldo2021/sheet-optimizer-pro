@@ -346,17 +346,6 @@ export async function optimizeGeneticAsync(
   if (onProgress) {
     onProgress({ phase: "Rodando heurísticas V6...", current: 0, total: Math.max(1, generations) });
   }
-
-  // Helper to build a preview-ready tree from the current best
-  const buildPreviewTree = (): TreeNode => {
-    let preview = JSON.parse(JSON.stringify(bestTree || createRoot(usableW, usableH)));
-    if (bestTransposed) {
-      preview.transposed = true;
-      preview = normalizeTree(preview, usableW, usableH);
-    }
-    return preview;
-  };
-
   const v6Result = optimizeV6(pieces, usableW, usableH, minBreak);
   const v6Util = calcPlacedArea(v6Result.tree) / (usableW * usableH);
   if (v6Util > bestFitness) {
@@ -372,12 +361,8 @@ export async function optimizeGeneticAsync(
     bestTransposed = true;
   }
 
-  if (onProgress) {
-    onProgress({ phase: "Heurísticas V6 concluídas", current: 0, total: Math.max(1, generations), bestUtil: bestFitness * 100, bestTree: buildPreviewTree() });
-  }
-
   if (onProgress && generations > 0) {
-    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestFitness * 100, bestTree: buildPreviewTree() });
+    onProgress({ phase: "Semeando População...", current: 0, total: generations, bestUtil: bestFitness * 100 });
   }
 
   if (generations === 0) {
@@ -430,8 +415,7 @@ export async function optimizeGeneticAsync(
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
 
-    const improved = evaluated[0].fitness > bestFitness;
-    if (improved) {
+    if (evaluated[0].fitness > bestFitness) {
       bestFitness = evaluated[0].fitness;
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
       bestTransposed = evaluated[0].ind.transposed;
@@ -443,7 +427,6 @@ export async function optimizeGeneticAsync(
         current: g + 1,
         total: generations,
         bestUtil: bestFitness * 100,
-        ...(improved ? { bestTree: buildPreviewTree() } : {}),
       });
     }
 
