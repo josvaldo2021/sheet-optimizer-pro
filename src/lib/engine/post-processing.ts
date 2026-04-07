@@ -48,6 +48,7 @@ export function applyResidualDominanceXY(
   }
 }
 
+interface AbsRect {
   x: number;
   y: number;
   w: number;

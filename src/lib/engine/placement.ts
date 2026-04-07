@@ -487,5 +487,8 @@ export function runPlacement(
 
   placedArea = clampTreeHeights(tree, usableW, usableH, placedArea);
 
+  // Extend X columns and Y strips to consume waste that can't fit any remaining piece
+  applyResidualDominanceXY(tree, remaining, usableW, usableH);
+
   return { tree, area: placedArea, remaining };
 }
