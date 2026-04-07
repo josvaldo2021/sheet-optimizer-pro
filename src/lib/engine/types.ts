@@ -42,4 +42,6 @@ export interface OptimizationProgress {
   total: number;
   bestSheets?: number;
   bestUtil?: number;
+  /** The best tree found so far (for live preview) */
+  bestTree?: TreeNode;
 }

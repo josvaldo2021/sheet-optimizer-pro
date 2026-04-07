@@ -265,7 +265,14 @@ const Index = () => {
       usableW,
       usableH,
       minBreak,
-      setProgress,
+      (p) => {
+        setProgress(p);
+        if (p.bestTree) {
+          setTree(p.bestTree);
+          setChapas([{ tree: p.bestTree, usedArea: calcPlacedArea(p.bestTree), manual: false }]);
+          setActiveChapa(0);
+        }
+      },
       priorityLabels.length > 0 ? priorityLabels : undefined,
       gaPopSize,
       gaGens,
@@ -328,6 +335,13 @@ const Index = () => {
               total: p.total,
               bestUtil: p.bestUtil,
             });
+            if (p.bestTree) {
+              // Show the current sheet being optimized live
+              const liveChapas = [...chapaList, { tree: p.bestTree, usedArea: calcPlacedArea(p.bestTree), manual: false }];
+              setChapas(liveChapas);
+              setActiveChapa(liveChapas.length - 1);
+              setTree(p.bestTree);
+            }
           },
           priorityLabels.length > 0 ? priorityLabels : undefined,
           gaPopSize,
