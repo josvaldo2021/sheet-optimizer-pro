@@ -145,10 +145,17 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
         if (vertical) {
           const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
           parentNode.filhos.push(node);
+          // Always create the full chain: vertical node → horizontal child → next vertical child
           if (levelIdx + 1 < levelSequence.length) {
             const nextLevel = levelSequence[levelIdx + 1];
             const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
             node.filhos.push(hNode);
+            // If there's still another level, add the leaf (e.g., Z→W needs Q for piece width if Z != piece width)
+            if (levelIdx + 2 < levelSequence.length && Math.abs(r.w - Math.round(nodeValor || r.w)) > 0.5) {
+              const leafLevel = levelSequence[levelIdx + 2];
+              const leafNode: TreeNode = { id: gid(), tipo: leafLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
+              hNode.filhos.push(leafNode);
+            }
           }
         } else {
           const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
@@ -157,6 +164,11 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
             const nextLevel = levelSequence[levelIdx + 1];
             const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
             node.filhos.push(wNode);
+            if (levelIdx + 2 < levelSequence.length && Math.abs(r.h - Math.round(nodeValor || r.h)) > 0.5) {
+              const leafLevel = levelSequence[levelIdx + 2];
+              const leafNode: TreeNode = { id: gid(), tipo: leafLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
+              wNode.filhos.push(leafNode);
+            }
           }
         }
         return;
