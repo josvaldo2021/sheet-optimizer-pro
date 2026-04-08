@@ -94,15 +94,62 @@ export function createPieceNodes(
 /**
  * Main placement loop: places pieces into columns/strips one at a time.
  */
+/**
+ * @param horizontalStrip - When provided, the first column uses X = full sheet width
+ *   (neutral cut) and a Y strip of baseH, simulating a horizontal-first cut.
+ *   baseW is used to place the base piece as a Z subdivision within that Y strip.
+ */
 export function runPlacement(
   inventory: Piece[],
   usableW: number,
   usableH: number,
   minBreak: number = 0,
+  horizontalStrip?: { baseW: number; baseH: number },
 ): { tree: TreeNode; area: number; remaining: Piece[] } {
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
+
+  // === Horizontal strip mode: pre-seed the tree with X=fullWidth, Y=baseH ===
+  if (horizontalStrip && remaining.length > 0) {
+    const { baseW, baseH } = horizontalStrip;
+    // X = full sheet width (neutral vertical cut)
+    const xId = insertNode(tree, "root", "X", usableW, 1);
+    const xNode = findNode(tree, xId)!;
+    // Y = base piece height (first effective horizontal cut)
+    const yId = insertNode(tree, xNode.id, "Y", baseH, 1);
+    const yNode = findNode(tree, yId)!;
+
+    // Place the base piece as a Z column within the Y strip
+    const basePiece = remaining[0];
+    placedArea += createPieceNodes(tree, yNode, basePiece, baseW, baseH, baseW !== basePiece.w);
+    remaining.shift();
+
+    // Fill remaining width in the Y strip with other pieces
+    let freeZW = usableW - baseW;
+    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+      const pc = remaining[i];
+      let bestOri: { w: number; h: number } | null = null;
+      let bestScore = Infinity;
+
+      for (const o of oris(pc)) {
+        if (o.w <= freeZW && o.h <= baseH) {
+          const score = (baseH - o.h) * 2 + (freeZW - o.w);
+          if (score < bestScore) {
+            bestScore = score;
+            bestOri = o;
+          }
+        }
+      }
+
+      if (bestOri) {
+        placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+        freeZW -= bestOri.w;
+        remaining.splice(i, 1);
+        i--;
+      }
+    }
+  }
 
   while (remaining.length > 0) {
     const piece = remaining[0];
