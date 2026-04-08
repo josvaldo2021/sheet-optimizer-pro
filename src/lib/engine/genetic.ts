@@ -20,11 +20,40 @@ import {
   groupCommonDimensionDP,
 } from './grouping';
 
+/**
+ * Strip mode controls how the first cut is made:
+ * 'V' = vertical strip (default): X = piece width, standard behavior
+ * 'H' = horizontal strip: X = full sheet width (neutral), Y = piece height
+ */
+type StripMode = 'V' | 'H';
+
 interface GAIndividual {
   genome: number[];
   rotations: boolean[];
   groupingMode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   transposed: boolean;
+  /** Controls whether the first strip is vertical or horizontal */
+  stripMode: StripMode;
+}
+
+function applyGrouping(work: Piece[], mode: number, usableW: number, usableH: number): Piece[] {
+  switch (mode) {
+    case 1: return groupPiecesByHeight(work);
+    case 2: return groupPiecesByWidth(work);
+    case 3: return groupPiecesFillRow(work, usableW);
+    case 4: return groupPiecesFillRow(work, usableW, true);
+    case 5: return groupPiecesFillCol(work, usableH);
+    case 6: return groupPiecesFillCol(work, usableH, true);
+    case 7: return groupPiecesColumnWidth(work, usableW);
+    case 8: return groupPiecesColumnHeight(work, usableH);
+    case 9: return groupByCommonDimension(work, usableW, usableH);
+    case 10: return groupByCommonDimensionTransposed(work, usableW, usableH);
+    case 11: return groupStripPackingDP(work, usableW, usableH, 5);
+    case 12: return groupStripPackingDPTransposed(work, usableW, usableH, 5);
+    case 13: return groupCommonDimensionDP(work, usableW, usableH);
+    case 14: return groupStripPackingDP(work, usableW, usableH, 100);
+    default: return work;
+  }
 }
 
 function simulateSheets(
@@ -33,6 +62,7 @@ function simulateSheets(
   usableH: number,
   minBreak: number,
   maxSheets: number,
+  horizontalStrip?: { baseW: number; baseH: number },
 ): {
   fitness: number;
   firstTree: TreeNode;
@@ -64,7 +94,9 @@ function simulateSheets(
     if (currentRemaining.length === 0) break;
 
     const countBefore = currentRemaining.length;
-    const res = runPlacement(currentRemaining, usableW, usableH, minBreak);
+    // Only apply horizontal strip hint on the first sheet
+    const stripHint = s === 0 ? horizontalStrip : undefined;
+    const res = runPlacement(currentRemaining, usableW, usableH, minBreak, stripHint);
     if (s === 0) firstTree = res.tree;
 
     const placedArea = res.area;
@@ -138,6 +170,8 @@ export async function optimizeGeneticAsync(
     return area > bestArea ? i : best;
   }, 0);
 
+  const GROUPING_MODES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
+
   function randomIndividual(): GAIndividual {
     const rest = Array.from({ length: numPieces }, (_, i) => i).filter((i) => i !== largestIdx);
     for (let i = rest.length - 1; i > 0; i--) {
@@ -148,8 +182,9 @@ export async function optimizeGeneticAsync(
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const)[Math.floor(Math.random() * 15)] as GAIndividual['groupingMode'],
+      groupingMode: GROUPING_MODES[Math.floor(Math.random() * GROUPING_MODES.length)] as GAIndividual['groupingMode'],
       transposed: Math.random() > 0.5,
+      stripMode: Math.random() > 0.5 ? 'V' : 'H',
     };
   }
 
@@ -163,37 +198,28 @@ export async function optimizeGeneticAsync(
       return p;
     });
 
-    if (ind.groupingMode === 1) {
-      work = groupPiecesByHeight(work);
-    } else if (ind.groupingMode === 2) {
-      work = groupPiecesByWidth(work);
-    } else if (ind.groupingMode === 3) {
-      work = groupPiecesFillRow(work, usableW);
-    } else if (ind.groupingMode === 4) {
-      work = groupPiecesFillRow(work, usableW, true);
-    } else if (ind.groupingMode === 5) {
-      work = groupPiecesFillCol(work, usableH);
-    } else if (ind.groupingMode === 6) {
-      work = groupPiecesFillCol(work, usableH, true);
-    } else if (ind.groupingMode === 7) {
-      work = groupPiecesColumnWidth(work, usableW);
-    } else if (ind.groupingMode === 8) {
-      work = groupPiecesColumnHeight(work, usableH);
-    } else if (ind.groupingMode === 9) {
-      work = groupByCommonDimension(work, usableW, usableH);
-    } else if (ind.groupingMode === 10) {
-      work = groupByCommonDimensionTransposed(work, usableW, usableH);
-    } else if (ind.groupingMode === 11) {
-      work = groupStripPackingDP(work, usableW, usableH, 5);
-    } else if (ind.groupingMode === 12) {
-      work = groupStripPackingDPTransposed(work, usableW, usableH, 5);
-    } else if (ind.groupingMode === 13) {
-      work = groupCommonDimensionDP(work, usableW, usableH);
-    } else if (ind.groupingMode === 14) {
-      work = groupStripPackingDP(work, usableW, usableH, 100);
-    }
+    const eW = ind.transposed ? usableH : usableW;
+    const eH = ind.transposed ? usableW : usableH;
+    work = applyGrouping(work, ind.groupingMode, eW, eH);
 
     return work;
+  }
+
+  /**
+   * Build the horizontal strip hint for an individual.
+   * In 'H' mode, X = full sheet width (neutral cut), Y = base piece height.
+   * The base piece is the first piece in the genome after grouping/rotation.
+   */
+  function getHorizontalStripHint(ind: GAIndividual, work: Piece[], eW: number, eH: number): { baseW: number; baseH: number } | undefined {
+    if (ind.stripMode !== 'H') return undefined;
+    if (work.length === 0) return undefined;
+    const basePiece = work[0];
+    // In horizontal mode, the base piece's height defines the Y strip
+    // and its width will be placed as a Z subdivision within that strip
+    if (basePiece.h <= eH && basePiece.w <= eW) {
+      return { baseW: basePiece.w, baseH: basePiece.h };
+    }
+    return undefined;
   }
 
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
@@ -201,7 +227,8 @@ export async function optimizeGeneticAsync(
     const lookahead = Math.min(3, Math.ceil(work.length / 5));
     const eW = ind.transposed ? usableH : usableW;
     const eH = ind.transposed ? usableW : usableH;
-    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1);
+    const horizontalHint = getHorizontalStripHint(ind, work, eW, eH);
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1, horizontalHint);
     return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
   }
 
@@ -247,25 +274,29 @@ export async function optimizeGeneticAsync(
       rotations: childRotations,
       groupingMode: childGrouping,
       transposed: Math.random() > 0.5 ? pA.transposed : pB.transposed,
+      stripMode: Math.random() > 0.5 ? pA.stripMode : pB.stripMode,
     };
   }
 
   function mutate(ind: GAIndividual): GAIndividual {
-    const c = {
+    const c: GAIndividual = {
       genome: [...ind.genome],
       rotations: [...ind.rotations],
       groupingMode: ind.groupingMode,
       transposed: ind.transposed,
+      stripMode: ind.stripMode,
     };
 
     const r = Math.random();
-    if (r < 0.25) {
+    if (r < 0.20) {
+      // Swap two positions in genome
       if (c.genome.length > 2) {
         const a = 1 + Math.floor(Math.random() * (c.genome.length - 1));
         const b = 1 + Math.floor(Math.random() * (c.genome.length - 1));
         [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
       }
-    } else if (r < 0.5) {
+    } else if (r < 0.40) {
+      // Block move in genome
       if (c.genome.length > 4) {
         const tail = c.genome.splice(1);
         const blockSize = Math.floor(Math.random() * Math.min(5, tail.length / 2)) + 2;
@@ -275,16 +306,22 @@ export async function optimizeGeneticAsync(
         tail.splice(target, 0, ...segment);
         c.genome = [c.genome[0], ...tail];
       }
-    } else if (r < 0.7) {
+    } else if (r < 0.55) {
+      // Flip rotations
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
-    } else if (r < 0.85) {
-      c.groupingMode = ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const)[Math.floor(Math.random() * 15)] as GAIndividual['groupingMode'];
-    } else {
+    } else if (r < 0.70) {
+      // Change grouping mode
+      c.groupingMode = GROUPING_MODES[Math.floor(Math.random() * GROUPING_MODES.length)] as GAIndividual['groupingMode'];
+    } else if (r < 0.82) {
+      // Toggle transposed
       c.transposed = !c.transposed;
+    } else {
+      // Toggle strip mode (V <-> H)
+      c.stripMode = c.stripMode === 'V' ? 'H' : 'V';
     }
 
     return c;
@@ -316,17 +353,34 @@ export async function optimizeGeneticAsync(
       sortedIndices.unshift(tmp);
     }
 
+    // Seed with both strip modes (V and H) for each strategy
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
       transposed: false,
+      stripMode: 'V',
+    });
+    initialPop.push({
+      genome: [...sortedIndices],
+      rotations: Array.from({ length: numPieces }, () => false),
+      groupingMode: 0,
+      transposed: false,
+      stripMode: 'H',
     });
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
       groupingMode: 0,
       transposed: true,
+      stripMode: 'V',
+    });
+    initialPop.push({
+      genome: [...sortedIndices],
+      rotations: Array.from({ length: numPieces }, () => false),
+      groupingMode: 0,
+      transposed: true,
+      stripMode: 'H',
     });
   });
 
@@ -409,7 +463,8 @@ export async function optimizeGeneticAsync(
       const work = buildPieces(ind);
       const eW = ind.transposed ? usableH : usableW;
       const eH = ind.transposed ? usableW : usableH;
-      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead);
+      const horizontalHint = getHorizontalStripHint(ind, work, eW, eH);
+      const res = simulateSheets(work, eW, eH, minBreak, currentLookahead, horizontalHint);
       return { ind, tree: res.firstTree, fitness: res.fitness };
     });
 
@@ -433,7 +488,7 @@ export async function optimizeGeneticAsync(
     if (g % 5 === 0) await new Promise((r) => setTimeout(r, 0));
 
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
-    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + (i.transposed ? "T" : "N")));
+    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + i.stripMode + (i.transposed ? "T" : "N")));
 
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
@@ -441,7 +496,7 @@ export async function optimizeGeneticAsync(
       let child = crossover(pA, pB);
       if (Math.random() < mutationRate) child = mutate(child);
 
-      const key = child.genome.join(",") + (child.transposed ? "T" : "N");
+      const key = child.genome.join(",") + child.stripMode + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
