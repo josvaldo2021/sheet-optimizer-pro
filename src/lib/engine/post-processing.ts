@@ -80,23 +80,16 @@ export function unifyColumnWaste(
             }
           }
         } else if (parentType === "Y") {
-          const zId = insertNode(tree, parentNode.id, "Z", bestOri.w, 1);
-          const zNode = findNode(tree, zId)!;
-          const wId = insertNode(tree, zId, "W", bestOri.h, 1);
-          const wNode = findNode(tree, wId)!;
-          if (pc.label) { zNode.label = pc.label; wNode.label = pc.label; }
-          filled += bestOri.w * bestOri.h;
+          filled += createPieceNodes(tree, parentNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+          const zNode = parentNode.filhos[parentNode.filhos.length - 1];
 
           let freeWH = effectiveH - bestOri.h;
           for (let j = 0; j < remaining.length && freeWH > 0; j++) {
             if (j === i) continue;
             const lpc = remaining[j];
             for (const o of oris(lpc)) {
-              if (o.w <= bestOri.w && o.h <= freeWH) {
-                const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
-                const wNode2 = findNode(tree, wId2)!;
-                if (lpc.label) wNode2.label = lpc.label;
-                filled += bestOri.w * o.h;
+              if (o.w <= zNode.valor && o.h <= freeWH) {
+                filled += createPieceNodes(tree, parentNode, lpc, o.w, o.h, o.w !== lpc.w, zNode);
                 freeWH -= o.h;
                 remaining.splice(j, 1);
                 if (j < i) i--;
@@ -115,7 +108,7 @@ export function unifyColumnWaste(
             const qNode = findNode(tree, qId)!;
             if (pc.label) qNode.label = pc.label;
           }
-          filled += areaW * bestOri.h;
+          filled += bestOri.w * bestOri.h;
         }
 
         freeH -= effectiveH;
