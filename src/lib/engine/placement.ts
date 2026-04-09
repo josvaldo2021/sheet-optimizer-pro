@@ -73,15 +73,14 @@ export function createPieceNodes(
     }
   } else {
     const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
-    if (!zNodeToUse && piece.label) zNode.label = piece.label;
+    if (piece.label) zNode.label = piece.label;
 
     const wId = insertNode(tree, zNode.id, "W", placedH, 1);
     const wNode = findNode(tree, wId)!;
     if (piece.label) wNode.label = piece.label;
 
     const actualPieceW = rotated ? piece.h : piece.w;
-    const hostZWidth = zNodeToUse ? zNode.valor : placedW;
-    if (actualPieceW < hostZWidth) {
+    if (actualPieceW < placedW) {
       const qId = insertNode(tree, wId, "Q", actualPieceW, 1);
       const qNode = findNode(tree, qId)!;
       if (piece.label) qNode.label = piece.label;

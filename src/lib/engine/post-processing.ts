@@ -80,16 +80,23 @@ export function unifyColumnWaste(
             }
           }
         } else if (parentType === "Y") {
-          filled += createPieceNodes(tree, parentNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-          const zNode = parentNode.filhos[parentNode.filhos.length - 1];
+          const zId = insertNode(tree, parentNode.id, "Z", bestOri.w, 1);
+          const zNode = findNode(tree, zId)!;
+          const wId = insertNode(tree, zId, "W", bestOri.h, 1);
+          const wNode = findNode(tree, wId)!;
+          if (pc.label) { zNode.label = pc.label; wNode.label = pc.label; }
+          filled += bestOri.w * bestOri.h;
 
           let freeWH = effectiveH - bestOri.h;
           for (let j = 0; j < remaining.length && freeWH > 0; j++) {
             if (j === i) continue;
             const lpc = remaining[j];
             for (const o of oris(lpc)) {
-              if (o.w <= zNode.valor && o.h <= freeWH) {
-                filled += createPieceNodes(tree, parentNode, lpc, o.w, o.h, o.w !== lpc.w, zNode);
+              if (o.w <= bestOri.w && o.h <= freeWH) {
+                const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
+                const wNode2 = findNode(tree, wId2)!;
+                if (lpc.label) wNode2.label = lpc.label;
+                filled += bestOri.w * o.h;
                 freeWH -= o.h;
                 remaining.splice(j, 1);
                 if (j < i) i--;
@@ -108,7 +115,7 @@ export function unifyColumnWaste(
             const qNode = findNode(tree, qId)!;
             if (pc.label) qNode.label = pc.label;
           }
-          filled += bestOri.w * bestOri.h;
+          filled += areaW * bestOri.h;
         }
 
         freeH -= effectiveH;
@@ -1187,11 +1194,9 @@ export function postOptimizeRegroup(
   let bestArea = originalArea;
   let improved = false;
 
-  // Build a set of indices for pieces used in each regroup opportunity
-  // to avoid counting them twice (once grouped, once individually)
   for (const opp of regroupOpportunities) {
     const forcedPieces: Piece[] = [];
-    const regroupedIndices = new Set<number>();
+    const usedLabels = new Set<string>();
 
     const groupLabels: string[] = [];
     let sumW = 0;
@@ -1200,20 +1205,7 @@ export function postOptimizeRegroup(
       sumW += w;
       if (p.label) {
         groupLabels.push(p.label);
-      }
-    }
-
-    // Track which pieces from placedPieces are being regrouped
-    for (const p of opp.pieces) {
-      // Find the index of this piece in placedPieces by matching dimensions and colIndex
-      for (let idx = 0; idx < placedPieces.length; idx++) {
-        if (regroupedIndices.has(idx)) continue;
-        const pp = placedPieces[idx];
-        if (pp.colIndex === p.colIndex && pp.yIndex === p.yIndex &&
-            pp.w === p.w && pp.h === p.h && pp.label === p.label) {
-          regroupedIndices.add(idx);
-          break;
-        }
+        usedLabels.add(p.label);
       }
     }
 
@@ -1226,11 +1218,9 @@ export function postOptimizeRegroup(
       groupedAxis: "w",
     });
 
-    // Add only the placed pieces that are NOT part of this regroup
-    for (let idx = 0; idx < placedPieces.length; idx++) {
-      if (regroupedIndices.has(idx)) continue;
-      const p = placedPieces[idx];
-      forcedPieces.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
+    for (const p of allPieces) {
+      if (p.label && usedLabels.has(p.label)) continue;
+      forcedPieces.push({ ...p });
     }
 
     const strategies = getSortStrategies();
@@ -1259,7 +1249,7 @@ export function postOptimizeRegroup(
 
   if (regroupOpportunities.length >= 2) {
     const forcedPieces: Piece[] = [];
-    const regroupedIndices = new Set<number>();
+    const usedLabels = new Set<string>();
 
     for (const opp of regroupOpportunities) {
       const groupLabels: string[] = [];
@@ -1268,16 +1258,7 @@ export function postOptimizeRegroup(
         sumW += Math.max(p.w, p.h);
         if (p.label) {
           groupLabels.push(p.label);
-        }
-        // Track which placed pieces are being regrouped
-        for (let idx = 0; idx < placedPieces.length; idx++) {
-          if (regroupedIndices.has(idx)) continue;
-          const pp = placedPieces[idx];
-          if (pp.colIndex === p.colIndex && pp.yIndex === p.yIndex &&
-              pp.w === p.w && pp.h === p.h && pp.label === p.label) {
-            regroupedIndices.add(idx);
-            break;
-          }
+          usedLabels.add(p.label);
         }
       }
       if (sumW <= usableW) {
@@ -1292,11 +1273,9 @@ export function postOptimizeRegroup(
       }
     }
 
-    // Add only placed pieces that are NOT part of any regroup
-    for (let idx = 0; idx < placedPieces.length; idx++) {
-      if (regroupedIndices.has(idx)) continue;
-      const p = placedPieces[idx];
-      forcedPieces.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
+    for (const p of allPieces) {
+      if (p.label && usedLabels.has(p.label)) continue;
+      forcedPieces.push({ ...p });
     }
 
     const strategies = getSortStrategies();
