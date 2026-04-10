@@ -43,14 +43,58 @@ export default function SheetViewer({
 
   const tree = chapas.length > 0 ? chapas[activeIndex]?.tree : null;
 
-  // Calculate scale to fit the sheet in the container
-  const scale = useMemo(() => {
+  // Zoom state
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const panOffsetStart = useRef({ x: 0, y: 0 });
+
+  // Reset zoom when switching sheets
+  useEffect(() => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+  }, [activeIndex]);
+
+  // Calculate base scale to fit the sheet in the container
+  const baseScale = useMemo(() => {
     const padding = 40;
     const availW = containerSize.w - padding;
     const availH = containerSize.h - padding;
     if (availW <= 0 || availH <= 0) return 1;
     return Math.min(availW / chapaW, availH / chapaH);
   }, [containerSize, chapaW, chapaH]);
+
+  const scale = baseScale * zoomLevel;
+
+  // Mouse wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoomLevel(prev => Math.min(10, Math.max(0.5, prev * delta)));
+  }, []);
+
+  // Pan handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (zoomLevel <= 1) return;
+    isPanning.current = true;
+    panStart.current = { x: e.clientX, y: e.clientY };
+    panOffsetStart.current = { ...panOffset };
+    (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+  }, [zoomLevel, panOffset]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning.current) return;
+    setPanOffset({
+      x: panOffsetStart.current.x + (e.clientX - panStart.current.x),
+      y: panOffsetStart.current.y + (e.clientY - panStart.current.y),
+    });
+  }, []);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    isPanning.current = false;
+    (e.currentTarget as HTMLElement).style.cursor = zoomLevel > 1 ? 'grab' : 'default';
+  }, [zoomLevel]);
 
   // Count pieces for color assignment
   const pieceIndex = useRef(0);
