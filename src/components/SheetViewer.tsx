@@ -43,14 +43,58 @@ export default function SheetViewer({
 
   const tree = chapas.length > 0 ? chapas[activeIndex]?.tree : null;
 
-  // Calculate scale to fit the sheet in the container
-  const scale = useMemo(() => {
+  // Zoom state
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const panOffsetStart = useRef({ x: 0, y: 0 });
+
+  // Reset zoom when switching sheets
+  useEffect(() => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+  }, [activeIndex]);
+
+  // Calculate base scale to fit the sheet in the container
+  const baseScale = useMemo(() => {
     const padding = 40;
     const availW = containerSize.w - padding;
     const availH = containerSize.h - padding;
     if (availW <= 0 || availH <= 0) return 1;
     return Math.min(availW / chapaW, availH / chapaH);
   }, [containerSize, chapaW, chapaH]);
+
+  const scale = baseScale * zoomLevel;
+
+  // Mouse wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoomLevel(prev => Math.min(10, Math.max(0.5, prev * delta)));
+  }, []);
+
+  // Pan handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (zoomLevel <= 1) return;
+    isPanning.current = true;
+    panStart.current = { x: e.clientX, y: e.clientY };
+    panOffsetStart.current = { ...panOffset };
+    (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+  }, [zoomLevel, panOffset]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning.current) return;
+    setPanOffset({
+      x: panOffsetStart.current.x + (e.clientX - panStart.current.x),
+      y: panOffsetStart.current.y + (e.clientY - panStart.current.y),
+    });
+  }, []);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    isPanning.current = false;
+    (e.currentTarget as HTMLElement).style.cursor = zoomLevel > 1 ? 'grab' : 'default';
+  }, [zoomLevel]);
 
   // Count pieces for color assignment
   const pieceIndex = useRef(0);
@@ -445,13 +489,24 @@ export default function SheetViewer({
       {/* Sheet tabs removed - navigation via layout summary in sidebar */}
 
       {/* Sheet viewport */}
-      <div ref={containerRef} className="flex-1 flex justify-center items-center overflow-hidden p-4" style={{ background: 'hsl(0 0% 18%)' }}>
+      <div
+        ref={containerRef}
+        className="flex-1 flex justify-center items-center overflow-hidden p-4 relative"
+        style={{ background: 'hsl(0 0% 18%)', cursor: zoomLevel > 1 ? 'grab' : 'default' }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         {tree ? (
           <div
             className="sv-sheet"
             style={{
               width: chapaW * scale,
               height: chapaH * scale,
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+              transition: isPanning.current ? 'none' : 'transform 0.1s ease-out',
             }}
           >
             {/* Margin area (gray border) */}
@@ -471,6 +526,21 @@ export default function SheetViewer({
           <div className="sv-empty">
             <div className="sv-empty-icon">📐</div>
             <div className="sv-empty-text">Adicione peças e clique em OTIMIZAR</div>
+          </div>
+        )}
+        {zoomLevel !== 1 && (
+          <div
+            className="absolute bottom-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
+            style={{ background: 'hsl(0 0% 10% / 0.8)', color: 'hsl(0 0% 80%)', backdropFilter: 'blur(4px)' }}
+          >
+            <span>{Math.round(zoomLevel * 100)}%</span>
+            <button
+              className="ml-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-white/10 transition-colors"
+              style={{ color: 'hsl(0 0% 60%)' }}
+              onClick={() => { setZoomLevel(1); setPanOffset({ x: 0, y: 0 }); }}
+            >
+              Reset
+            </button>
           </div>
         )}
       </div>
