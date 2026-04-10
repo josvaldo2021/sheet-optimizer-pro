@@ -489,13 +489,24 @@ export default function SheetViewer({
       {/* Sheet tabs removed - navigation via layout summary in sidebar */}
 
       {/* Sheet viewport */}
-      <div ref={containerRef} className="flex-1 flex justify-center items-center overflow-hidden p-4" style={{ background: 'hsl(0 0% 18%)' }}>
+      <div
+        ref={containerRef}
+        className="flex-1 flex justify-center items-center overflow-hidden p-4 relative"
+        style={{ background: 'hsl(0 0% 18%)', cursor: zoomLevel > 1 ? 'grab' : 'default' }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         {tree ? (
           <div
             className="sv-sheet"
             style={{
               width: chapaW * scale,
               height: chapaH * scale,
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+              transition: isPanning.current ? 'none' : 'transform 0.1s ease-out',
             }}
           >
             {/* Margin area (gray border) */}
@@ -515,6 +526,21 @@ export default function SheetViewer({
           <div className="sv-empty">
             <div className="sv-empty-icon">📐</div>
             <div className="sv-empty-text">Adicione peças e clique em OTIMIZAR</div>
+          </div>
+        )}
+        {zoomLevel !== 1 && (
+          <div
+            className="absolute bottom-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
+            style={{ background: 'hsl(0 0% 10% / 0.8)', color: 'hsl(0 0% 80%)', backdropFilter: 'blur(4px)' }}
+          >
+            <span>{Math.round(zoomLevel * 100)}%</span>
+            <button
+              className="ml-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-white/10 transition-colors"
+              style={{ color: 'hsl(0 0% 60%)' }}
+              onClick={() => { setZoomLevel(1); setPanOffset({ x: 0, y: 0 }); }}
+            >
+              Reset
+            </button>
           </div>
         )}
       </div>
