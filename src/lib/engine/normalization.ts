@@ -227,6 +227,7 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
 
 function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
   if (a.tipo !== b.tipo || Math.abs(a.valor - b.valor) > 0.5) return false;
+  if (a.multi !== b.multi) return false;
   if (a.filhos.length !== b.filhos.length) return false;
   for (let i = 0; i < a.filhos.length; i++) {
     if (!nodesStructurallyEqual(a.filhos[i], b.filhos[i])) return false;
