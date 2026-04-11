@@ -292,10 +292,47 @@ export function runPlacement(
       }
     }
 
-    const maxPossibleStack = Math.min(
+    let maxPossibleStack = Math.min(
       1 + stackCandidateIndices.length,
       Math.floor(colFreeH / bestFit.pieceH)
     );
+
+    // Limit stacking if it would prevent other (different) pieces from fitting in this column.
+    // Check: if we stack N pieces, would the remaining column height still fit any other piece?
+    if (maxPossibleStack >= 2 && !isGroupedPiece) {
+      const otherPieces = remaining.filter((p, idx) => {
+        if (idx === 0) return false; // current piece
+        if (p.count && p.count > 1) return false;
+        // Skip pieces that are same-dimension stack candidates
+        return !oris(p).some(o => o.w === bestFit.pieceW && o.h === bestFit.pieceH);
+      });
+
+      if (otherPieces.length > 0) {
+        // Find the optimal stack count that leaves room for other pieces
+        for (let tryStack = maxPossibleStack; tryStack >= 2; tryStack--) {
+          const usedAfterStack = tryStack * bestFit.pieceH;
+          const freeAfterStack = colFreeH - usedAfterStack;
+          const canFitOther = otherPieces.some(p =>
+            oris(p).some(o => o.w <= col.valor && o.h <= freeAfterStack)
+          );
+          if (canFitOther) {
+            maxPossibleStack = tryStack;
+            break;
+          }
+          // If even stacking 1 less doesn't help, try fewer
+          if (tryStack === 2) {
+            // Check if NOT stacking at all (1 piece) leaves room
+            const freeWith1 = colFreeH - bestFit.pieceH;
+            const canFitWith1 = otherPieces.some(p =>
+              oris(p).some(o => o.w <= col.valor && o.h <= freeWith1)
+            );
+            if (canFitWith1) {
+              maxPossibleStack = 1; // disable combined Y
+            }
+          }
+        }
+      }
+    }
 
     let stackViolatesMinBreak = false;
     if (minBreak > 0 && maxPossibleStack >= 2) {
