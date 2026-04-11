@@ -58,7 +58,9 @@ export function optimizeV6(
 
   const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
 
-  const pieceVariants: Piece[][] = useGrouping === false
+  const pieceVariants: Piece[][] = hasLabels
+    ? [pieces, rotatedPieces]
+    : useGrouping === false
       ? [pieces, rotatedPieces]
       : [
           pieces,
