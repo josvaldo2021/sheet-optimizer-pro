@@ -180,7 +180,13 @@ export function runPlacement(
           const residualH = freeH - o.h;
           if (residualH > 0) {
             const ySibValues = colX.filhos.map((y) => y.valor);
-            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h")) {
+            // Only expand to fill remaining height if NO piece could use that space
+            // Check both: fitting within this Y strip's residual AND as a separate Y strip
+            const canFitInResidual = canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h");
+            const canFitAsSeparateY = remaining.slice(1).some(p =>
+              oris(p).some(po => po.w <= colX.valor && po.h <= residualH)
+            );
+            if (!canFitInResidual && !canFitAsSeparateY) {
               effectiveH = freeH;
             }
           }
