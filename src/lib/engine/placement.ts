@@ -193,12 +193,22 @@ export function runPlacement(
           const widthRatio = o.w / colX.valor;
           const heightRatio = o.h / freeH;
           // Base penalty for width mismatch (lower = better)
-          const widthPenalty = (1 - widthRatio) * 1.0;
+          const widthPenalty = (1 - widthRatio) * 1.5;
           const heightPenalty = (1 - heightRatio) * 0.3;
-          // Strong bonus for reusing existing column instead of consuming new X-width
-          // This is the key: placing in an existing column is FREE in X-axis,
-          // while a new column costs precious sheet width
-          const reuseBonus = 2.0;
+          // Reuse bonus scales with how well the piece fills the column width
+          // Perfect width match = strong reuse bonus; poor match = weak bonus
+          let reuseBonus = widthRatio * 1.5;
+          // Extra penalty if placing here would fill the column and block other pieces
+          const freeAfterPlace = freeH - o.h;
+          if (freeAfterPlace > 0) {
+            const otherCanFit = remaining.slice(1).some(p =>
+              oris(p).some(po => po.w <= colX.valor && po.h <= freeAfterPlace)
+            );
+            if (!otherCanFit) {
+              // This placement fills the column - only reward if width ratio is very good
+              reuseBonus = widthRatio > 0.8 ? reuseBonus : reuseBonus * 0.3;
+            }
+          }
           const baseScore = widthPenalty + heightPenalty - reuseBonus;
 
           let lookBonus = 0;
