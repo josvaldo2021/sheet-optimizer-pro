@@ -122,6 +122,17 @@ export function optimizeV6(
   let bestArea = 0;
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
+  let bestCompactness = Infinity;
+
+  /** Fewer top-level columns = more compact waste = better layout */
+  function calcCompactness(tree: TreeNode): number {
+    const numCols = tree.filhos.length;
+    // Penalize layouts with many columns; also prefer fewer total nodes
+    let totalNodes = 0;
+    function countNodes(n: TreeNode) { totalNodes++; for (const c of n.filhos) countNodes(c); }
+    countNodes(tree);
+    return numCols * 1000 + totalNodes;
+  }
 
   for (const transposed of [false, true]) {
     const eW = transposed ? usableH : usableW;
@@ -131,11 +142,13 @@ export function optimizeV6(
       for (const sortFn of strategies) {
         const sorted = [...variant].sort(sortFn);
         const result = runPlacement(sorted, eW, eH, minBreak);
-        if (result.area > bestArea) {
+        const compactness = calcCompactness(result.tree);
+        if (result.area > bestArea || (result.area === bestArea && compactness < bestCompactness)) {
           bestArea = result.area;
           bestTree = result.tree;
           bestRemaining = result.remaining;
           bestTransposed = transposed;
+          bestCompactness = compactness;
         }
       }
     }
