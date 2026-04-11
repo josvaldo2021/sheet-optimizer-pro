@@ -185,14 +185,14 @@ export function runPlacement(
             }
           }
           const widthRatio = o.w / colX.valor;
-          // Reward reusing existing column: saves X-width (scarce resource)
-          // Scale: lower is better. New columns start at ~0-0.5, so existing should compete.
-          const widthPenalty = (1 - widthRatio) * 1.5;
-          const heightPenalty = (1 - o.h / freeH) * 0.3;
-          // Bonus for reusing existing column (saves X-width)
-          const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-          const xUtilization = usedW / usableW; // how full is X-axis already
-          const reuseBonus = xUtilization * 1.5; // stronger bonus as sheet fills up
+          const heightRatio = o.h / freeH;
+          // Base penalty for width mismatch (lower = better)
+          const widthPenalty = (1 - widthRatio) * 1.0;
+          const heightPenalty = (1 - heightRatio) * 0.3;
+          // Strong bonus for reusing existing column instead of consuming new X-width
+          // This is the key: placing in an existing column is FREE in X-axis,
+          // while a new column costs precious sheet width
+          const reuseBonus = 2.0;
           const baseScore = widthPenalty + heightPenalty - reuseBonus;
 
           let lookBonus = 0;
