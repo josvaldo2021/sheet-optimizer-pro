@@ -180,36 +180,12 @@ export function runPlacement(
           const residualH = freeH - o.h;
           if (residualH > 0) {
             const ySibValues = colX.filhos.map((y) => y.valor);
-            // Only expand to fill remaining height if NO piece could use that space
-            // Check both: fitting within this Y strip's residual AND as a separate Y strip
-            const canFitInResidual = canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h");
-            const canFitAsSeparateY = remaining.slice(1).some(p =>
-              oris(p).some(po => po.w <= colX.valor && po.h <= residualH)
-            );
-            if (!canFitInResidual && !canFitAsSeparateY) {
+            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h")) {
               effectiveH = freeH;
             }
           }
           const widthRatio = o.w / colX.valor;
-          const heightRatio = o.h / freeH;
-          // Base penalty for width mismatch (lower = better)
-          const widthPenalty = (1 - widthRatio) * 1.5;
-          const heightPenalty = (1 - heightRatio) * 0.3;
-          // Reuse bonus scales with how well the piece fills the column width
-          // Perfect width match = strong reuse bonus; poor match = weak bonus
-          let reuseBonus = widthRatio * 1.5;
-          // Extra penalty if placing here would fill the column and block other pieces
-          const freeAfterPlace = freeH - o.h;
-          if (freeAfterPlace > 0) {
-            const otherCanFit = remaining.slice(1).some(p =>
-              oris(p).some(po => po.w <= colX.valor && po.h <= freeAfterPlace)
-            );
-            if (!otherCanFit) {
-              // This placement fills the column - only reward if width ratio is very good
-              reuseBonus = widthRatio > 0.8 ? reuseBonus : reuseBonus * 0.3;
-            }
-          }
-          const baseScore = widthPenalty + heightPenalty - reuseBonus;
+          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
 
           let lookBonus = 0;
           const remH = freeH - o.h;
