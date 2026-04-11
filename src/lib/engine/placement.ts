@@ -185,7 +185,15 @@ export function runPlacement(
             }
           }
           const widthRatio = o.w / colX.valor;
-          const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
+          // Reward reusing existing column: saves X-width (scarce resource)
+          // Scale: lower is better. New columns start at ~0-0.5, so existing should compete.
+          const widthPenalty = (1 - widthRatio) * 1.5;
+          const heightPenalty = (1 - o.h / freeH) * 0.3;
+          // Bonus for reusing existing column (saves X-width)
+          const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+          const xUtilization = usedW / usableW; // how full is X-axis already
+          const reuseBonus = xUtilization * 1.5; // stronger bonus as sheet fills up
+          const baseScore = widthPenalty + heightPenalty - reuseBonus;
 
           let lookBonus = 0;
           const remH = freeH - o.h;
