@@ -1,7 +1,7 @@
-import { describe, it } from "vitest";
-import { optimizeV6, normalizeTree, calcPlacedArea, TreeNode } from "../lib/cnc-engine";
+import { describe, it, expect } from "vitest";
+import { optimizeGeneticAsync, calcPlacedArea, TreeNode } from "../lib/cnc-engine";
 
-function collectRects(tree: TreeNode): Array<{ x: number; y: number; w: number; h: number }> {
+function collectAllRects(tree: TreeNode): Array<{ x: number; y: number; w: number; h: number }> {
   const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
   const T = tree.transposed || false;
   let xOff = 0;
@@ -49,35 +49,33 @@ function collectRects(tree: TreeNode): Array<{ x: number; y: number; w: number; 
   return rects;
 }
 
-describe("Rotation Debug", () => {
-  it("show tree structure and rects for transposed layout", () => {
+describe("Rotation Bug - Full GA", () => {
+  it("final tree from optimizeGeneticAsync must have transposed=false and rects in bounds", async () => {
     const pieces = [
-      ...Array.from({ length: 10 }, (_, i) => ({ w: 725, h: 917, area: 725 * 917, label: "teste" })),
+      ...Array.from({ length: 10 }, () => ({ w: 725, h: 917, area: 725 * 917, label: "teste" })),
       { w: 1000, h: 459, area: 1000 * 459, label: "teste" },
     ];
     const usableW = 3210, usableH = 2400;
 
-    const v6 = optimizeV6(pieces, usableW, usableH, 0, false);
-    const v6T = optimizeV6(pieces, usableH, usableW, 0, false);
+    const finalTree = await optimizeGeneticAsync(pieces, usableW, usableH, 0, undefined, undefined, 10, 10);
 
-    console.log("\n=== v6 (3210x2400) ===");
-    console.log("area:", calcPlacedArea(v6.tree), "remaining:", v6.remaining.length, "root.valor:", v6.tree.valor);
-    const rectsV6 = collectRects(v6.tree);
-    rectsV6.forEach(r => console.log(`  rect: x=${r.x} y=${r.y} w=${r.w} h=${r.h}`));
+    console.log("Final tree transposed:", finalTree.transposed);
+    console.log("Final tree root.valor:", finalTree.valor);
+    console.log("calcPlacedArea:", calcPlacedArea(finalTree));
 
-    console.log("\n=== v6T (optimizeV6 with 2400x3210) ===");
-    console.log("area:", calcPlacedArea(v6T.tree), "remaining:", v6T.remaining.length, "root.valor:", v6T.tree.valor);
-    const rectsV6T = collectRects(v6T.tree);
-    rectsV6T.forEach(r => console.log(`  rect: x=${r.x} y=${r.y} w=${r.w} h=${r.h}`));
+    const rects = collectAllRects(finalTree);
+    console.log("Rects placed:", rects.length);
+    rects.forEach(r => {
+      const outX = r.x + r.w > usableW + 0.5;
+      const outY = r.y + r.h > usableH + 0.5;
+      if (outX || outY) console.log(`  OUT OF BOUNDS: x=${r.x} y=${r.y} w=${r.w} h=${r.h} (outX=${outX} outY=${outY})`);
+    });
 
-    console.log("\n=== After re-normalization (as done in genetic.ts) ===");
-    let finalTree: TreeNode = { ...v6T.tree };
-    finalTree.transposed = true;
-    finalTree = normalizeTree(finalTree, usableW, usableH);
-    console.log("root.valor:", finalTree.valor, "transposed:", finalTree.transposed);
-    const rectsFinal = collectRects(finalTree);
-    rectsFinal.forEach(r => console.log(`  rect: x=${r.x} y=${r.y} w=${r.w} h=${r.h}`));
-    console.log("Total rects:", rectsFinal.length);
-    console.log("Out of bounds:", rectsFinal.filter(r => r.x + r.w > usableW || r.y + r.h > usableH).length);
-  });
+    const outOfBounds = rects.filter(r => r.x + r.w > usableW + 0.5 || r.y + r.h > usableH + 0.5 || r.x < 0 || r.y < 0);
+
+    // Key assertions:
+    expect(finalTree.transposed).toBeFalsy(); // Must not be transposed after normalization
+    expect(finalTree.valor).toBe(usableW);    // Root valor must be usableW
+    expect(outOfBounds.length).toBe(0);       // All rects must be within bounds
+  }, 60000);
 });

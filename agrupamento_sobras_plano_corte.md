@@ -110,10 +110,7 @@ e refazer o layout somando as dimensoes para obter uma sobra desfragmentada.
 ## Exemplo com agrupamento alocando 10 peças de 917x725:
     X3210 (x1)
     Y917 (x1)
-    Z725 (x1) 
-    Z725 (x1) 
-    Z725 (x1) 
-    Z725 (x1)
+    Z725 (x4) 
     -------------------------> aqui acontece o agrupamento  
     Y1483 (x1)
     Z2751 (x1)

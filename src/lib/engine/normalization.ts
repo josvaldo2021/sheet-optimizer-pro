@@ -162,6 +162,16 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
         return;
       }
 
+      // At the X level with no valid vertical cuts: preserve canonical ROOT→X→Y→… structure
+      // by wrapping all rects in a single full-width X node. Without this, Y nodes become
+      // direct children of ROOT, breaking the assumed X→Y→Z→W→Q traversal order everywhere.
+      if (level === 'X') {
+        const xNode: TreeNode = { id: gid(), tipo: 'X', valor: Math.round(bw), multi: 1, filhos: [] };
+        subdivide(xNode, levelIdx + 1, subRects, bx, by, bw, bh);
+        parentNode.filhos.push(xNode);
+        return;
+      }
+
       subdivide(parentNode, levelIdx + 1, subRects, bx, by, bw, bh);
       return;
     }
