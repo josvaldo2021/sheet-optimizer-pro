@@ -79,8 +79,12 @@ export function createPieceNodes(
     const wNode = findNode(tree, wId)!;
     if (piece.label) wNode.label = piece.label;
 
+    // When reusing an existing Z slot (zNodeToUse), the piece may be narrower than
+    // the slot (placedW < zNodeToUse.valor). Use the slot width as the comparison
+    // baseline so a Q node is always created for under-width placements.
     const actualPieceW = rotated ? piece.h : piece.w;
-    if (actualPieceW < placedW) {
+    const slotW = zNodeToUse ? zNodeToUse.valor : placedW;
+    if (actualPieceW < slotW) {
       const qId = insertNode(tree, wId, "Q", actualPieceW, 1);
       const qNode = findNode(tree, qId)!;
       if (piece.label) qNode.label = piece.label;
@@ -523,9 +527,7 @@ export function runPlacement(
               }
               if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
                 const actualRotated = wo.w !== pw.w;
-                createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
-
-                placedArea += zNodeCurrent.valor * wo.h;
+                placedArea += createPieceNodes(tree, yNode, pw, wo.w, wo.h, actualRotated, zNodeCurrent);
                 freeWH_remaining -= wo.h;
                 remaining.splice(j, 1);
                 if (j < i) i--;

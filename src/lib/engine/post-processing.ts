@@ -96,7 +96,14 @@ export function unifyColumnWaste(
                 const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
                 const wNode2 = findNode(tree, wId2)!;
                 if (lpc.label) wNode2.label = lpc.label;
-                filled += bestOri.w * o.h;
+                // Create Q node when piece is narrower than the Z slot so that
+                // extractUsedPiecesWithContext reads the correct piece width (not Z.valor).
+                if (o.w < bestOri.w) {
+                  const qId2 = insertNode(tree, wId2, "Q", o.w, 1);
+                  const qNode2 = findNode(tree, qId2)!;
+                  if (lpc.label) qNode2.label = lpc.label;
+                }
+                filled += o.w * o.h;
                 freeWH -= o.h;
                 remaining.splice(j, 1);
                 if (j < i) i--;
@@ -115,7 +122,7 @@ export function unifyColumnWaste(
             const qNode = findNode(tree, qId)!;
             if (pc.label) qNode.label = pc.label;
           }
-          filled += areaW * bestOri.h;
+          filled += bestOri.w * bestOri.h;
         }
 
         freeH -= effectiveH;
