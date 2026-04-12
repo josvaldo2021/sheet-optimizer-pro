@@ -373,6 +373,16 @@ export function collapseTreeWaste(
             filhos: [],
             label: pc.label,
           };
+          // Always create W child so the viewer shows correct piece height
+          const wNodePiece: TreeNode = {
+            id: gid(),
+            tipo: 'W',
+            valor: bestO.h,
+            multi: 1,
+            filhos: [],
+            label: pc.label,
+          };
+          zNode.filhos.push(wNodePiece);
           collapsedY.filhos.push(zNode);
 
           if (bestO.w < spaceW) {
@@ -390,6 +400,16 @@ export function collapseTreeWaste(
                     filhos: [],
                     label: lpc.label,
                   };
+                  // Always create W child for correct dimension display
+                  const latW: TreeNode = {
+                    id: gid(),
+                    tipo: 'W',
+                    valor: o.h,
+                    multi: 1,
+                    filhos: [],
+                    label: lpc.label,
+                  };
+                  latZ.filhos.push(latW);
                   collapsedY.filhos.push(latZ);
                   filled += o.w * o.h;
                   freeZW -= o.w;
@@ -660,9 +680,9 @@ export function regroupAdjacentStrips(
             let usedH = 0;
             const wNode: TreeNode = { id: gid(), tipo: 'W', valor: bestOri.h, multi: 1, filhos: [], label: bestCandidate.piece.label };
 
-            if (bestOri.w < colW - usedW || bestOri.h < combinedH) {
-              zNode.filhos.push(wNode);
-            } else {
+            // Always add W child to preserve correct piece dimensions in display
+            zNode.filhos.push(wNode);
+            if (bestOri.w >= colW - usedW && bestOri.h >= combinedH) {
               zNode.label = bestCandidate.piece.label;
             }
 
