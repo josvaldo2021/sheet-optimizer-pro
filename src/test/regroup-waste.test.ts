@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { optimizeV6, calcPlacedArea, TreeNode, Piece } from "../lib/cnc-engine";
+import { regroupAdjacentStrips } from "../lib/engine/post-processing";
 
 function collectLabels(node: TreeNode): string[] {
   const labels: string[] = [];
@@ -22,6 +23,27 @@ function countSheets(pieces: Piece[], usableW: number, usableH: number): { sheet
     sheets++;
   }
   return { sheets, totalPlaced };
+}
+
+function collectPieceDims(node: TreeNode, parents: TreeNode[] = []): string[] {
+  const yAncestor = [...parents].reverse().find((p) => p.tipo === "Y");
+  const zAncestor = [...parents].reverse().find((p) => p.tipo === "Z");
+  const wAncestor = [...parents].reverse().find((p) => p.tipo === "W");
+  const dims: string[] = [];
+
+  if (node.tipo === "Z" && node.filhos.length === 0) {
+    dims.push(`${Math.round(node.valor)}x${Math.round(yAncestor?.valor || 0)}`);
+  } else if (node.tipo === "W" && node.filhos.length === 0) {
+    dims.push(`${Math.round(zAncestor?.valor || 0)}x${Math.round(node.valor)}`);
+  } else if (node.tipo === "Q") {
+    dims.push(`${Math.round(node.valor)}x${Math.round(wAncestor?.valor || 0)}`);
+  }
+
+  node.filhos.forEach((child) => {
+    dims.push(...collectPieceDims(child, [...parents, node]));
+  });
+
+  return dims;
 }
 
 describe("Waste Regrouping", () => {
@@ -142,5 +164,50 @@ describe("Waste Regrouping", () => {
     expect(totalPlaced).toBe(20);
     // Should be close to theoretical minimum
     expect(sheets).toBeLessThanOrEqual(theoreticalMin + 2);
+  });
+
+  it("should not inflate piece height during W-level regrouping", () => {
+    const tree: TreeNode = {
+      id: "root",
+      tipo: "ROOT",
+      valor: 962,
+      multi: 1,
+      filhos: [
+        {
+          id: "x1",
+          tipo: "X",
+          valor: 962,
+          multi: 1,
+          filhos: [
+            {
+              id: "y1",
+              tipo: "Y",
+              valor: 962,
+              multi: 1,
+              filhos: [
+                {
+                  id: "z1",
+                  tipo: "Z",
+                  valor: 962,
+                  multi: 1,
+                  filhos: [
+                    { id: "w-piece", tipo: "W", valor: 955, multi: 1, filhos: [], label: "P1" },
+                    { id: "w-waste", tipo: "W", valor: 7, multi: 1, filhos: [] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as TreeNode;
+
+    const remaining: Piece[] = [{ w: 10, h: 10, area: 100, label: "SMALL" }];
+
+    regroupAdjacentStrips(tree, remaining, 962, 962, 0);
+
+    const dims = collectPieceDims(tree);
+    expect(dims).not.toContain("962x962");
+    expect(dims.some((dim) => dim === "962x955" || dim === "955x962")).toBe(true);
   });
 });
