@@ -932,13 +932,19 @@ export function regroupAdjacentStrips(
                 }
               }
 
+              const canUseMergedW = (piece: Piece) =>
+                oris(piece).some(o => o.w <= zWidth && Math.abs(o.h - combinedH) < 0.5);
+
+              if (!piecesInGroup.every(canUseMergedW)) continue;
+
               const mergedW: TreeNode = { id: gid(), tipo: 'W', valor: combinedH, multi: 1, filhos: [] };
               let usedW = 0;
               const allToPlace = [...piecesInGroup];
+              const newFromRemaining: number[] = [];
 
               for (let ri = 0; ri < remaining.length; ri++) {
                 for (const o of oris(remaining[ri])) {
-                  if (o.w <= zWidth && o.h <= combinedH) {
+                  if (o.w <= zWidth && Math.abs(o.h - combinedH) < 0.5) {
                     allToPlace.push(remaining[ri]);
                     break;
                   }
@@ -954,7 +960,8 @@ export function regroupAdjacentStrips(
                 for (let k = 0; k < allToPlace.length; k++) {
                   if (placedHere.includes(allToPlace[k])) continue;
                   for (const o of oris(allToPlace[k])) {
-                    if (o.w <= zWidth - usedW && o.h <= combinedH && o.w * o.h > bestArea) {
+                    if (Math.abs(o.h - combinedH) > 0.5) continue;
+                    if (o.w <= zWidth - usedW && o.w * o.h > bestArea) {
                       bestArea = o.w * o.h;
                       bestIdx = k;
                       bestO = o;
@@ -969,8 +976,7 @@ export function regroupAdjacentStrips(
                 placedHere.push(allToPlace[bestIdx]);
 
                 const remIdx = remaining.indexOf(allToPlace[bestIdx]);
-                const newFromRemaining: number[] = [];
-                if (remIdx >= 0) {
+                if (remIdx >= 0 && !newFromRemaining.includes(remIdx)) {
                   newFromRemaining.push(remIdx);
                 }
                 usedW += bestO.w;
@@ -979,7 +985,24 @@ export function regroupAdjacentStrips(
               const allOrigPlaced = piecesInGroup.every(p => placedHere.includes(p));
               if (!allOrigPlaced) continue;
 
+              const wWasteConsolidated = groupSize > 1 && hasWaste;
+              if (newFromRemaining.length === 0 && !wWasteConsolidated) continue;
+
+              console.log(
+                `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
+                `fitted ${newFromRemaining.length} new piece(s)`
+              );
+
               zNode.filhos.splice(i, groupSize, mergedW);
+
+              const sortedIndices = [...new Set(newFromRemaining)].sort((a, b) => b - a);
+              let addedArea = 0;
+              for (const idx of sortedIndices) {
+                addedArea += remaining[idx].area;
+                remaining.splice(idx, 1);
+              }
+              totalAdded += addedArea;
+
               wModified = true;
               break;
             }
