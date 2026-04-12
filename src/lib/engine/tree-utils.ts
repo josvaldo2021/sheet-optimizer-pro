@@ -57,6 +57,9 @@ export function insertNode(tree: TreeNode, selectedId: string, tipo: NodeType, v
   } else if (tipo === "Q") {
     const p = target?.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
     if (p) p.filhos.push(node);
+  } else if (tipo === "R") {
+    const p = target?.tipo === "Q" ? target : findParentOfType(tree, selectedId, "Q");
+    if (p) p.filhos.push(node);
   }
 
   return node.id;
@@ -108,6 +111,13 @@ export function calcAllocation(
     if (!zP) return { allocated: 0, error: "Selecione Z" };
     const occupiedQ = wP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
     free = zP.valor - occupiedQ;
+  } else if (tipo === "R") {
+    const qP = target?.tipo === "Q" ? target : findParentOfType(tree, selectedId, "Q");
+    if (!qP) return { allocated: 0, error: "Selecione Q" };
+    const wP = findParentOfType(tree, qP.id, "W");
+    if (!wP) return { allocated: 0, error: "Selecione W" };
+    const occupiedR = qP.filhos.reduce((a, f) => a + f.valor * f.multi, 0);
+    free = wP.valor - occupiedR;
   }
 
   const alloc = Math.min(multi, Math.floor(free / valor));
@@ -129,6 +139,9 @@ export function calcAllocation(
     } else if (tipo === "Q") {
       const wP = target?.tipo === "W" ? target : findParentOfType(tree, selectedId, "W");
       if (wP) siblings = wP.filhos;
+    } else if (tipo === "R") {
+      const qP = target?.tipo === "Q" ? target : findParentOfType(tree, selectedId, "Q");
+      if (qP) siblings = qP.filhos;
     }
     for (const sib of siblings) {
       const diff = Math.abs(sib.valor - valor);
@@ -160,7 +173,15 @@ export function calcPlacedArea(tree: TreeNode): number {
                     } else {
                       for (const q of w.filhos) {
                         for (let iq = 0; iq < q.multi; iq++) {
-                          area += q.valor * w.valor;
+                          if (q.filhos.length === 0) {
+                            area += q.valor * w.valor;
+                          } else {
+                            for (const r of q.filhos) {
+                              for (let ir = 0; ir < r.multi; ir++) {
+                                area += q.valor * r.valor;
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -202,8 +223,11 @@ export function annotateTreeLabels(tree: TreeNode, pieces: PieceItem[]): void {
       pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
     } else if (n.tipo === "W" && n.filhos.length === 0) {
       pieceW = zAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
-    } else if (n.tipo === "Q") {
+    } else if (n.tipo === "Q" && n.filhos.length === 0) {
       pieceW = n.valor; pieceH = wAncestor?.valor || 0; isLeaf = true;
+    } else if (n.tipo === "R") {
+      const qAncestor = [...parents].reverse().find((p) => p.tipo === "Q");
+      pieceW = qAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
     }
 
     if (isLeaf && pieceW > 0 && pieceH > 0) {
@@ -241,7 +265,13 @@ export function calculateZArea(zNode: TreeNode, yHeight: number): number {
       area += zNode.valor * w.valor * w.multi;
     } else {
       for (const q of w.filhos) {
-        area += q.valor * w.valor * q.multi;
+        if (q.filhos.length === 0) {
+          area += q.valor * w.valor * q.multi;
+        } else {
+          for (const r of q.filhos) {
+            area += q.valor * r.valor * r.multi;
+          }
+        }
       }
     }
   }
@@ -253,7 +283,13 @@ export function calculateWArea(wNode: TreeNode, zWidth: number): number {
   if (wNode.filhos.length === 0) return zWidth * wNode.valor * wNode.multi;
   let area = 0;
   for (const q of wNode.filhos) {
-    area += q.valor * wNode.valor * q.multi;
+    if (q.filhos.length === 0) {
+      area += q.valor * wNode.valor * q.multi;
+    } else {
+      for (const r of q.filhos) {
+        area += q.valor * r.valor * r.multi;
+      }
+    }
   }
   return area * wNode.multi;
 }

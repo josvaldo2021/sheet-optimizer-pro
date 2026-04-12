@@ -215,38 +215,122 @@ export default function SheetViewer({
                         const qEls: JSX.Element[] = [];
                         wNode.filhos.forEach(qNode => {
                           for (let iq = 0; iq < qNode.multi; iq++) {
-                            colorIdx++;
-                            const realW = T ? wNode.valor : qNode.valor;
-                            const realH = T ? qNode.valor : wNode.valor;
-                            const pxW = realW * scale;
-                            const pxH = realH * scale;
-                            const isVertical = realH > realW;
-                            const dim = dimLabel(qNode.valor, wNode.valor);
-                            const fs = dynamicFontSize(pxW, pxH, dim, qNode.label, isVertical);
-                            qEls.push(
-                              <div
-                                key={`q-${qNode.id}-${iq}`}
-                                className={`${selectedId === qNode.id ? 'sv-selected' : ''}`}
-                                style={{
-                                  position: 'absolute',
-                                  ...(T
-                                    ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qNode.valor * scale }
-                                    : { left: qOff * scale, bottom: 0, width: qNode.valor * scale, height: wNode.valor * scale }
-                                  ),
-                                  background: PIECE_BG,
-                                  border: '0.5px solid hsl(0 0% 40%)',
-                                  boxSizing: 'border-box' as const,
-                                  cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                }}
-                                onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
-                              >
-                                <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
-                                  {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
-                                  {dim}
-                                </span>
-                              </div>
-                            );
+                            if (qNode.filhos.length === 0) {
+                              // Q is a leaf piece
+                              colorIdx++;
+                              const realW = T ? wNode.valor : qNode.valor;
+                              const realH = T ? qNode.valor : wNode.valor;
+                              const pxW = realW * scale;
+                              const pxH = realH * scale;
+                              const isVertical = realH > realW;
+                              const dim = dimLabel(qNode.valor, wNode.valor);
+                              const fs = dynamicFontSize(pxW, pxH, dim, qNode.label, isVertical);
+                              qEls.push(
+                                <div
+                                  key={`q-${qNode.id}-${iq}`}
+                                  className={`${selectedId === qNode.id ? 'sv-selected' : ''}`}
+                                  style={{
+                                    position: 'absolute',
+                                    ...(T
+                                      ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qNode.valor * scale }
+                                      : { left: qOff * scale, bottom: 0, width: qNode.valor * scale, height: wNode.valor * scale }
+                                    ),
+                                    background: PIECE_BG,
+                                    border: '0.5px solid hsl(0 0% 40%)',
+                                    boxSizing: 'border-box' as const,
+                                    cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  }}
+                                  onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
+                                >
+                                  <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                    {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
+                                    {dim}
+                                  </span>
+                                </div>
+                              );
+                            } else {
+                              // Q with R children
+                              let rOff = 0;
+                              const rEls: JSX.Element[] = [];
+                              qNode.filhos.forEach(rNode => {
+                                for (let ir = 0; ir < rNode.multi; ir++) {
+                                  colorIdx++;
+                                  const realW = T ? rNode.valor : qNode.valor;
+                                  const realH = T ? qNode.valor : rNode.valor;
+                                  const pxW = realW * scale;
+                                  const pxH = realH * scale;
+                                  const isVertical = realH > realW;
+                                  const dim = dimLabel(qNode.valor, rNode.valor);
+                                  const fs = dynamicFontSize(pxW, pxH, dim, rNode.label, isVertical);
+                                  rEls.push(
+                                    <div
+                                      key={`r-${rNode.id}-${ir}`}
+                                      className={`${selectedId === rNode.id ? 'sv-selected' : ''}`}
+                                      style={{
+                                        position: 'absolute',
+                                        ...(T
+                                          ? { left: rOff * scale, bottom: 0, width: rNode.valor * scale, height: qNode.valor * scale }
+                                          : { left: 0, bottom: rOff * scale, width: qNode.valor * scale, height: rNode.valor * scale }
+                                        ),
+                                        background: PIECE_BG,
+                                        border: '0.5px solid hsl(0 0% 40%)',
+                                        boxSizing: 'border-box' as const,
+                                        cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      }}
+                                      onClick={e => { e.stopPropagation(); onSelectNode(rNode.id); }}
+                                    >
+                                      <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                                        {rNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{rNode.label}</span>}
+                                        {dim}
+                                      </span>
+                                    </div>
+                                  );
+                                  rOff += rNode.valor;
+                                }
+                              });
+
+                              // R waste
+                              const rWaste = wNode.valor - rOff;
+                              if (rWaste > 0 && rWaste * scale >= 4) {
+                                rEls.push(
+                                  <div key="sr" className="sv-waste" style={{
+                                    position: 'absolute',
+                                    ...(T
+                                      ? { left: rOff * scale, bottom: 0, width: rWaste * scale, height: qNode.valor * scale }
+                                      : { left: 0, bottom: rOff * scale, width: qNode.valor * scale, height: rWaste * scale }
+                                    ),
+                                  }}>
+                                    <span className="sv-waste-label">{dimLabel(qNode.valor, rWaste)}</span>
+                                  </div>
+                                );
+                              }
+
+                              qEls.push(
+                                <div
+                                  key={`q-${qNode.id}-${iq}`}
+                                  className={`${selectedId === qNode.id ? 'sv-selected' : ''}`}
+                                  style={{
+                                    overflow: 'hidden',
+                                    ...(T
+                                      ? { width: wNode.valor * scale, height: qNode.valor * scale }
+                                      : { width: qNode.valor * scale, height: wNode.valor * scale }
+                                    ),
+                                    position: 'absolute',
+                                    ...(T
+                                      ? { left: 0, bottom: qOff * scale }
+                                      : { left: qOff * scale, bottom: 0 }
+                                    ),
+                                    background: PIECE_BG, boxSizing: 'border-box' as const,
+                                    border: '0.5px solid hsl(0 0% 40%)',
+                                  }}
+                                  onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
+                                >
+                                  {rEls}
+                                </div>
+                              );
+                            }
                             qOff += qNode.valor;
                           }
                         });

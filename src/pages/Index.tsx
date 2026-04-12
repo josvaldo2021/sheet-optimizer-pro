@@ -136,7 +136,7 @@ const Index = () => {
       }
       const tipo = cmd.charAt(0) as any;
       let valor = parseFloat(cmd.substring(1));
-      if (isNaN(valor) || !["X", "Y", "Z", "W", "Q"].includes(tipo)) return;
+      if (isNaN(valor) || !["X", "Y", "Z", "W", "Q", "R"].includes(tipo)) return;
 
       // For X nodes, multiply value instead of creating separate columns
       // e.g. m4x818 → single X of 3272 instead of 4 separate X818
@@ -209,9 +209,14 @@ const Index = () => {
           pieceW = zAncestor?.valor || 0;
           pieceH = n.valor;
           isLeaf = true;
-        } else if (n.tipo === "Q") {
+        } else if (n.tipo === "Q" && n.filhos.length === 0) {
           pieceW = n.valor;
           pieceH = wAncestor?.valor || 0;
+          isLeaf = true;
+        } else if (n.tipo === "R") {
+          const qAncestor = parents.find((p) => p.tipo === "Q");
+          pieceW = qAncestor?.valor || 0;
+          pieceH = n.valor;
           isLeaf = true;
         }
 
@@ -638,6 +643,24 @@ const Index = () => {
         });
       }
     }
+    if (selected.tipo === "Q" || findParentOfType(tree, selectedId, "Q")) {
+      const wNode = findParentOfType(tree, selectedId, "W");
+      if (wNode) {
+        uniquePieces.forEach(({ w, h, label }) => {
+          if (w === selected.valor || (selected.tipo !== "Q" && findParentOfType(tree, selectedId, "Q"))) {
+            const qNode = selected.tipo === "Q" ? selected : findParentOfType(tree, selectedId, "Q");
+            if (qNode) {
+              if (w === qNode.valor) {
+                addSuggestion("R", h, `Sub-R ${h}mm → peça ${w}×${h}${label ? ` (${label})` : ""}`);
+              }
+              if (h === qNode.valor) {
+                addSuggestion("R", w, `Sub-R ${w}mm → peça ${h}×${w} (rot.)${label ? ` (${label})` : ""}`);
+              }
+            }
+          }
+        });
+      }
+    }
 
     return suggestions;
   }, [tree, selectedId, pieces, usableW, usableH, minBreak]);
@@ -649,7 +672,7 @@ const Index = () => {
     const directMatches = commandSuggestions.filter((s) => s.cmd.startsWith(upper));
 
     // Look-ahead: parse ANY typed command (doesn't need to be in suggestion list)
-    const m = upper.match(/^(?:M\d+)?([XYZWQ])(\d+)$/);
+    const m = upper.match(/^(?:M\d+)?([XYZWQRR])(\d+)$/);
     if (m) {
       const tipo = m[1];
       const valor = Number(m[2]);
@@ -657,7 +680,7 @@ const Index = () => {
       const seenLA = new Set<string>();
 
       // Hierarchy: X→Y, Y→Z, Z→W, W→Q
-      const nextTipoMap: Record<string, string> = { X: "Y", Y: "Z", Z: "W", W: "Q" };
+      const nextTipoMap: Record<string, string> = { X: "Y", Y: "Z", Z: "W", W: "Q", Q: "R" };
       const nextTipo = nextTipoMap[tipo];
 
       if (nextTipo) {
@@ -698,7 +721,7 @@ const Index = () => {
 
       // If user clicked a look-ahead suggestion (e.g. Z after typing Y),
       // execute current command first, then preload next command.
-      if (suggestion.kind === "lookahead" && /^(?:M\d+)?[XYZWQ]\d+$/.test(typed) && typed !== suggestion.cmd) {
+      if (suggestion.kind === "lookahead" && /^(?:M\d+)?[XYZWQRR]\d+$/.test(typed) && typed !== suggestion.cmd) {
         processCommand(typed);
         setCmdInput(suggestion.cmd);
         setShowSuggestions(true);

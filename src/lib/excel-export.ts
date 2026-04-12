@@ -23,8 +23,11 @@ function extractPiecesFromTree(node: TreeNode, parents: TreeNode[] = []): Extrac
       pieceW = n.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
     } else if (n.tipo === 'W' && n.filhos.length === 0) {
       pieceW = zAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
-    } else if (n.tipo === 'Q') {
+    } else if (n.tipo === 'Q' && n.filhos.length === 0) {
       pieceW = n.valor; pieceH = wAncestor?.valor || 0; isLeaf = true;
+    } else if (n.tipo === 'R') {
+      const qAncestor = [...currentParents].reverse().find(p => p.tipo === 'Q');
+      pieceW = qAncestor?.valor || 0; pieceH = n.valor; isLeaf = true;
     }
 
     if (isLeaf && pieceW > 0 && pieceH > 0) {

@@ -1,6 +1,6 @@
 // CNC Cut Plan Engine — Type Definitions
 
-export type NodeType = "ROOT" | "X" | "Y" | "Z" | "W" | "Q";
+export type NodeType = "ROOT" | "X" | "Y" | "Z" | "W" | "Q" | "R";
 
 export interface TreeNode {
   id: string;

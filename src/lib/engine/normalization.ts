@@ -44,10 +44,24 @@ function extractAbsoluteRects(tree: TreeNode, usableW: number, usableH: number):
                       let qOff = 0;
                       for (const qNode of wNode.filhos) {
                         for (let iq = 0; iq < qNode.multi; iq++) {
-                          if (T) {
-                            rects.push({ x: yOff + wOff, y: xOff + zOff + qOff, w: wNode.valor, h: qNode.valor, label: qNode.label });
+                          if (qNode.filhos.length === 0) {
+                            if (T) {
+                              rects.push({ x: yOff + wOff, y: xOff + zOff + qOff, w: wNode.valor, h: qNode.valor, label: qNode.label });
+                            } else {
+                              rects.push({ x: xOff + zOff + qOff, y: yOff + wOff, w: qNode.valor, h: wNode.valor, label: qNode.label });
+                            }
                           } else {
-                            rects.push({ x: xOff + zOff + qOff, y: yOff + wOff, w: qNode.valor, h: wNode.valor, label: qNode.label });
+                            let rOff = 0;
+                            for (const rNode of qNode.filhos) {
+                              for (let ir = 0; ir < rNode.multi; ir++) {
+                                if (T) {
+                                  rects.push({ x: yOff + wOff + rOff, y: xOff + zOff + qOff, w: rNode.valor, h: qNode.valor, label: rNode.label });
+                                } else {
+                                  rects.push({ x: xOff + zOff + qOff, y: yOff + wOff + rOff, w: qNode.valor, h: rNode.valor, label: rNode.label });
+                                }
+                                rOff += rNode.valor;
+                              }
+                            }
                           }
                           qOff += qNode.valor;
                         }
@@ -120,8 +134,8 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
 
   if (rects.length === 0) return root;
 
-  type Level = 'X' | 'Y' | 'Z' | 'W' | 'Q';
-  const levelSequence: Level[] = ['X', 'Y', 'Z', 'W', 'Q'];
+  type Level = 'X' | 'Y' | 'Z' | 'W' | 'Q' | 'R';
+  const levelSequence: Level[] = ['X', 'Y', 'Z', 'W', 'Q', 'R'];
   const isVertical = (level: Level) => level === 'X' || level === 'Z' || level === 'Q';
 
   function subdivide(

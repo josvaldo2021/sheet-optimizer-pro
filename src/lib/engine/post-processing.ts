@@ -262,7 +262,7 @@ export function collapseTreeWaste(
     parent: TreeNode,
     getSpaceW: (totalVal: number) => number,
     getSpaceH: (totalVal: number) => number,
-    childType: "X" | "Y" | "Z" | "W" | "Q",
+    childType: "X" | "Y" | "Z" | "W" | "Q" | "R",
     fillFn: (collapsedNode: TreeNode, spaceW: number, spaceH: number) => number,
   ): number {
     let levelArea = 0;
@@ -540,7 +540,6 @@ export function collapseTreeWaste(
 
               if (bestIdx < 0 || !bestO) break;
 
-              const pc = remaining[bestIdx];
               const qNode: TreeNode = {
                 id: gid(),
                 tipo: 'Q',
@@ -549,6 +548,19 @@ export function collapseTreeWaste(
                 filhos: [],
                 label: pc.label,
               };
+
+              if (bestO.h < collapsedW.valor) {
+                const rNode: TreeNode = {
+                  id: gid(),
+                  tipo: 'R',
+                  valor: bestO.h,
+                  multi: 1,
+                  filhos: [],
+                  label: pc.label,
+                };
+                qNode.filhos.push(rNode);
+              }
+
               collapsedW.filhos.push(qNode);
               filled += bestO.w * collapsedW.valor;
               freeW -= bestO.w;
@@ -558,6 +570,65 @@ export function collapseTreeWaste(
             return filled;
           }
         );
+      }
+    }
+  }
+
+  // LEVEL Q: Collapse consecutive waste Q nodes
+  for (const colX of tree.filhos) {
+    if (remaining.length === 0) break;
+    for (const yNode of colX.filhos) {
+      if (remaining.length === 0) break;
+      for (const zNode of yNode.filhos) {
+        if (remaining.length === 0) break;
+        for (const wNode of zNode.filhos) {
+          if (remaining.length === 0) break;
+
+          addedArea += collapseLevel(
+            wNode,
+            (totalVal) => totalVal,
+            (_totalVal) => wNode.valor,
+            'Q',
+            (collapsedQ, spaceW, spaceH) => {
+              let filled = 0;
+              let freeH = spaceH;
+
+              while (freeH > 0 && remaining.length > 0) {
+                let bestIdx = -1;
+                let bestO: { w: number; h: number } | null = null;
+                let bestArea = 0;
+
+                for (let i = 0; i < remaining.length; i++) {
+                  for (const o of oris(remaining[i])) {
+                    if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
+                      bestArea = o.w * o.h;
+                      bestIdx = i;
+                      bestO = o;
+                    }
+                  }
+                }
+
+                if (bestIdx < 0 || !bestO) break;
+
+                const pc = remaining[bestIdx];
+                const rNode: TreeNode = {
+                  id: gid(),
+                  tipo: 'R',
+                  valor: bestO.h,
+                  multi: 1,
+                  filhos: [],
+                  label: pc.label,
+                };
+                collapsedQ.filhos.push(rNode);
+                filled += spaceW * bestO.h;
+                freeH -= bestO.h;
+                remaining.splice(bestIdx, 1);
+              }
+
+              return filled;
+            }
+          );
+        }
       }
     }
   }
@@ -612,8 +683,18 @@ export function regroupAdjacentStrips(
                         } else {
                           for (const qNode of wNode.filhos) {
                             for (let iq = 0; iq < qNode.multi; iq++) {
-                              if (qNode.label) {
-                                extractedPieces.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                              if (qNode.filhos.length === 0) {
+                                if (qNode.label) {
+                                  extractedPieces.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                                }
+                              } else {
+                                for (const rNode of qNode.filhos) {
+                                  for (let ir = 0; ir < rNode.multi; ir++) {
+                                    if (rNode.label) {
+                                      extractedPieces.push({ w: qNode.valor, h: rNode.valor, area: qNode.valor * rNode.valor, label: rNode.label });
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -813,8 +894,16 @@ export function regroupAdjacentStrips(
                     piecesInGroup.push({ w: zNode.valor, h: wNode.valor, area: zNode.valor * wNode.valor, label: wNode.label });
                   } else {
                     for (const qNode of wNode.filhos) {
-                      if (qNode.label) {
-                        piecesInGroup.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                      if (qNode.filhos.length === 0) {
+                        if (qNode.label) {
+                          piecesInGroup.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                        }
+                      } else {
+                        for (const rNode of qNode.filhos) {
+                          if (rNode.label) {
+                            piecesInGroup.push({ w: qNode.valor, h: rNode.valor, area: qNode.valor * rNode.valor, label: rNode.label });
+                          }
+                        }
                       }
                     }
                   }
@@ -932,8 +1021,16 @@ export function regroupAdjacentStrips(
                   piecesInGroup.push({ w: zWidth, h: wNode.valor, area: zWidth * wNode.valor, label: wNode.label });
                 } else {
                   for (const qNode of wNode.filhos) {
-                    if (qNode.label) {
-                      piecesInGroup.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                    if (qNode.filhos.length === 0) {
+                      if (qNode.label) {
+                        piecesInGroup.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                      }
+                    } else {
+                      for (const rNode of qNode.filhos) {
+                        if (rNode.label) {
+                          piecesInGroup.push({ w: qNode.valor, h: rNode.valor, area: qNode.valor * rNode.valor, label: rNode.label });
+                        }
+                      }
                     }
                   }
                 }
@@ -1156,6 +1253,39 @@ export function clampTreeHeights(tree: TreeNode, usableW: number, usableH: numbe
             wNode.filhos = validQ;
             console.warn(`[CNC-ENGINE] Q overflow in W node: clamped to ${totalQ.toFixed(0)}mm / ${zNode.valor}mm`);
           }
+
+          // Clamp R nodes inside Q
+          for (const qNode of wNode.filhos) {
+            let totalR = 0;
+            const validR: TreeNode[] = [];
+            for (const rNode of qNode.filhos) {
+              const rHeight = rNode.valor * rNode.multi;
+              if (totalR + rHeight <= wNode.valor + 0.5) {
+                validR.push(rNode);
+                totalR += rHeight;
+              } else {
+                if (rNode.multi > 1) {
+                  const canFit = Math.floor((wNode.valor - totalR) / rNode.valor);
+                  if (canFit > 0) {
+                    rNode.multi = canFit;
+                    validR.push(rNode);
+                    totalR += rNode.valor * canFit;
+                  }
+                } else if (totalR + rNode.valor <= wNode.valor + 0.5) {
+                  validR.push(rNode);
+                  totalR += rNode.valor;
+                }
+              }
+            }
+            if (validR.length < qNode.filhos.length) {
+              const removedR = qNode.filhos.filter((r) => !validR.includes(r));
+              for (const rr of removedR) {
+                placedArea -= rr.valor * qNode.valor * rr.multi;
+              }
+              qNode.filhos = validR;
+              console.warn(`[CNC-ENGINE] R overflow in Q node: clamped to ${totalR.toFixed(0)}mm / ${wNode.valor}mm`);
+            }
+          }
         }
       }
     }
@@ -1187,9 +1317,17 @@ function extractPlacedPieces(
               pieces.push({ w: pw, h: ph, label: wNode.label, colIndex: ci, yIndex: yi });
             } else {
               for (const qNode of wNode.filhos) {
-                const pw = T ? wNode.valor : qNode.valor;
-                const ph = T ? qNode.valor : wNode.valor;
-                pieces.push({ w: pw, h: ph, label: qNode.label, colIndex: ci, yIndex: yi });
+                if (qNode.filhos.length === 0) {
+                  const pw = T ? wNode.valor : qNode.valor;
+                  const ph = T ? qNode.valor : wNode.valor;
+                  pieces.push({ w: pw, h: ph, label: qNode.label, colIndex: ci, yIndex: yi });
+                } else {
+                  for (const rNode of qNode.filhos) {
+                    const pw = T ? rNode.valor : qNode.valor;
+                    const ph = T ? qNode.valor : rNode.valor;
+                    pieces.push({ w: pw, h: ph, label: rNode.label, colIndex: ci, yIndex: yi });
+                  }
+                }
               }
             }
           }

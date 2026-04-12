@@ -23,14 +23,16 @@ export function createPieceNodes(
 
   if (isGrouped) {
     const originalAxis = piece.groupedAxis || "w";
-    let splitAxis: "Z" | "W" | "Q";
+    let splitAxis: "Z" | "W" | "Q" | "R";
 
     if (originalAxis === "w" && !rotated) {
       splitAxis = "Z";
     } else if ((originalAxis === "h" && !rotated) || (originalAxis === "w" && rotated)) {
       splitAxis = "W";
+    } else if (originalAxis === "w" && rotated) {
+      splitAxis = "Q"; // Width split in W
     } else {
-      splitAxis = "Q";
+      splitAxis = "R"; // Height split in Q
     }
 
     if (zNodeToUse && splitAxis === "Z") splitAxis = "W";
@@ -54,7 +56,7 @@ export function createPieceNodes(
         if (piece.labels && piece.labels[i]) wNode_f.label = piece.labels[i];
         if (i === 0 && piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
       }
-    } else {
+    } else if (splitAxis === "Q") {
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       const wId = insertNode(tree, zNode.id, "W", placedH, 1);
       const wNode = findNode(tree, wId)!;
@@ -70,6 +72,26 @@ export function createPieceNodes(
           }
         }
       }
+    } else {
+      // splitAxis === "R"
+      const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
+      const wId = insertNode(tree, zNode.id, "W", placedH, 1);
+      const wNode = findNode(tree, wId)!;
+      const qId = insertNode(tree, wId, "Q", placedW, 1);
+      const qNode = findNode(tree, qId)!;
+      for (let i = 0; i < piece.count!; i++) {
+        const dimH = piece.individualDims ? piece.individualDims[i] : Math.round(placedH / piece.count!);
+        const rId = insertNode(tree, qId, "R", dimH, 1);
+        const rNode = findNode(tree, rId)!;
+        if (piece.labels && piece.labels[i]) {
+          rNode.label = piece.labels[i];
+          if (i === 0) {
+            qNode.label = piece.labels[i];
+            wNode.label = piece.labels[i];
+            zNode.label = piece.labels[i];
+          }
+        }
+      }
     }
   } else {
     const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
@@ -79,15 +101,21 @@ export function createPieceNodes(
     const wNode = findNode(tree, wId)!;
     if (piece.label) wNode.label = piece.label;
 
-    // When reusing an existing Z slot (zNodeToUse), the piece may be narrower than
-    // the slot (placedW < zNodeToUse.valor). Use the slot width as the comparison
-    // baseline so a Q node is always created for under-width placements.
     const actualPieceW = rotated ? piece.h : piece.w;
+    const actualPieceH = rotated ? piece.w : piece.h;
     const slotW = zNodeToUse ? zNodeToUse.valor : placedW;
-    if (actualPieceW < slotW) {
+    const slotH = placedH;
+
+    if (actualPieceW < slotW || actualPieceH < slotH) {
       const qId = insertNode(tree, wId, "Q", actualPieceW, 1);
       const qNode = findNode(tree, qId)!;
       if (piece.label) qNode.label = piece.label;
+
+      if (actualPieceH < slotH) {
+        const rId = insertNode(tree, qId, "R", actualPieceH, 1);
+        const rNode = findNode(tree, rId)!;
+        if (piece.label) rNode.label = piece.label;
+      }
     }
   }
 

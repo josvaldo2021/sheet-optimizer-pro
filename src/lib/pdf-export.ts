@@ -35,8 +35,11 @@ function extractPiecesFromTree(node: TreeNode, parents: TreeNode[] = []): Extrac
     pieceW = node.valor; pieceH = yAncestor?.valor || 0; isLeaf = true;
   } else if (node.tipo === 'W' && node.filhos.length === 0) {
     pieceW = zAncestor?.valor || 0; pieceH = node.valor; isLeaf = true;
-  } else if (node.tipo === 'Q') {
+  } else if (node.tipo === 'Q' && node.filhos.length === 0) {
     pieceW = node.valor; pieceH = wAncestor?.valor || 0; isLeaf = true;
+  } else if (node.tipo === 'R') {
+    const qAncestor = [...parents].reverse().find(p => p.tipo === 'Q');
+    pieceW = qAncestor?.valor || 0; pieceH = node.valor; isLeaf = true;
   }
 
   if (isLeaf && pieceW > 0 && pieceH > 0) {
@@ -276,27 +279,57 @@ function drawTreePieces(
                       let qOff = 0;
                       wNode.filhos.forEach(qNode => {
                         for (let iq = 0; iq < qNode.multi; iq++) {
-                          if (T) {
-                            // Transposed: piece = wNode (width) × qNode (height)
-                            drawPiece(
-                              xBase + yBase + wOff,
-                              xBottom + yBottom + zOff + qOff,
-                              wNode.valor,
-                              qNode.valor,
-                              qNode.label,
-                              qNode.valor,
-                              wNode.valor,
-                            );
+                          if (qNode.filhos.length === 0) {
+                            if (T) {
+                              drawPiece(
+                                xBase + yBase + wOff,
+                                xBottom + yBottom + zOff + qOff,
+                                wNode.valor,
+                                qNode.valor,
+                                qNode.label,
+                                qNode.valor,
+                                wNode.valor,
+                              );
+                            } else {
+                              drawPiece(
+                                xBase + zOff + qOff,
+                                xBottom + yBottom + wOff,
+                                qNode.valor,
+                                wNode.valor,
+                                qNode.label,
+                                qNode.valor,
+                                wNode.valor,
+                              );
+                            }
                           } else {
-                            drawPiece(
-                              xBase + zOff + qOff,
-                              xBottom + yBottom + wOff,
-                              qNode.valor,
-                              wNode.valor,
-                              qNode.label,
-                              qNode.valor,
-                              wNode.valor,
-                            );
+                            // Q with R children
+                            let rOff = 0;
+                            qNode.filhos.forEach(rNode => {
+                              for (let ir = 0; ir < rNode.multi; ir++) {
+                                if (T) {
+                                  drawPiece(
+                                    xBase + yBase + wOff + rOff,
+                                    xBottom + yBottom + zOff + qOff,
+                                    rNode.valor,
+                                    qNode.valor,
+                                    rNode.label,
+                                    qNode.valor,
+                                    rNode.valor,
+                                  );
+                                } else {
+                                  drawPiece(
+                                    xBase + zOff + qOff,
+                                    xBottom + yBottom + wOff + rOff,
+                                    qNode.valor,
+                                    rNode.valor,
+                                    rNode.label,
+                                    qNode.valor,
+                                    rNode.valor,
+                                  );
+                                }
+                                rOff += rNode.valor;
+                              }
+                            });
                           }
                           qOff += qNode.valor;
                         }
