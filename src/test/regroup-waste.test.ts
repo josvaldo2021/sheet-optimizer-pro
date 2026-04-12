@@ -211,3 +211,42 @@ describe("Waste Regrouping", () => {
     expect(dims.some((dim) => dim === "962x955" || dim === "955x962")).toBe(true);
   });
 });
+
+import { runPlacement } from "../lib/engine/placement";
+
+describe("Lateral stacking phantom piece regression", () => {
+  it("should not produce phantom pieces when a narrower piece is stacked inside a lateral Z slot", () => {
+    // Regression test for bug: when stacking a piece (347×880) on top of a lateral piece (955×962)
+    // inside a combined Y strip, a Q node must be created if stackOri.w < latZ.valor.
+    // Without the fix, extractUsedPiecesWithContext returns wrong width (latZ.valor instead of
+    // stackOri.w), causing the piece to not be deducted from inventory → phantom on next sheet.
+    const usableW = 3210;
+    const usableH = 2200;
+
+    // Scenario: main pieces 962×1086 stacked (2 fit: 2×1086=2172≤2200),
+    // lateral piece 955×962, then stacked on top: 347×880 (narrower than 955).
+    const pieces = [
+      { w: 962, h: 1086, area: 962 * 1086, label: "A" },
+      { w: 962, h: 1086, area: 962 * 1086, label: "B" },
+      { w: 955, h: 962, area: 955 * 962, label: "C" },
+      { w: 347, h: 880, area: 347 * 880, label: "D" },
+    ];
+
+    const result = runPlacement(pieces, usableW, usableH, 0);
+
+    const dims = collectPieceDims(result.tree);
+
+    // D should appear as 347×880 or 880×347, NOT as 955×880 or 955×347 (wrong Z-slot width)
+    const hasPhantomD = dims.some((d) => {
+      const [w, h] = d.split("x").map(Number);
+      return (w === 955 && (h === 347 || h === 880)) || (w === 880 && h === 955);
+    });
+    expect(hasPhantomD).toBe(false);
+
+    // D must appear with its correct dimensions if it was placed
+    if (result.remaining.every((r) => r.label !== "D")) {
+      const hasCorrectD = dims.some((d) => d === "347x880" || d === "880x347");
+      expect(hasCorrectD).toBe(true);
+    }
+  });
+});

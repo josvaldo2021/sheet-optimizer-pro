@@ -426,10 +426,7 @@ export function runPlacement(
               }
             }
             if (stackOri) {
-              const swId = insertNode(tree, latZNode.id, "W", stackOri.h, 1);
-              const swNode = findNode(tree, swId)!;
-              if (lpc.label) swNode.label = lpc.label;
-              placedArea += lateralOri.w * stackOri.h;
+              placedArea += createPieceNodes(tree, combYNode, lpc, stackOri.w, stackOri.h, stackOri.w !== lpc.w, latZNode);
               latUsedH += stackOri.h;
               remaining.splice(j, 1);
             } else {
