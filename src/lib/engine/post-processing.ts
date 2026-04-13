@@ -540,6 +540,7 @@ export function collapseTreeWaste(
 
               if (bestIdx < 0 || !bestO) break;
 
+              const pc = remaining[bestIdx];
               const qNode: TreeNode = {
                 id: gid(),
                 tipo: 'Q',
