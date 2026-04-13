@@ -4,47 +4,50 @@
 
 @layer base {
   :root {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 13%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 13%;
-    --popover-foreground: 0 0% 100%;
+    /* === Light Blue-White Theme === */
+    --background: 210 25% 97%;
+    --foreground: 220 40% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 40% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 40% 12%;
     --primary: 211 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 17%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 20%;
-    --muted-foreground: 0 0% 53%;
-    --accent: 0 0% 17%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 73% 63%;
+    --secondary: 210 20% 93%;
+    --secondary-foreground: 220 40% 12%;
+    --muted: 210 20% 93%;
+    --muted-foreground: 220 20% 45%;
+    --accent: 210 20% 90%;
+    --accent-foreground: 220 40% 12%;
+    --destructive: 0 73% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
+    --border: 210 20% 85%;
+    --input: 210 20% 93%;
     --ring: 211 100% 50%;
-    --radius: 0.25rem;
-    --sidebar-background: 0 0% 10%;
-    --sidebar-foreground: 0 0% 80%;
-    --sidebar-primary: 211 100% 50%;
+    --radius: 0.375rem;
+
+    /* Sidebar — deep navy blue */
+    --sidebar-background: 222 47% 13%;
+    --sidebar-foreground: 210 30% 82%;
+    --sidebar-primary: 211 100% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent: 222 47% 20%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 20%;
+    --sidebar-border: 222 47% 23%;
     --sidebar-ring: 211 100% 50%;
 
     /* CNC specific */
-    --cnc-panel: 0 0% 10%;
-    --cnc-panel-header: 0 0% 17%;
-    --cnc-x-line: 0 73% 63%;
-    --cnc-y-line: 120 100% 63%;
-    --cnc-z-line: 120 100% 63%;
-    --cnc-w-line: 40 100% 50%;
-    --cnc-selection: 60 100% 50%;
-    --cnc-success: 134 53% 40%;
-    --cnc-warning: 40 100% 50%;
-    --cnc-terminal: 120 100% 50%;
-    --cnc-excel: 150 53% 25%;
+    --cnc-panel: 222 47% 13%;
+    --cnc-panel-header: 222 47% 20%;
+    --cnc-x-line: 0 73% 58%;
+    --cnc-y-line: 142 65% 42%;
+    --cnc-z-line: 142 65% 42%;
+    --cnc-w-line: 38 100% 52%;
+    --cnc-selection: 50 100% 55%;
+    --cnc-success: 142 60% 36%;
+    --cnc-warning: 38 100% 52%;
+    --cnc-terminal: 211 100% 68%;
+    --cnc-excel: 152 50% 28%;
   }
 }
 
@@ -53,7 +56,7 @@
   body { @apply bg-background text-foreground; }
 }
 
-/* CNC Layout Styles (legacy - manual mode) */
+/* ===== CNC Layout Styles (legacy - manual mode) ===== */
 .cnc-col {
   position: absolute;
   bottom: 0;
@@ -97,8 +100,8 @@
 }
 .cnc-waste {
   position: absolute;
-  border: 1px dashed hsl(0 0% 33%);
-  background: hsla(0 0% 100% / 0.02);
+  border: 1px dashed hsl(210 20% 72%);
+  background: hsla(0 0% 100% / 0.03);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -106,13 +109,13 @@
   box-sizing: border-box;
 }
 .cnc-waste:hover {
-  background: hsla(0 0% 100% / 0.1);
+  background: hsla(211 100% 50% / 0.06);
   z-index: 10;
 }
 .cnc-piece-final {
   width: 100%;
   height: 100%;
-  background: hsla(120 100% 63% / 0.08);
+  background: hsla(142 65% 42% / 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -126,14 +129,14 @@
   pointer-events: none;
 }
 .cnc-waste-label {
-  color: white;
+  color: hsl(0 0% 30%);
   font-size: 10px;
   font-weight: bold;
   text-align: center;
-  background: black;
+  background: white;
   padding: 2px 4px;
   border-radius: 2px;
-  border: 1px solid hsl(0 0% 27%);
+  border: 1px solid hsl(210 20% 80%);
   pointer-events: none;
 }
 
@@ -143,8 +146,8 @@
   align-items: center;
   gap: 24px;
   padding: 10px 20px;
-  background: hsl(0 0% 8%);
-  border-bottom: 1px solid hsl(0 0% 18%);
+  background: white;
+  border-bottom: 1px solid hsl(210 20% 88%);
 }
 .sv-header-stat {
   display: flex;
@@ -156,23 +159,23 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: hsl(0 0% 50%);
+  color: hsl(220 20% 52%);
 }
 .sv-header-value {
   font-size: 18px;
   font-weight: 800;
-  color: white;
+  color: hsl(220 40% 12%);
   font-variant-numeric: tabular-nums;
 }
 .sv-tabs {
   display: flex;
   gap: 4px;
   padding: 8px 12px;
-  background: hsl(0 0% 6%);
-  border-bottom: 1px solid hsl(0 0% 15%);
+  background: hsl(210 25% 95%);
+  border-bottom: 1px solid hsl(210 20% 87%);
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: hsl(0 0% 25%) transparent;
+  scrollbar-color: hsl(210 20% 72%) transparent;
 }
 .sv-tab {
   display: flex;
@@ -181,20 +184,21 @@
   gap: 2px;
   padding: 6px 12px;
   border-radius: 6px;
-  border: 1px solid hsl(0 0% 20%);
-  background: hsl(0 0% 10%);
-  color: hsl(0 0% 55%);
+  border: 1px solid hsl(210 20% 82%);
+  background: white;
+  color: hsl(220 20% 48%);
   cursor: pointer;
   transition: all 0.15s;
   min-width: 50px;
 }
 .sv-tab:hover {
-  background: hsl(0 0% 15%);
-  color: white;
+  background: hsl(211 60% 95%);
+  color: hsl(211 80% 40%);
+  border-color: hsl(211 80% 72%);
 }
 .sv-tab-active {
-  background: hsl(211 80% 45%) !important;
-  border-color: hsl(211 80% 55%) !important;
+  background: hsl(211 80% 47%) !important;
+  border-color: hsl(211 80% 57%) !important;
   color: white !important;
 }
 .sv-tab-num {
@@ -204,7 +208,7 @@
 .sv-tab-util {
   font-size: 9px;
   font-weight: 600;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 .sv-tab-badge {
   font-size: 8px;
@@ -219,7 +223,7 @@
   position: relative;
   box-sizing: border-box;
   background: hsl(0 0% 75%);
-  box-shadow: inset 0 0 0 1px hsl(0 0% 50%), 0 2px 12px rgba(0,0,0,0.3);
+  box-shadow: inset 0 0 0 1px hsl(0 0% 50%), 0 4px 24px rgba(0,0,0,0.18);
 }
 .sv-usable {
   position: absolute;
@@ -229,8 +233,8 @@
     45deg,
     transparent,
     transparent 10px,
-    hsla(0, 0%, 0%, 0.05) 10px,
-    hsla(0, 0%, 0%, 0.05) 20px
+    hsla(0, 0%, 0%, 0.04) 10px,
+    hsla(0, 0%, 0%, 0.04) 20px
   );
   overflow: hidden;
   box-shadow: inset 0 0 0 1px hsl(0 0% 55%);
@@ -295,7 +299,7 @@
 }
 .sv-piece-q:hover { filter: brightness(0.95); }
 .sv-piece-label {
-  color: hsl(0 0% 15%);
+  color: hsl(220 40% 15%);
   font-weight: 700;
   font-size: 11px;
   text-align: center;
@@ -312,7 +316,7 @@
 .sv-piece-id {
   font-size: 9px;
   font-weight: 800;
-  color: hsl(211 80% 45%);
+  color: hsl(211 80% 42%);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -329,8 +333,8 @@
     45deg,
     transparent,
     transparent 10px,
-    hsla(0, 0%, 0%, 0.05) 10px,
-    hsla(0, 0%, 0%, 0.05) 20px
+    hsla(0, 0%, 0%, 0.04) 10px,
+    hsla(0, 0%, 0%, 0.04) 20px
   );
   border: 0.5px solid hsl(0 0% 60%);
   box-sizing: border-box;
@@ -346,119 +350,131 @@
   text-align: center;
   pointer-events: none;
   white-space: nowrap;
-  background: hsla(0, 0%, 100%, 0.8);
+  background: hsla(0, 0%, 100%, 0.85);
   padding: 1px 3px;
   border-radius: 2px;
 }
 .sv-selected {
-  outline: 2px solid hsl(50 100% 60%) !important;
+  outline: 2px solid hsl(50 100% 55%) !important;
   z-index: 100;
-  box-shadow: 0 0 12px hsla(50 100% 60% / 0.4);
+  box-shadow: 0 0 12px hsla(50 100% 55% / 0.4);
 }
 .sv-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: hsl(0 0% 35%);
+  color: hsl(220 15% 55%);
 }
 .sv-empty-icon { font-size: 48px; }
 .sv-empty-text { font-size: 14px; }
 
-/* CNC Form Elements */
+/* ===== CNC Form Elements (sidebar context — navy background) ===== */
 .cnc-input {
-  background: hsl(var(--muted));
-  border: 1px solid hsl(var(--border));
-  color: white;
+  background: hsl(222 47% 10%);
+  border: 1px solid hsl(222 47% 28%);
+  color: hsl(210 30% 90%);
   padding: 4px;
   text-align: center;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 12px;
   width: 100%;
   box-sizing: border-box;
   outline: none;
+  transition: border-color 0.15s;
 }
-.cnc-input:focus { border-color: hsl(var(--primary)); }
+.cnc-input:focus { border-color: hsl(211 100% 55%); }
+.cnc-input::placeholder { color: hsl(210 20% 50%); }
 
 .cnc-btn-success {
-  background: hsl(var(--cnc-success));
+  background: hsl(142 60% 34%);
   color: white;
   border: none;
   padding: 8px;
   cursor: pointer;
-  font-weight: bold;
-  border-radius: 4px;
+  font-weight: 700;
+  border-radius: 5px;
   font-size: 12px;
-  transition: opacity 0.2s;
+  transition: filter 0.15s;
+  letter-spacing: 0.02em;
 }
-.cnc-btn-success:hover { opacity: 0.9; }
+.cnc-btn-success:hover { filter: brightness(1.1); }
 
 .cnc-btn-excel {
-  background: hsl(var(--cnc-excel));
+  background: hsl(152 50% 26%);
   color: white;
   padding: 10px;
-  font-weight: bold;
+  font-weight: 700;
   border: none;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: 12px;
-  transition: opacity 0.2s;
+  transition: filter 0.15s;
+  letter-spacing: 0.02em;
 }
-.cnc-btn-excel:hover { opacity: 0.9; }
+.cnc-btn-excel:hover { filter: brightness(1.1); }
 
 .cnc-btn-secondary {
   font-size: 10px;
-  background: hsl(var(--muted));
-  color: white;
-  border: none;
+  background: hsl(222 47% 22%);
+  color: hsl(210 30% 82%);
+  border: 1px solid hsl(222 47% 30%);
   padding: 6px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
+  transition: background 0.15s;
 }
+.cnc-btn-secondary:hover { background: hsl(222 47% 28%); }
 
 .cnc-btn-primary {
-  background: hsl(var(--primary));
+  background: hsl(211 100% 50%);
   color: white;
-  padding: 14px;
-  font-weight: bold;
+  padding: 13px;
+  font-weight: 700;
   border: none;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
   text-transform: uppercase;
   font-size: 13px;
-  box-shadow: 0 4px 0 hsl(211 100% 35%);
+  letter-spacing: 0.04em;
+  box-shadow: 0 3px 0 hsl(211 100% 38%);
   transition: 0.1s;
 }
 .cnc-btn-primary:active { transform: translateY(2px); box-shadow: none; }
-.cnc-btn-primary:hover { opacity: 0.95; }
+.cnc-btn-primary:hover { filter: brightness(1.07); }
+.cnc-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .cnc-command-input {
   font-size: 22px;
   padding: 0 12px;
   text-transform: uppercase;
   font-family: 'Courier New', monospace;
-  border: 2px solid hsl(var(--border));
-  background: hsl(0 0% 0%);
-  color: hsl(var(--cnc-terminal));
-  border-radius: 4px;
+  border: 2px solid hsl(211 50% 30%);
+  background: hsl(222 47% 8%);
+  color: hsl(211 100% 70%);
+  border-radius: 5px;
   outline: none;
+  transition: border-color 0.15s;
 }
-.cnc-command-input:focus { border-color: hsl(var(--cnc-terminal)); }
+.cnc-command-input:focus { border-color: hsl(211 100% 55%); }
+.cnc-command-input::placeholder { color: hsl(211 30% 40%); font-size: 14px; }
 
 .cnc-action-item {
-  background: hsl(var(--cnc-panel-header));
-  margin-bottom: 4px;
+  background: hsl(222 47% 17%);
+  margin-bottom: 3px;
   padding: 6px;
   font-family: monospace;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 10px;
   border: 1px solid transparent;
+  color: hsl(210 25% 78%);
+  transition: background 0.12s;
 }
-.cnc-action-item:hover { background: hsl(var(--muted)); }
+.cnc-action-item:hover { background: hsl(222 47% 22%); }
 .cnc-action-active {
-  border-color: hsl(var(--cnc-selection)) !important;
-  background: hsl(var(--muted)) !important;
+  border-color: hsl(50 100% 55%) !important;
+  background: hsl(222 47% 22%) !important;
 }
 
 .cnc-inv-item {
@@ -467,13 +483,13 @@
   gap: 5px;
   margin-bottom: 4px;
   align-items: center;
-  background: hsl(var(--card));
+  background: hsl(222 47% 17%);
   padding: 4px 5px;
   border-radius: 4px;
 }
 
 /* Scrollbar */
-.cnc-scroll::-webkit-scrollbar { width: 6px; }
-.cnc-scroll::-webkit-scrollbar-track { background: hsl(0 0% 7%); }
-.cnc-scroll::-webkit-scrollbar-thumb { background: hsl(0 0% 27%); border-radius: 3px; }
-.cnc-scroll { scrollbar-width: thin; scrollbar-color: hsl(0 0% 27%) hsl(0 0% 7%); }
+.cnc-scroll::-webkit-scrollbar { width: 5px; }
+.cnc-scroll::-webkit-scrollbar-track { background: hsl(222 47% 9%); }
+.cnc-scroll::-webkit-scrollbar-thumb { background: hsl(222 47% 32%); border-radius: 3px; }
+.cnc-scroll { scrollbar-width: thin; scrollbar-color: hsl(222 47% 32%) hsl(222 47% 9%); }

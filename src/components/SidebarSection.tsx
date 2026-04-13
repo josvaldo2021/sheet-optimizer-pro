@@ -12,11 +12,11 @@ export default function SidebarSection({ title, children, defaultOpen = true, ic
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="flex flex-col" style={{ borderBottom: '2px solid hsl(0 0% 20%)' }}>
+    <div className="flex flex-col" style={{ borderBottom: '1px solid hsl(222 47% 22%)' }}>
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center justify-between p-3 text-xs uppercase tracking-widest font-semibold cursor-pointer hover:brightness-110 transition-all"
-        style={{ background: 'hsl(0 0% 17%)', borderBottom: '1px solid hsl(0 0% 20%)', color: 'hsl(0 0% 80%)' }}
+        style={{ background: 'hsl(222 47% 19%)', borderBottom: '1px solid hsl(222 47% 25%)', color: 'hsl(210 30% 88%)' }}
       >
         <span className="flex items-center gap-2">
           {icon && <span>{icon}</span>}

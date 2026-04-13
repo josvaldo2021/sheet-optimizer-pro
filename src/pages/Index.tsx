@@ -1018,11 +1018,11 @@ const Index = () => {
       {/* SIDEBAR */}
       <div
         className="w-[420px] min-w-[420px] flex flex-col h-screen overflow-y-auto cnc-scroll"
-        style={{ background: "hsl(0 0% 10%)", borderRight: "2px solid hsl(0 0% 20%)" }}
+        style={{ background: "hsl(222 47% 13%)", borderRight: "2px solid hsl(222 47% 22%)" }}
       >
         {/* ─── SECTION 1: Setup da Chapa ─── */}
         <SidebarSection title="Setup da Chapa" icon="📐" defaultOpen={true}>
-          <div className="p-4 text-xs" style={{ background: "hsl(0 0% 13%)" }}>
+          <div className="p-4 text-xs" style={{ background: "hsl(222 47% 16%)" }}>
             <div className="flex justify-between items-center mb-2 gap-1">
               <span>Chapa:</span>
               <input
@@ -1059,11 +1059,11 @@ const Index = () => {
                 onChange={(e) => setMinBreak(+e.target.value)}
                 className="cnc-input w-16"
               />
-              <span className="text-[9px]" style={{ color: "hsl(0 0% 50%)" }}>
+              <span className="text-[9px]" style={{ color: "hsl(210 25% 62%)" }}>
                 mm
               </span>
             </div>
-            <div className="mt-2 text-[10px]" style={{ color: "hsl(0 0% 50%)" }}>
+            <div className="mt-2 text-[10px]" style={{ color: "hsl(210 25% 62%)" }}>
               Área útil: {usableW} × {usableH} mm
             </div>
             <button onClick={applySetup} className="cnc-btn-success w-full mt-2">
@@ -1074,10 +1074,10 @@ const Index = () => {
 
         {/* ─── SECTION 2: Lista de Peças ─── */}
         <SidebarSection title={`Lista de Peças (${totalPieces})`} icon="📦" defaultOpen={true}>
-          <div className="flex flex-col" style={{ background: "hsl(0 0% 7%)" }}>
+          <div className="flex flex-col" style={{ background: "hsl(222 47% 11%)" }}>
             <div
               className="p-2.5 flex-shrink-0 space-y-2"
-              style={{ background: "hsl(0 0% 10%)", borderBottom: "1px solid hsl(0 0% 20%)" }}
+              style={{ background: "hsl(222 47% 14%)", borderBottom: "1px solid hsl(222 47% 22%)" }}
             >
               <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcel} />
               <button
@@ -1091,13 +1091,14 @@ const Index = () => {
                 <input
                   type="text"
                   placeholder="Filtrar peças (ID, L ou A)..."
-                  className="cnc-input w-full bg-zinc-900 border-zinc-800 text-xs h-8"
+                  className="cnc-input w-full text-xs h-8"
                   value={pieceFilter}
                   onChange={(e) => setPieceFilter(e.target.value)}
                 />
                 <div className="flex gap-1">
                   <button
-                    className="text-[9px] uppercase font-bold py-1 px-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors flex-1"
+                    className="text-[9px] uppercase font-bold py-1 px-2 rounded transition-colors flex-1"
+                    style={{ background: "hsl(222 47% 22%)", color: "hsl(210 25% 68%)", border: "1px solid hsl(222 47% 30%)" }}
                     onClick={() => {
                       const lower = pieceFilter.toLowerCase();
                       setPieces(ps => ps.map(p => {
@@ -1111,7 +1112,8 @@ const Index = () => {
                     Marcar Visíveis
                   </button>
                   <button
-                    className="text-[9px] uppercase font-bold py-1 px-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors flex-1"
+                    className="text-[9px] uppercase font-bold py-1 px-2 rounded transition-colors flex-1"
+                    style={{ background: "hsl(222 47% 22%)", color: "hsl(210 25% 68%)", border: "1px solid hsl(222 47% 30%)" }}
                     onClick={() => setPieces(ps => ps.map(p => ({ ...p, priority: false })))}
                   >
                     Desmarcar Todos
@@ -1133,7 +1135,7 @@ const Index = () => {
                       setPieceFilter("");
                     }}
                     className="cnc-btn-secondary flex-1"
-                    style={{ background: "hsl(0 40% 25%)" }}
+                    style={{ background: "hsl(0 45% 25%)" }}
                   >
                     LIMPAR LISTA
                   </button>
@@ -1146,7 +1148,7 @@ const Index = () => {
               {pieces.length > 0 && (
                 <div
                   className="grid gap-1 mb-1 text-[9px] font-bold uppercase"
-                  style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px", color: "hsl(0 0% 45%)" }}
+                  style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px", color: "hsl(210 25% 58%)" }}
                 >
                   <span className="text-center" title="Prioridade">
                     🚩
@@ -1200,7 +1202,7 @@ const Index = () => {
                     }
                     className="cnc-input"
                   />
-                  <span className="text-center text-[8px]" style={{ color: "hsl(0 0% 53%)" }}>
+                  <span className="text-center text-[8px]" style={{ color: "hsl(210 25% 60%)" }}>
                     ×
                   </span>
                   <input
@@ -1225,7 +1227,7 @@ const Index = () => {
                   <button
                     onClick={() => setPieces((ps) => ps.filter((x) => x.id !== p.id))}
                     className="text-[12px] cursor-pointer hover:text-red-400 transition-colors"
-                    style={{ color: "hsl(0 0% 40%)", background: "none", border: "none", padding: 0 }}
+                    style={{ color: "hsl(210 25% 55%)", background: "none", border: "none", padding: 0 }}
                     title="Remover peça"
                   >
                     ×
@@ -1233,7 +1235,7 @@ const Index = () => {
                 </div>
               ))}
               {pieces.length === 0 && (
-                <div className="text-center text-[11px] py-6" style={{ color: "hsl(0 0% 35%)" }}>
+                <div className="text-center text-[11px] py-6" style={{ color: "hsl(210 25% 52%)" }}>
                   Nenhuma peça adicionada
                 </div>
               )}
@@ -1243,11 +1245,11 @@ const Index = () => {
 
         {/* ─── SECTION 3: Execução ─── */}
         <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
-          <div className="p-3" style={{ background: "hsl(0 0% 10%)" }}>
+          <div className="p-3" style={{ background: "hsl(222 47% 14%)" }}>
             <div className="mb-3">
               <label
                 className="text-[9px] uppercase tracking-wider font-bold block mb-1"
-                style={{ color: "hsl(0 0% 50%)" }}
+                style={{ color: "hsl(210 25% 62%)" }}
               >
                 IDs Prioritários
               </label>
@@ -1290,7 +1292,7 @@ const Index = () => {
                   {filterActiveLabels ? "✕ Limpar" : "🔍 Filtrar"}
                 </button>
               </div>
-              <div style={{ fontSize: "8px", color: "hsl(0 0% 45%)", marginTop: "3px" }}>
+              <div style={{ fontSize: "8px", color: "hsl(210 25% 58%)", marginTop: "3px" }}>
                 Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Filtro visual — não remove layouts.
               </div>
             </div>
@@ -1298,7 +1300,7 @@ const Index = () => {
               <div className="flex-1">
                 <label
                   className="text-[9px] uppercase tracking-wider font-bold block mb-1"
-                  style={{ color: "hsl(0 0% 50%)" }}
+                  style={{ color: "hsl(210 25% 62%)" }}
                 >
                   População
                 </label>
@@ -1314,7 +1316,7 @@ const Index = () => {
               <div className="flex-1">
                 <label
                   className="text-[9px] uppercase tracking-wider font-bold block mb-1"
-                  style={{ color: "hsl(0 0% 50%)" }}
+                  style={{ color: "hsl(210 25% 62%)" }}
                 >
                   Gerações
                 </label>
@@ -1335,7 +1337,7 @@ const Index = () => {
               className="cnc-btn-primary w-full"
               onClick={optimizeAllSheets}
               disabled={isOptimizing}
-              style={{ background: "hsl(240 100% 50%)" }}
+              style={{ background: "hsl(222 80% 42%)" }}
             >
               📋 OTIMIZAR TODAS AS CHAPAS
             </button>
@@ -1344,12 +1346,12 @@ const Index = () => {
             {progress && (
               <div
                 className="mt-3 p-2 rounded"
-                style={{ background: "hsl(0 0% 6%)", border: "1px solid hsl(0 0% 25%)" }}
+                style={{ background: "hsl(222 47% 10%)", border: "1px solid hsl(222 47% 26%)" }}
               >
                 <div className="text-[10px] font-bold mb-1" style={{ color: "hsl(45 100% 60%)" }}>
                   {progress.phase}
                 </div>
-                <div className="w-full rounded-full overflow-hidden" style={{ height: 6, background: "hsl(0 0% 20%)" }}>
+                <div className="w-full rounded-full overflow-hidden" style={{ height: 6, background: "hsl(222 47% 22%)" }}>
                   <div
                     className="h-full rounded-full transition-all duration-150"
                     style={{
@@ -1359,7 +1361,7 @@ const Index = () => {
                   />
                 </div>
                 <div className="flex justify-between mt-1">
-                  <span className="text-[9px]" style={{ color: "hsl(0 0% 50%)" }}>
+                  <span className="text-[9px]" style={{ color: "hsl(210 25% 62%)" }}>
                     {progress.current}/{progress.total}
                   </span>
                   {progress.bestUtil !== undefined && (
@@ -1387,7 +1389,7 @@ const Index = () => {
                   <label className="text-[10px] text-zinc-500 uppercase font-bold px-1">Nome do PDF</label>
                   <input
                     type="text"
-                    className="cnc-input bg-zinc-900 border-zinc-800 text-zinc-300 h-9"
+                    className="cnc-input h-9"
                     value={pdfFilename}
                     onChange={(e) => setPdfFilename(e.target.value)}
                     placeholder="Nome do arquivo..."
@@ -1425,12 +1427,12 @@ const Index = () => {
             {filteredLayoutGroups.length > 0 && (
               <div
                 className="mt-3 p-2 rounded"
-                style={{ background: "hsl(0 0% 6%)", border: "1px solid hsl(0 0% 18%)" }}
+                style={{ background: "hsl(222 47% 10%)", border: "1px solid hsl(222 47% 22%)" }}
               >
-                <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(0 0% 50%)" }}>
+                <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(210 25% 62%)" }}>
                   Resumo dos Layouts {filterActiveLabels ? `(filtrado: ${filterActiveLabels.join(", ")})` : ""}
                 </div>
-                <div className="text-[11px] mb-2" style={{ color: "hsl(0 0% 70%)" }}>
+                <div className="text-[11px] mb-2" style={{ color: "hsl(210 25% 78%)" }}>
                   {filterActiveLabels 
                     ? `${filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • ${filteredLayoutGroups.length} layout(s) único(s) — total: ${chapas.length}`
                     : `${chapas.length} chapa(s) total • ${layoutGroups.length} layout(s) único(s)`}
@@ -1442,8 +1444,8 @@ const Index = () => {
                       <button
                         className="flex-1 flex items-center justify-between p-2 rounded cursor-pointer transition-all text-left"
                         style={{
-                          background: group.indices.includes(activeChapa) ? "hsl(211 60% 25%)" : "hsl(0 0% 12%)",
-                          border: `1px solid ${group.indices.includes(activeChapa) ? "hsl(211 60% 40%)" : "hsl(0 0% 20%)"}`,
+                          background: group.indices.includes(activeChapa) ? "hsl(211 60% 22%)" : "hsl(222 47% 17%)",
+                          border: `1px solid ${group.indices.includes(activeChapa) ? "hsl(211 60% 42%)" : "hsl(222 47% 26%)"}`,
                         }}
                         onClick={() => {
                           const idx = group.indices[0];
@@ -1495,10 +1497,10 @@ const Index = () => {
 
         {/* ─── SECTION 4: Estrutura de Corte (advanced) ─── */}
         <SidebarSection title="Estrutura de Corte" icon="🌳" defaultOpen={false}>
-          <div className="max-h-[200px] overflow-y-auto p-2 cnc-scroll" style={{ background: "hsl(0 0% 4%)" }}>
+          <div className="max-h-[200px] overflow-y-auto p-2 cnc-scroll" style={{ background: "hsl(222 47% 9%)" }}>
             {renderActionTree(tree)}
             {tree.filhos.length === 0 && (
-              <div className="text-center text-[11px] py-4" style={{ color: "hsl(0 0% 35%)" }}>
+              <div className="text-center text-[11px] py-4" style={{ color: "hsl(210 25% 52%)" }}>
                 Nenhum nó na árvore
               </div>
             )}
@@ -1507,7 +1509,7 @@ const Index = () => {
       </div>
 
       {/* MAIN */}
-      <div className="flex-1 flex flex-col" style={{ background: "hsl(0 0% 0%)" }}>
+      <div className="flex-1 flex flex-col" style={{ background: "hsl(210 25% 95%)" }}>
         <SheetViewer
           chapas={editingExistingChapa && chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
           activeIndex={editingExistingChapa && chapas.length > 0 ? activeChapa : 0}
@@ -1533,17 +1535,17 @@ const Index = () => {
 
         <div
           className="flex flex-col p-2 px-4"
-          style={{ height: "auto", minHeight: 80, background: "hsl(0 0% 13%)", borderTop: "4px solid hsl(0 0% 20%)" }}
+          style={{ height: "auto", minHeight: 80, background: "white", borderTop: "3px solid hsl(211 100% 50%)" }}
         >
           <div
             className="text-xs font-bold h-5 mb-1"
             style={{
               color:
                 status.type === "error"
-                  ? "hsl(0 73% 63%)"
+                  ? "hsl(0 70% 50%)"
                   : status.type === "success"
-                    ? "hsl(134 53% 40%)"
-                    : "hsl(40 100% 50%)",
+                    ? "hsl(142 55% 32%)"
+                    : "hsl(38 90% 40%)",
             }}
           >
             Status: {status.msg}
@@ -1601,15 +1603,15 @@ const Index = () => {
                 <div
                   className="absolute bottom-full left-0 right-0 mb-1 max-h-[240px] overflow-y-auto rounded cnc-scroll"
                   style={{
-                    background: "hsl(0 0% 8%)",
-                    border: "1px solid hsl(0 0% 25%)",
-                    boxShadow: "0 -4px 20px hsla(0 0% 0% / 0.5)",
+                    background: "hsl(222 47% 11%)",
+                    border: "1px solid hsl(222 47% 28%)",
+                    boxShadow: "0 -4px 20px hsla(222 47% 5% / 0.6)",
                     zIndex: 1000,
                   }}
                 >
                   <div
                     className="px-2 py-1 text-[8px] uppercase tracking-wider font-bold"
-                    style={{ color: "hsl(0 0% 40%)", borderBottom: "1px solid hsl(0 0% 18%)" }}
+                    style={{ color: "hsl(210 25% 55%)", borderBottom: "1px solid hsl(222 47% 22%)" }}
                   >
                     Sugestões do inventário ({filteredSuggestions.length})
                   </div>
@@ -1618,8 +1620,8 @@ const Index = () => {
                       key={s.cmd + i}
                       className="flex items-center justify-between px-2 py-1.5 cursor-pointer transition-colors"
                       style={{
-                        background: i === selectedSuggestionIdx ? "hsl(211 60% 25%)" : "transparent",
-                        borderBottom: "1px solid hsl(0 0% 12%)",
+                        background: i === selectedSuggestionIdx ? "hsl(211 60% 22%)" : "transparent",
+                        borderBottom: "1px solid hsl(222 47% 18%)",
                       }}
                       onMouseEnter={() => setSelectedSuggestionIdx(i)}
                       onMouseDown={(e) => {
@@ -1630,7 +1632,7 @@ const Index = () => {
                       <span className="text-[12px] font-bold font-mono" style={{ color: "hsl(120 80% 60%)" }}>
                         {s.cmd}
                       </span>
-                      <span className="text-[10px] ml-2" style={{ color: "hsl(0 0% 55%)" }}>
+                      <span className="text-[10px] ml-2" style={{ color: "hsl(210 25% 60%)" }}>
                         {s.desc}
                       </span>
                     </div>
@@ -1673,10 +1675,10 @@ const Index = () => {
           {replicationInfo && (
             <div
               className="mt-2 p-2 rounded text-[10px]"
-              style={{ background: "hsl(0 0% 6%)", border: "1px solid hsl(0 0% 25%)" }}
+              style={{ background: "hsl(222 47% 10%)", border: "1px solid hsl(222 47% 26%)" }}
             >
               <div className="flex justify-between items-center mb-1">
-                <span className="font-bold uppercase tracking-wider" style={{ color: "hsl(0 0% 50%)" }}>
+                <span className="font-bold uppercase tracking-wider" style={{ color: "hsl(210 25% 62%)" }}>
                   Repetições possíveis
                 </span>
                 <span
@@ -1688,13 +1690,13 @@ const Index = () => {
                 <button
                   onClick={() => setReplicationInfo(null)}
                   className="text-[10px] cursor-pointer"
-                  style={{ color: "hsl(0 0% 40%)", background: "none", border: "none" }}
+                  style={{ color: "hsl(210 25% 55%)", background: "none", border: "none" }}
                 >
                   ✕
                 </button>
               </div>
               <div className="flex gap-2 mb-2 items-center">
-                <span style={{ color: "hsl(0 0% 60%)" }}>Salvar</span>
+                <span style={{ color: "hsl(210 25% 68%)" }}>Salvar</span>
                 <input
                   type="number"
                   min={1}
@@ -1703,7 +1705,7 @@ const Index = () => {
                   id="saveRepCount"
                   className="cnc-input w-14 text-center"
                 />
-                <span style={{ color: "hsl(0 0% 60%)" }}>cópias</span>
+                <span style={{ color: "hsl(210 25% 68%)" }}>cópias</span>
                 <button
                   onClick={() => {
                     const val = parseInt((document.getElementById("saveRepCount") as HTMLInputElement)?.value || "1");
@@ -1717,7 +1719,7 @@ const Index = () => {
               </div>
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ color: "hsl(0 0% 45%)", fontSize: "8px" }}>
+                  <tr style={{ color: "hsl(210 25% 58%)", fontSize: "8px" }}>
                     <th className="text-left py-0.5">Peça</th>
                     <th className="text-center py-0.5">Precisa</th>
                     <th className="text-center py-0.5">Disponível</th>
@@ -1728,7 +1730,7 @@ const Index = () => {
                   {replicationInfo.bom.map((item, i) => {
                     const maxRep = Math.floor(item.available / item.need);
                     return (
-                      <tr key={i} style={{ color: "hsl(0 0% 70%)", borderTop: "1px solid hsl(0 0% 15%)" }}>
+                      <tr key={i} style={{ color: "hsl(210 25% 78%)", borderTop: "1px solid hsl(222 47% 22%)" }}>
                         <td className="py-0.5">
                           {item.w}×{item.h}
                         </td>

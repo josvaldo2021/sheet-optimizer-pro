@@ -536,12 +536,12 @@ export default function SheetViewer({
   }, [chapas, activeIndex, usableW, usableH]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'hsl(0 0% 2%)' }}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'hsl(210 25% 95%)' }}>
       {/* Header bar */}
       <div className="sv-header">
         <div className="sv-header-stat">
           <span className="sv-header-label">APROVEITAMENTO TOTAL</span>
-          <span className="sv-header-value" style={{ color: utilization > 80 ? 'hsl(120 80% 55%)' : utilization > 50 ? 'hsl(45 90% 55%)' : 'hsl(0 70% 55%)' }}>
+          <span className="sv-header-value" style={{ color: utilization > 80 ? 'hsl(142 60% 34%)' : utilization > 50 ? 'hsl(38 90% 42%)' : 'hsl(0 65% 50%)' }}>
             {utilization.toFixed(1)}%
           </span>
         </div>
@@ -576,7 +576,7 @@ export default function SheetViewer({
       <div
         ref={containerRef}
         className="flex-1 flex justify-center items-center overflow-hidden p-4 relative"
-        style={{ background: 'hsl(0 0% 18%)', cursor: zoomLevel > 1 ? 'grab' : 'default' }}
+        style={{ background: 'hsl(210 25% 90%)', cursor: zoomLevel > 1 ? 'grab' : 'default' }}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -615,12 +615,12 @@ export default function SheetViewer({
         {zoomLevel !== 1 && (
           <div
             className="absolute bottom-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
-            style={{ background: 'hsl(0 0% 10% / 0.8)', color: 'hsl(0 0% 80%)', backdropFilter: 'blur(4px)' }}
+            style={{ background: 'hsl(222 47% 15% / 0.88)', color: 'hsl(210 30% 82%)', backdropFilter: 'blur(6px)' }}
           >
             <span>{Math.round(zoomLevel * 100)}%</span>
             <button
               className="ml-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-white/10 transition-colors"
-              style={{ color: 'hsl(0 0% 60%)' }}
+              style={{ color: 'hsl(210 25% 65%)' }}
               onClick={() => { setZoomLevel(1); setPanOffset({ x: 0, y: 0 }); }}
             >
               Reset
