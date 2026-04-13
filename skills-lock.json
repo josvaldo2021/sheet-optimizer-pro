@@ -5,6 +5,11 @@
       "source": "kishorkukreja/awesome-supply-chain",
       "sourceType": "github",
       "computedHash": "245d0d4601db5072ca76c5d05972589b9f007dfe63f7c27002f04a2ba5451074"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "516bd2154eb843a8240e43d5b285229129853114ad7075a5e141e1c08e408c84"
     }
   }
 }

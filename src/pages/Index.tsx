@@ -1013,13 +1013,22 @@ const Index = () => {
   return (
     <div
       className="flex h-screen overflow-hidden"
-      style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }}
+      style={{ fontFamily: "var(--font-ui)" }}
     >
       {/* SIDEBAR */}
       <div
         className="w-[420px] min-w-[420px] flex flex-col h-screen overflow-y-auto cnc-scroll"
         style={{ background: "hsl(222 47% 13%)", borderRight: "2px solid hsl(222 47% 22%)" }}
       >
+        {/* ─── BRAND HEADER ─── */}
+        <div className="cnc-brand-header">
+          <div className="cnc-brand-icon">✂</div>
+          <div>
+            <div className="cnc-brand-title">Sheet Optimizer</div>
+            <div className="cnc-brand-sub">CNC Cutting Planner</div>
+          </div>
+        </div>
+
         {/* ─── SECTION 1: Setup da Chapa ─── */}
         <SidebarSection title="Setup da Chapa" icon="📐" defaultOpen={true}>
           <div className="p-4 text-xs" style={{ background: "hsl(222 47% 16%)" }}>
@@ -1330,9 +1339,6 @@ const Index = () => {
                 />
               </div>
             </div>
-            <button className="cnc-btn-primary w-full mb-2" onClick={optimize} disabled={isOptimizing}>
-              ⚡ OTIMIZAR (1 CHAPA)
-            </button>
             <button
               className="cnc-btn-primary w-full"
               onClick={optimizeAllSheets}
@@ -1351,12 +1357,11 @@ const Index = () => {
                 <div className="text-[10px] font-bold mb-1" style={{ color: "hsl(45 100% 60%)" }}>
                   {progress.phase}
                 </div>
-                <div className="w-full rounded-full overflow-hidden" style={{ height: 6, background: "hsl(222 47% 22%)" }}>
+                <div className="w-full rounded-full overflow-hidden" style={{ height: 7, background: "hsl(222 47% 22%)" }}>
                   <div
-                    className="h-full rounded-full transition-all duration-150"
+                    className="h-full rounded-full cnc-progress-bar transition-all duration-150"
                     style={{
                       width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%`,
-                      background: "linear-gradient(90deg, hsl(200 80% 50%), hsl(160 80% 50%))",
                     }}
                   />
                 </div>
@@ -1468,9 +1473,10 @@ const Index = () => {
                           )}
                         </div>
                         <span
-                          className="text-[10px] font-semibold"
+                          className="text-[14px] font-bold"
                           style={{
                             color: util > 80 ? "hsl(120 70% 55%)" : util > 50 ? "hsl(45 80% 55%)" : "hsl(0 60% 55%)",
+                            fontFamily: "var(--font-mono)",
                           }}
                         >
                           {util.toFixed(1)}%
@@ -1538,8 +1544,9 @@ const Index = () => {
           style={{ height: "auto", minHeight: 80, background: "white", borderTop: "3px solid hsl(211 100% 50%)" }}
         >
           <div
-            className="text-xs font-bold h-5 mb-1"
+            className="text-xs font-semibold h-5 mb-1 flex items-center gap-1.5"
             style={{
+              fontFamily: "var(--font-ui)",
               color:
                 status.type === "error"
                   ? "hsl(0 70% 50%)"
@@ -1548,7 +1555,22 @@ const Index = () => {
                     : "hsl(38 90% 40%)",
             }}
           >
-            Status: {status.msg}
+            <span
+              style={{
+                display: "inline-block",
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                flexShrink: 0,
+                background:
+                  status.type === "error"
+                    ? "hsl(0 70% 50%)"
+                    : status.type === "success"
+                      ? "hsl(142 55% 32%)"
+                      : "hsl(38 90% 40%)",
+              }}
+            />
+            {status.msg}
           </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -1601,11 +1623,11 @@ const Index = () => {
               {/* Suggestions dropdown */}
               {showSuggestions && filteredSuggestions.length > 0 && (
                 <div
-                  className="absolute bottom-full left-0 right-0 mb-1 max-h-[240px] overflow-y-auto rounded cnc-scroll"
+                  className="absolute bottom-full left-0 right-0 mb-1 max-h-[240px] overflow-y-auto rounded cnc-scroll cnc-suggestions-drop"
                   style={{
                     background: "hsl(222 47% 11%)",
                     border: "1px solid hsl(222 47% 28%)",
-                    boxShadow: "0 -4px 20px hsla(222 47% 5% / 0.6)",
+                    boxShadow: "0 -6px 24px hsla(222 47% 5% / 0.7)",
                     zIndex: 1000,
                   }}
                 >

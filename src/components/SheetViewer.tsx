@@ -537,41 +537,6 @@ export default function SheetViewer({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'hsl(210 25% 95%)' }}>
-      {/* Header bar */}
-      <div className="sv-header">
-        <div className="sv-header-stat">
-          <span className="sv-header-label">APROVEITAMENTO TOTAL</span>
-          <span className="sv-header-value" style={{ color: utilization > 80 ? 'hsl(142 60% 34%)' : utilization > 50 ? 'hsl(38 90% 42%)' : 'hsl(0 65% 50%)' }}>
-            {utilization.toFixed(1)}%
-          </span>
-        </div>
-        <div className="sv-header-stat">
-          <span className="sv-header-label">CHAPAS</span>
-          <span className="sv-header-value">{chapas.length}</span>
-        </div>
-        {chapas.length > 0 && (
-          <div className="sv-header-stat">
-            <span className="sv-header-label">CHAPA {activeIndex + 1}</span>
-            <span className="sv-header-value" style={{ color: 'hsl(200 80% 60%)' }}>
-              {sheetUtil.toFixed(1)}%
-            </span>
-          </div>
-        )}
-        {(() => {
-          const group = layoutGroups?.find(g => g.indices.includes(activeIndex));
-          return group && group.count > 1 ? (
-            <div className="sv-header-stat">
-              <span className="sv-header-label">LAYOUT REPETIDO</span>
-              <span className="sv-header-value" style={{ color: 'hsl(30 100% 55%)' }}>
-                ×{group.count}
-              </span>
-            </div>
-          ) : null;
-        })()}
-      </div>
-
-      {/* Sheet tabs removed - navigation via layout summary in sidebar */}
-
       {/* Sheet viewport */}
       <div
         ref={containerRef}
