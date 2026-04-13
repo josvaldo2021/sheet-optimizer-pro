@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWArea, calculateNodeArea } from './tree-utils';
-import { oris, scoreFit, canResidualFitAnyPiece } from './scoring';
+import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak } from './scoring';
 import { createPieceNodes } from './placement';
 
 interface AbsRect {
@@ -41,6 +41,7 @@ export function unifyColumnWaste(
 
       for (const o of oris(pc)) {
         if (o.w <= areaW && o.h <= freeH) {
+          if (minBreak > 0 && zResidualViolatesMinBreak(areaW, o.w, minBreak)) continue;
           const score = (areaW - o.w) + (freeH - o.h) * 0.1;
           if (score < bestScore) {
             bestScore = score;
@@ -70,6 +71,7 @@ export function unifyColumnWaste(
             const lpc = remaining[j];
             for (const o of oris(lpc)) {
               if (o.w <= freeZW && o.h <= effectiveH) {
+                if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
                 filled += createPieceNodes(tree, yNode, lpc, o.w, o.h, o.w !== lpc.w);
                 freeZW -= o.w;
                 remaining.splice(j, 1);
@@ -356,6 +358,7 @@ export function collapseTreeWaste(
           for (let i = 0; i < remaining.length; i++) {
             for (const o of oris(remaining[i])) {
               if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
+                if (minBreak > 0 && zResidualViolatesMinBreak(spaceW, o.w, minBreak)) continue;
                 bestArea = o.w * o.h;
                 bestIdx = i;
                 bestO = o;
@@ -399,6 +402,7 @@ export function collapseTreeWaste(
               const lpc = remaining[k];
               for (const o of oris(lpc)) {
                 if (o.w <= freeZW && o.h <= consumed) {
+                  if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
                   const latZ: TreeNode = {
                     id: gid(),
                     tipo: 'Z',

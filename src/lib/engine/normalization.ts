@@ -249,6 +249,46 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
   return root;
 }
 
+function deepCloneWithNewIds(node: TreeNode): TreeNode {
+  return {
+    id: gid(),
+    tipo: node.tipo,
+    valor: node.valor,
+    multi: node.multi,
+    label: node.label,
+    transposed: node.transposed,
+    filhos: node.filhos.map(c => deepCloneWithNewIds(c)),
+  };
+}
+
+/**
+ * When an X node has multi > 1 (N identical adjacent columns), expand it into a
+ * single X node of width = valor × N, and push the repetition down to the Z level.
+ *
+ * Example: X680 (x2) > Y1014 > Z680
+ *        → X1360      > Y1014 > Z680 (x2)
+ *
+ * Benefit: the space above Y1014 becomes the full 1360mm wide, enabling larger
+ * pieces to fill it instead of two isolated 680mm compartments.
+ */
+function expandXMultiToZ(root: TreeNode): void {
+  for (const xNode of root.filhos) {
+    if (xNode.multi <= 1) continue;
+    const N = xNode.multi;
+    xNode.valor = xNode.valor * N;
+    xNode.multi = 1;
+    for (const yNode of xNode.filhos) {
+      const originalZ = yNode.filhos.slice();
+      yNode.filhos = [];
+      for (let i = 0; i < N; i++) {
+        for (const z of originalZ) {
+          yNode.filhos.push(i === 0 ? z : deepCloneWithNewIds(z));
+        }
+      }
+    }
+  }
+}
+
 function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
   if (a.tipo !== b.tipo || Math.abs(a.valor - b.valor) > 0.5) return false;
   if (a.multi !== b.multi) return false;
@@ -286,6 +326,8 @@ export function normalizeTree(tree: TreeNode, usableW: number, usableH: number):
   if (rects.length === 0) return tree;
 
   const canonical = buildCanonicalTree(rects, usableW, usableH);
+  compressMulti(canonical);
+  expandXMultiToZ(canonical);
   compressMulti(canonical);
   canonical.transposed = false;
 

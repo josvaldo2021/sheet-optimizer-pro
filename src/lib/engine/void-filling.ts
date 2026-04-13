@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { insertNode, findNode } from './tree-utils';
-import { oris, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
+import { oris, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak, zResidualViolatesMinBreak } from './scoring';
 import { createPieceNodes } from './placement';
 
 export function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number, minBreak: number = 0): number {
@@ -59,6 +59,7 @@ function fillRect(
             if (o.h < minBreak) continue;
             const allZPositions = getAllZCutPositionsInColumn(colX);
             if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
+            if (zResidualViolatesMinBreak(maxW, o.w, minBreak)) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {
@@ -123,6 +124,7 @@ function fillRectZ(
               const newCutPos = currentOffset + o.w;
               if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
             }
+            if (zResidualViolatesMinBreak(maxW, o.w, minBreak)) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {

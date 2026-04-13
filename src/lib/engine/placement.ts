@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { gid, createRoot, findNode, insertNode } from './tree-utils';
-import { oris, scoreFit, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
+import { oris, scoreFit, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak, zResidualViolatesMinBreak } from './scoring';
 import { fillVoids } from './void-filling';
 import { unifyColumnWaste, collapseTreeWaste, regroupAdjacentStrips, clampTreeHeights } from './post-processing';
 
@@ -206,6 +206,7 @@ export function runPlacement(
           if (o.h < minBreak) continue;
           const allZPositions = getAllZCutPositionsInColumn(colX);
           if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
+          if (zResidualViolatesMinBreak(colX.valor, o.w, minBreak)) continue;
         }
         if (o.w <= colX.valor && o.h <= freeH) {
           let effectiveH = o.h;
@@ -276,6 +277,7 @@ export function runPlacement(
               effectiveW = freeW;
             }
           }
+          if (minBreak > 0 && zResidualViolatesMinBreak(effectiveW, o.w, minBreak)) continue;
           const score = ((freeW - effectiveW) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
             bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
@@ -495,6 +497,7 @@ export function runPlacement(
             const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
             const newCutPos = currentOffset + o.w;
             if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+            if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
           }
           if (o.w <= freeZW) {
             const score = freeZW - o.w;
@@ -526,6 +529,7 @@ export function runPlacement(
             const currentOffset = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
             const newCutPos = currentOffset + o.w;
             if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
+            if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
           }
           if (o.w <= freeZW && o.h <= bestFit.h) {
             const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);

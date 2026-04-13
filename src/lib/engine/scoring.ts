@@ -67,6 +67,16 @@ export function canResidualFitAnyPiece(
   return false;
 }
 
+/**
+ * Returns true if placing a piece of width `pieceW` in a slot of width `slotW`
+ * leaves a residual strip that is narrower than minBreak (but not zero).
+ * A zero residual (piece fills the slot exactly) is always valid.
+ */
+export function zResidualViolatesMinBreak(slotW: number, pieceW: number, minBreak: number): boolean {
+  const residual = slotW - pieceW;
+  return residual > 0 && residual < minBreak;
+}
+
 export function getZCutPositions(yStrip: TreeNode): number[] {
   const positions: number[] = [];
   let acc = 0;
