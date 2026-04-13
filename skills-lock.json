@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "2d-bin-packing": {
+      "source": "kishorkukreja/awesome-supply-chain",
+      "sourceType": "github",
+      "computedHash": "245d0d4601db5072ca76c5d05972589b9f007dfe63f7c27002f04a2ba5451074"
+    }
+  }
+}
