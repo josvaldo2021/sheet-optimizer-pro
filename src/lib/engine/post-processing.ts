@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWArea, calculateNodeArea } from './tree-utils';
-import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak } from './scoring';
+import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
 import { createPieceNodes } from './placement';
 
 interface AbsRect {
