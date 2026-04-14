@@ -293,6 +293,33 @@ describe("unifyColumnWaste phantom piece regression", () => {
 
     expect(totalPhantoms).toBe(0);
   });
+
+  it("should not stack a narrower piece into an existing Z slot when lateral residual violates minBreak", () => {
+    const usableW = 5940;
+    const usableH = 3150;
+    const minBreak = 30;
+
+    const pieces: Piece[] = [
+      { w: 2102, h: 1381, area: 2102 * 1381, label: "A" },
+      { w: 2092, h: 1381, area: 2092 * 1381, label: "B" },
+    ];
+
+    const result = optimizeV6(pieces, usableW, usableH, minBreak);
+
+    const x2102 = result.tree.filhos.find((x) => Math.round(x.valor) === 2102);
+    expect(x2102).toBeTruthy();
+
+    const hasIllegalNested2092 = x2102!.filhos.some((y) =>
+      y.filhos.some((z) => {
+        if (Math.round(z.valor) !== 2102) return false;
+        return z.filhos.some((w) =>
+          w.filhos.some((q) => Math.round(q.valor) === 2092)
+        );
+      })
+    );
+
+    expect(hasIllegalNested2092).toBe(false);
+  });
 });
 
 describe("Pass-2 stacking phantom piece regression", () => {
