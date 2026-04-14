@@ -350,6 +350,18 @@ export function collapseTreeWaste(
         let filled = 0;
         let freeH = spaceH;
 
+        // Collect Z cut positions from OTHER Y strips for cross-Y minBreak check
+        const otherYStrips = colX.filhos.filter(y => y !== collapsedY);
+        const otherZPositions: number[][] = otherYStrips.map(y => {
+          const positions: number[] = [];
+          let acc = 0;
+          for (const z of y.filhos) {
+            acc += z.valor * z.multi;
+            positions.push(acc);
+          }
+          return positions;
+        });
+
         while (freeH > 0 && remaining.length > 0) {
           let bestIdx = -1;
           let bestO: { w: number; h: number } | null = null;
@@ -358,7 +370,22 @@ export function collapseTreeWaste(
           for (let i = 0; i < remaining.length; i++) {
             for (const o of oris(remaining[i])) {
               if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
-                if (minBreak > 0 && zResidualViolatesMinBreak(spaceW, o.w, minBreak)) continue;
+                if (minBreak > 0) {
+                  if (zResidualViolatesMinBreak(spaceW, o.w, minBreak)) continue;
+                  // Cross-Y Z position check
+                  if (violatesZMinBreak([o.w], otherZPositions, minBreak)) continue;
+                  // Check against already-placed Z nodes in this collapsed Y
+                  const currentZPositions: number[] = [];
+                  let acc = 0;
+                  for (const z of collapsedY.filhos) {
+                    acc += z.valor * z.multi;
+                    currentZPositions.push(acc);
+                  }
+                  if (currentZPositions.length > 0) {
+                    const newCutPos = acc + o.w;
+                    if (violatesZMinBreak([newCutPos], otherZPositions, minBreak)) continue;
+                  }
+                }
                 bestArea = o.w * o.h;
                 bestIdx = i;
                 bestO = o;
