@@ -429,7 +429,12 @@ export function collapseTreeWaste(
               const lpc = remaining[k];
               for (const o of oris(lpc)) {
                 if (o.w <= freeZW && o.h <= consumed) {
-                  if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+                  if (minBreak > 0) {
+                    if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+                    // Cross-Y check for lateral Z cut position
+                    const currentAcc = collapsedY.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+                    if (violatesZMinBreak([currentAcc + o.w], otherZPositions, minBreak)) continue;
+                  }
                   const latZ: TreeNode = {
                     id: gid(),
                     tipo: 'Z',
