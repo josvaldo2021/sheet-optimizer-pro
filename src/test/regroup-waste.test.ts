@@ -287,7 +287,7 @@ describe("unifyColumnWaste phantom piece regression", () => {
 
       const placed = remaining.length - result.remaining.length;
       if (placed === 0) break;
-      remaining = result.remaining;
+      remaining = result.remaining as typeof pieces;
       sheets++;
     }
 
