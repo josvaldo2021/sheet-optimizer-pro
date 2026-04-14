@@ -745,6 +745,18 @@ export function regroupAdjacentStrips(
 
           let usedW = 0;
 
+          // Collect Z cut positions from OTHER Y strips in this column (for cross-Y minBreak check)
+          const otherYStrips = colX.filhos.filter(y => !yGroup.includes(y));
+          const otherZPositions: number[][] = otherYStrips.map(y => {
+            const positions: number[] = [];
+            let acc = 0;
+            for (const z of y.filhos) {
+              acc += z.valor * z.multi;
+              positions.push(acc);
+            }
+            return positions;
+          });
+
           while (usedW < colW && allCandidates.length > 0) {
             let bestCandidate: typeof allCandidates[0] | null = null;
             let bestOri: { w: number; h: number } | null = null;
@@ -756,6 +768,21 @@ export function regroupAdjacentStrips(
 
               for (const o of oris(c.piece)) {
                 if (o.w <= colW - usedW && o.h <= combinedH) {
+                  // minBreak validation for Z residual
+                  if (minBreak > 0) {
+                    if (zResidualViolatesMinBreak(colW - usedW, o.w, minBreak)) continue;
+                    // Cross-Y Z position check
+                    const newCutPos = usedW + o.w;
+                    if (violatesZMinBreak([newCutPos], otherZPositions, minBreak)) continue;
+                    // Check against already-placed Z nodes in this new Y strip
+                    const newYZPositions: number[] = [];
+                    let acc = 0;
+                    for (const existingZ of newYNode.filhos) {
+                      acc += existingZ.valor * existingZ.multi;
+                      newYZPositions.push(acc);
+                    }
+                    if (newYZPositions.length > 0 && violatesZMinBreak([newCutPos], [newYZPositions], minBreak)) continue;
+                  }
                   const score = scoreFit(colW - usedW, combinedH, o.w, o.h, []);
                   if (score < bestScore) {
                     bestScore = score;
