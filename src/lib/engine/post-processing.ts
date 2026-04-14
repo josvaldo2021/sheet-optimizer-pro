@@ -499,6 +499,10 @@ export function collapseTreeWaste(
 
             for (let i = 0; i < remaining.length; i++) {
               for (const o of oris(remaining[i])) {
+                if (minBreak > 0) {
+                  const lateralResidual = spaceW - o.w;
+                  if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                }
                 if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
                   bestArea = o.w * o.h;
                   bestIdx = i;
@@ -1004,6 +1008,10 @@ export function regroupAdjacentStrips(
               for (let k = 0; k < allToPlace.length; k++) {
                 if (placedHere.includes(allToPlace[k])) continue;
                 for (const o of oris(allToPlace[k])) {
+                  if (minBreak > 0) {
+                    const lateralResidual = combinedW - o.w;
+                    if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                  }
                   if (o.w <= combinedW && o.h <= stripH - usedH && o.w * o.h > bestArea) {
                     bestArea = o.w * o.h;
                     bestIdx = k;

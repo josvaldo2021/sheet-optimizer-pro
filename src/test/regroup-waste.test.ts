@@ -306,16 +306,19 @@ describe("unifyColumnWaste phantom piece regression", () => {
 
     const result = optimizeV6(pieces, usableW, usableH, minBreak);
 
-    const x2102 = result.tree.filhos.find((x) => Math.round(x.valor) === 2102);
-    expect(x2102).toBeTruthy();
+    const labels = collectLabels(result.tree);
+    expect(labels).toContain("A");
+    expect(labels).toContain("B");
 
-    const hasIllegalNested2092 = x2102!.filhos.some((y) =>
-      y.filhos.some((z) => {
-        if (Math.round(z.valor) !== 2102) return false;
-        return z.filhos.some((w) =>
-          w.filhos.some((q) => Math.round(q.valor) === 2092)
-        );
-      })
+    const hasIllegalNested2092 = result.tree.filhos.some((x) =>
+      x.filhos.some((y) =>
+        y.filhos.some((z) => {
+          if (Math.round(z.valor) !== 2102) return false;
+          return z.filhos.some((w) =>
+            w.filhos.some((q) => Math.round(q.valor) === 2092)
+          );
+        })
+      )
     );
 
     expect(hasIllegalNested2092).toBe(false);
