@@ -178,6 +178,8 @@ function fillRectW(
               return diff > 0 && diff < minBreak;
             });
             if (violates) continue;
+            const lateralResidual = zWidth - o.w;
+            if (lateralResidual > 0 && lateralResidual < minBreak) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {

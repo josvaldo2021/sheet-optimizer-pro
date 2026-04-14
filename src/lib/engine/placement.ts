@@ -556,6 +556,8 @@ export function runPlacement(
                   return diff > 0 && diff < minBreak;
                 });
                 if (violatesW) continue;
+                const lateralResidual = zNodeCurrent.valor - wo.w;
+                if (lateralResidual > 0 && lateralResidual < minBreak) continue;
               }
               if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
                 const actualRotated = wo.w !== pw.w;

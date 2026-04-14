@@ -94,12 +94,14 @@ export function unifyColumnWaste(
             if (j === i) continue;
             const lpc = remaining[j];
             for (const o of oris(lpc)) {
+              if (minBreak > 0) {
+                const lateralResidual = bestOri.w - o.w;
+                if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+              }
               if (o.w <= bestOri.w && o.h <= freeWH) {
                 const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
                 const wNode2 = findNode(tree, wId2)!;
                 if (lpc.label) wNode2.label = lpc.label;
-                // Create Q node when piece is narrower than the Z slot so that
-                // extractUsedPiecesWithContext reads the correct piece width (not Z.valor).
                 if (o.w < bestOri.w) {
                   const qId2 = insertNode(tree, wId2, "Q", o.w, 1);
                   const qNode2 = findNode(tree, qId2)!;
@@ -497,6 +499,10 @@ export function collapseTreeWaste(
 
             for (let i = 0; i < remaining.length; i++) {
               for (const o of oris(remaining[i])) {
+                if (minBreak > 0) {
+                  const lateralResidual = spaceW - o.w;
+                  if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                }
                 if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
                   bestArea = o.w * o.h;
                   bestIdx = i;
@@ -856,6 +862,10 @@ export function regroupAdjacentStrips(
                 if (c.source === 'extracted' && placed.some(pp => pp === c.piece)) continue;
 
                 for (const o of oris(c.piece)) {
+                  if (minBreak > 0) {
+                    const lateralResidual = zWidth - o.w;
+                    if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                  }
                   if (o.w <= zWidth && o.h <= combinedH - usedH && o.w * o.h > bestFillArea) {
                     bestFillArea = o.w * o.h;
                     bestFill = c;
@@ -998,6 +1008,10 @@ export function regroupAdjacentStrips(
               for (let k = 0; k < allToPlace.length; k++) {
                 if (placedHere.includes(allToPlace[k])) continue;
                 for (const o of oris(allToPlace[k])) {
+                  if (minBreak > 0) {
+                    const lateralResidual = combinedW - o.w;
+                    if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                  }
                   if (o.w <= combinedW && o.h <= stripH - usedH && o.w * o.h > bestArea) {
                     bestArea = o.w * o.h;
                     bestIdx = k;
