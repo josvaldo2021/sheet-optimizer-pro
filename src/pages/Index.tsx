@@ -292,10 +292,11 @@ const Index = () => {
     setIsOptimizing(true);
     setStatus({ msg: "Processando todas as chapas...", type: "warn" });
 
-    const runAllSheets = async (useGrouping?: boolean) => {
+    const runAllSheets = async (sortFn?: (a: PieceItem, b: PieceItem) => number, label?: string) => {
       const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
       const hasPriority = pieces.some((p) => p.priority);
       const remaining = (hasPriority ? pieces.filter((p) => p.priority) : pieces).map((p) => ({ ...p }));
+      if (sortFn) remaining.sort(sortFn);
       let sheetCount = 0;
       const totalPieces = remaining.reduce((sum, p) => sum + Math.max(p.qty, 1), 0);
       const maxSheets = Math.max(100, totalPieces * 2);
@@ -311,7 +312,7 @@ const Index = () => {
         if (inv.length === 0) break;
 
         setProgress({
-          phase: `Chapa ${sheetCount} (variante ${useGrouping === undefined ? "auto" : useGrouping ? "agrupado" : "normal"})`,
+          phase: `Chapa ${sheetCount} (${label ?? "padrão"})`,
           current: sheetCount,
           total: sheetCount + 1,
         });
@@ -421,23 +422,35 @@ const Index = () => {
 
     await new Promise((r) => setTimeout(r, 20));
 
-    const candidates = [];
-    for (const variant of [false, true, undefined] as const) {
+    // Each entry: [sortFn, label] — different piece orderings to explore the multi-sheet space
+    const sortVariants: Array<[(a: PieceItem, b: PieceItem) => number, string] | [undefined, string]> = [
+      [undefined, "ordem original"],
+      [(a, b) => (b.w * b.h) - (a.w * a.h), "área desc"],
+      [(a, b) => (a.w * a.h) - (b.w * b.h), "área asc"],
+      [(a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h), "maior dim desc"],
+      [(a, b) => (b.w + b.h) - (a.w + a.h), "perímetro desc"],
+      [(a, b) => b.h - a.h, "altura desc"],
+    ];
+
+    const candidates: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }[]> = [];
+    for (let vi = 0; vi < sortVariants.length; vi++) {
+      const [sortFn, label] = sortVariants[vi];
       setProgress({
-        phase: `Testando variante ${variant === undefined ? "auto" : variant ? "agrupado" : "normal"}...`,
-        current: 0,
-        total: 1,
+        phase: `Testando variante ${vi + 1}/${sortVariants.length}: ${label}...`,
+        current: vi,
+        total: sortVariants.length,
       });
-      const result = await runAllSheets(variant);
-      if (result.length > 0) candidates.push(result);
+      const result = await runAllSheets(sortFn ?? undefined, label);
+      if (result && result.length > 0) candidates.push(result);
     }
 
     const sheetArea = usableW * usableH;
+    // Select best plan: fewest sheets first; tiebreaker — lowest utilization on the last sheet
     candidates.sort((a, b) => {
       if (a.length !== b.length) return a.length - b.length;
-      const avgA = a.reduce((s, c) => s + c.usedArea / sheetArea, 0) / a.length;
-      const avgB = b.reduce((s, c) => s + c.usedArea / sheetArea, 0) / b.length;
-      return avgB - avgA;
+      const lastUtilA = a[a.length - 1].usedArea / sheetArea;
+      const lastUtilB = b[b.length - 1].usedArea / sheetArea;
+      return lastUtilA - lastUtilB; // ascending: plan with lightest last sheet wins
     });
 
     const best = candidates[0] || [];
