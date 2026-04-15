@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWArea, calculateNodeArea } from './tree-utils';
-import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak } from './scoring';
+import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
 import { createPieceNodes } from './placement';
 
 interface AbsRect {
@@ -94,12 +94,14 @@ export function unifyColumnWaste(
             if (j === i) continue;
             const lpc = remaining[j];
             for (const o of oris(lpc)) {
+              if (minBreak > 0) {
+                const lateralResidual = bestOri.w - o.w;
+                if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+              }
               if (o.w <= bestOri.w && o.h <= freeWH) {
                 const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
                 const wNode2 = findNode(tree, wId2)!;
                 if (lpc.label) wNode2.label = lpc.label;
-                // Create Q node when piece is narrower than the Z slot so that
-                // extractUsedPiecesWithContext reads the correct piece width (not Z.valor).
                 if (o.w < bestOri.w) {
                   const qId2 = insertNode(tree, wId2, "Q", o.w, 1);
                   const qNode2 = findNode(tree, qId2)!;
@@ -350,6 +352,18 @@ export function collapseTreeWaste(
         let filled = 0;
         let freeH = spaceH;
 
+        // Collect Z cut positions from OTHER Y strips for cross-Y minBreak check
+        const otherYStrips = colX.filhos.filter(y => y !== collapsedY);
+        const otherZPositions: number[][] = otherYStrips.map(y => {
+          const positions: number[] = [];
+          let acc = 0;
+          for (const z of y.filhos) {
+            acc += z.valor * z.multi;
+            positions.push(acc);
+          }
+          return positions;
+        });
+
         while (freeH > 0 && remaining.length > 0) {
           let bestIdx = -1;
           let bestO: { w: number; h: number } | null = null;
@@ -358,7 +372,22 @@ export function collapseTreeWaste(
           for (let i = 0; i < remaining.length; i++) {
             for (const o of oris(remaining[i])) {
               if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
-                if (minBreak > 0 && zResidualViolatesMinBreak(spaceW, o.w, minBreak)) continue;
+                if (minBreak > 0) {
+                  if (zResidualViolatesMinBreak(spaceW, o.w, minBreak)) continue;
+                  // Cross-Y Z position check
+                  if (violatesZMinBreak([o.w], otherZPositions, minBreak)) continue;
+                  // Check against already-placed Z nodes in this collapsed Y
+                  const currentZPositions: number[] = [];
+                  let acc = 0;
+                  for (const z of collapsedY.filhos) {
+                    acc += z.valor * z.multi;
+                    currentZPositions.push(acc);
+                  }
+                  if (currentZPositions.length > 0) {
+                    const newCutPos = acc + o.w;
+                    if (violatesZMinBreak([newCutPos], otherZPositions, minBreak)) continue;
+                  }
+                }
                 bestArea = o.w * o.h;
                 bestIdx = i;
                 bestO = o;
@@ -402,7 +431,12 @@ export function collapseTreeWaste(
               const lpc = remaining[k];
               for (const o of oris(lpc)) {
                 if (o.w <= freeZW && o.h <= consumed) {
-                  if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+                  if (minBreak > 0) {
+                    if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+                    // Cross-Y check for lateral Z cut position
+                    const currentAcc = collapsedY.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+                    if (violatesZMinBreak([currentAcc + o.w], otherZPositions, minBreak)) continue;
+                  }
                   const latZ: TreeNode = {
                     id: gid(),
                     tipo: 'Z',
@@ -465,6 +499,10 @@ export function collapseTreeWaste(
 
             for (let i = 0; i < remaining.length; i++) {
               for (const o of oris(remaining[i])) {
+                if (minBreak > 0) {
+                  const lateralResidual = spaceW - o.w;
+                  if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                }
                 if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
                   bestArea = o.w * o.h;
                   bestIdx = i;
@@ -745,6 +783,18 @@ export function regroupAdjacentStrips(
 
           let usedW = 0;
 
+          // Collect Z cut positions from OTHER Y strips in this column (for cross-Y minBreak check)
+          const otherYStrips = colX.filhos.filter(y => !yGroup.includes(y));
+          const otherZPositions: number[][] = otherYStrips.map(y => {
+            const positions: number[] = [];
+            let acc = 0;
+            for (const z of y.filhos) {
+              acc += z.valor * z.multi;
+              positions.push(acc);
+            }
+            return positions;
+          });
+
           while (usedW < colW && allCandidates.length > 0) {
             let bestCandidate: typeof allCandidates[0] | null = null;
             let bestOri: { w: number; h: number } | null = null;
@@ -756,6 +806,21 @@ export function regroupAdjacentStrips(
 
               for (const o of oris(c.piece)) {
                 if (o.w <= colW - usedW && o.h <= combinedH) {
+                  // minBreak validation for Z residual
+                  if (minBreak > 0) {
+                    if (zResidualViolatesMinBreak(colW - usedW, o.w, minBreak)) continue;
+                    // Cross-Y Z position check
+                    const newCutPos = usedW + o.w;
+                    if (violatesZMinBreak([newCutPos], otherZPositions, minBreak)) continue;
+                    // Check against already-placed Z nodes in this new Y strip
+                    const newYZPositions: number[] = [];
+                    let acc = 0;
+                    for (const existingZ of newYNode.filhos) {
+                      acc += existingZ.valor * existingZ.multi;
+                      newYZPositions.push(acc);
+                    }
+                    if (newYZPositions.length > 0 && violatesZMinBreak([newCutPos], [newYZPositions], minBreak)) continue;
+                  }
                   const score = scoreFit(colW - usedW, combinedH, o.w, o.h, []);
                   if (score < bestScore) {
                     bestScore = score;
@@ -797,6 +862,10 @@ export function regroupAdjacentStrips(
                 if (c.source === 'extracted' && placed.some(pp => pp === c.piece)) continue;
 
                 for (const o of oris(c.piece)) {
+                  if (minBreak > 0) {
+                    const lateralResidual = zWidth - o.w;
+                    if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                  }
                   if (o.w <= zWidth && o.h <= combinedH - usedH && o.w * o.h > bestFillArea) {
                     bestFillArea = o.w * o.h;
                     bestFill = c;
@@ -939,6 +1008,10 @@ export function regroupAdjacentStrips(
               for (let k = 0; k < allToPlace.length; k++) {
                 if (placedHere.includes(allToPlace[k])) continue;
                 for (const o of oris(allToPlace[k])) {
+                  if (minBreak > 0) {
+                    const lateralResidual = combinedW - o.w;
+                    if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                  }
                   if (o.w <= combinedW && o.h <= stripH - usedH && o.w * o.h > bestArea) {
                     bestArea = o.w * o.h;
                     bestIdx = k;
