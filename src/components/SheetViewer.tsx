@@ -541,7 +541,12 @@ export default function SheetViewer({
       <div
         ref={containerRef}
         className="flex-1 flex justify-center items-center overflow-hidden p-4 relative"
-        style={{ background: 'hsl(210 25% 90%)', cursor: zoomLevel > 1 ? 'grab' : 'default' }}
+        style={{
+          background: 'hsl(210 25% 90%)',
+          backgroundImage: 'linear-gradient(hsl(210 20% 58% / 0.8) 1px, transparent 1px), linear-gradient(90deg, hsl(210 20% 58% / 0.8) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+          cursor: zoomLevel > 1 ? 'grab' : 'default',
+        }}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
