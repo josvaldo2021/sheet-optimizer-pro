@@ -43,3 +43,21 @@ export interface OptimizationProgress {
   bestSheets?: number;
   bestUtil?: number;
 }
+
+export interface LotPieceEntry {
+  w: number;
+  h: number;
+  qty: number;
+  label?: string;
+}
+
+export interface Lot {
+  id: string;
+  number: number;
+  date: string; // ISO string
+  chapas: Array<{ tree: TreeNode; usedArea: number }>;
+  piecesUsed: LotPieceEntry[];
+  sheetW: number;
+  sheetH: number;
+  totalSheets: number;
+}

@@ -1,7 +1,7 @@
 // CNC Cut Plan Engine — Barrel Re-export
 // All public API is re-exported from submodules for backward compatibility.
 
-export type { NodeType, TreeNode, Piece, PieceItem, OptimizationProgress } from './engine/types';
+export type { NodeType, TreeNode, Piece, PieceItem, OptimizationProgress, Lot, LotPieceEntry } from './engine/types';
 
 export {
   createRoot,
@@ -12,6 +12,8 @@ export {
   deleteNode,
   calcAllocation,
   calcPlacedArea,
+  getLastLeftover,
+  calcPlanUtilization,
   annotateTreeLabels,
 } from './engine/tree-utils';
 

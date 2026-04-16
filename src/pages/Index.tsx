@@ -4,6 +4,8 @@ import {
   TreeNode,
   PieceItem,
   OptimizationProgress,
+  Lot,
+  LotPieceEntry,
   createRoot,
   cloneTree,
   findNode,
@@ -12,6 +14,8 @@ import {
   deleteNode,
   calcAllocation,
   calcPlacedArea,
+  calcPlanUtilization,
+  getLastLeftover,
   optimizeGeneticV1,
   optimizeGeneticAsync,
 } from "@/lib/cnc-engine";
@@ -58,6 +62,8 @@ const Index = () => {
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [expandedLotId, setExpandedLotId] = useState<string | null>(null);
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -540,10 +546,23 @@ const Index = () => {
     e.target.value = "";
   }, []);
 
+  // Global plan utilization — uses the aproveitamento.md formula when a plan
+  // with multiple chapas exists; falls back to simple per-sheet calculation
+  // while the user is still building a layout manually.
   const utilization = useMemo(() => {
-    const area = calcPlacedArea(tree);
-    return usableW > 0 && usableH > 0 ? (area / (usableW * usableH)) * 100 : 0;
-  }, [tree, usableW, usableH]);
+    if (usableW <= 0 || usableH <= 0) return 0;
+    if (chapas.length > 0) {
+      return calcPlanUtilization(chapas, usableW, usableH);
+    }
+    // Editing mode (no confirmed chapas): simple ratio for the current tree
+    return (calcPlacedArea(tree) / (usableW * usableH)) * 100;
+  }, [chapas, tree, usableW, usableH]);
+
+  // Last leftover of the last chapa — used for display in the UI
+  const lastLeftoverInfo = useMemo(() => {
+    if (chapas.length === 0) return null;
+    return getLastLeftover(chapas[chapas.length - 1].tree, usableW, usableH);
+  }, [chapas, usableW, usableH]);
 
   // ─── Auto-suggestion logic ───
   const commandSuggestions = useMemo<CommandSuggestion[]>(() => {
@@ -856,7 +875,7 @@ const Index = () => {
     [layoutGroups, chapas, pieces, extractUsedPiecesWithContext, usableW, usableH, activeChapa],
   );
 
-  // Confirm auto plan: deduct pieces from inventory and mark chapas as confirmed
+  // Confirm auto plan: deduct pieces from inventory, mark chapas as confirmed, and create a lot
   const confirmAutoPlan = useCallback(() => {
     const autoChapas = chapas.filter((c) => !c.manual);
     if (autoChapas.length === 0) {
@@ -864,9 +883,12 @@ const Index = () => {
       return;
     }
 
+    // Collect all used pieces for this lot
+    const allUsedPieces: Array<{ w: number; h: number; label?: string }> = [];
     const updatedPieces = pieces.map((p) => ({ ...p }));
     autoChapas.forEach((chapa) => {
       const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+      allUsedPieces.push(...usedPieces);
       usedPieces.forEach((used) => {
         for (let j = 0; j < updatedPieces.length; j++) {
           const p = updatedPieces[j];
@@ -880,6 +902,31 @@ const Index = () => {
       });
     });
 
+    // Aggregate pieces used into lot summary
+    const pieceMap = new Map<string, LotPieceEntry>();
+    allUsedPieces.forEach((u) => {
+      const key = `${Math.min(u.w, u.h)}x${Math.max(u.w, u.h)}`;
+      const existing = pieceMap.get(key);
+      if (existing) {
+        existing.qty++;
+      } else {
+        pieceMap.set(key, { w: u.w, h: u.h, qty: 1, label: u.label });
+      }
+    });
+
+    // Create lot
+    const newLot: Lot = {
+      id: `lot_${Date.now()}`,
+      number: lots.length + 1,
+      date: new Date().toISOString(),
+      chapas: autoChapas.map((c) => ({ tree: c.tree, usedArea: c.usedArea })),
+      piecesUsed: Array.from(pieceMap.values()),
+      sheetW: chapaW,
+      sheetH: chapaH,
+      totalSheets: autoChapas.length,
+    };
+    setLots((prev) => [...prev, newLot]);
+
     const filteredPieces = updatedPieces.filter((p) => p.qty > 0);
     setPieces(filteredPieces);
 
@@ -888,10 +935,10 @@ const Index = () => {
 
     const remaining = filteredPieces.reduce((s, p) => s + p.qty, 0);
     setStatus({
-      msg: `✅ Plano confirmado! ${autoChapas.length} chapa(s) aplicadas ao inventário. ${remaining} peça(s) restante(s).`,
+      msg: `✅ Lote #${newLot.number} criado! ${autoChapas.length} chapa(s) aplicadas ao inventário. ${remaining} peça(s) restante(s).`,
       type: "success",
     });
-  }, [chapas, pieces, extractUsedPiecesWithContext]);
+  }, [chapas, pieces, lots, chapaW, chapaH, extractUsedPiecesWithContext]);
 
   const saveLayout = useCallback(
     (reps?: number) => {
@@ -947,6 +994,111 @@ const Index = () => {
     },
     [tree, pieces, chapas, extractUsedPiecesWithContext, usableW, usableH],
   );
+
+  // ─── Lot helpers ───
+
+  const returnLotToInventory = useCallback(
+    (lot: Lot) => {
+      setPieces((prev) => {
+        const updated = prev.map((p) => ({ ...p }));
+        lot.piecesUsed.forEach((entry) => {
+          // Try to find an existing piece with matching dimensions (either orientation)
+          const match = updated.find(
+            (p) =>
+              (p.w === entry.w && p.h === entry.h) ||
+              (p.w === entry.h && p.h === entry.w),
+          );
+          if (match) {
+            match.qty += entry.qty;
+          } else {
+            updated.push({
+              id: `p${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              qty: entry.qty,
+              w: entry.w,
+              h: entry.h,
+              label: entry.label,
+            });
+          }
+        });
+        return updated;
+      });
+      setLots((prev) => prev.filter((l) => l.id !== lot.id));
+      if (expandedLotId === lot.id) setExpandedLotId(null);
+      const total = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
+      setStatus({
+        msg: `↩ Lote #${lot.number} devolvido ao inventário. ${total} peça(s) restaurada(s).`,
+        type: "success",
+      });
+    },
+    [expandedLotId],
+  );
+
+  const printLot = useCallback((lot: Lot) => {
+    const totalPieces = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
+    const dateStr = new Date(lot.date).toLocaleString("pt-BR");
+    const rows = lot.piecesUsed
+      .map(
+        (p, i) =>
+          `<tr style="border-top:1px solid #e5e7eb;${i % 2 === 0 ? "background:#f9fafb;" : ""}">
+            <td style="padding:6px 10px;font-family:monospace">${p.w} × ${p.h} mm</td>
+            <td style="padding:6px 10px;text-align:center;font-weight:bold">${p.qty}</td>
+            <td style="padding:6px 10px">${p.label || "—"}</td>
+          </tr>`,
+      )
+      .join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Lote #${lot.number} — Sheet Optimizer</title>
+  <style>
+    @media print { body { margin: 0; } }
+    body { font-family: Arial, sans-serif; color: #111; font-size: 13px; padding: 24px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #555; font-size: 12px; margin-bottom: 20px; }
+    .meta { display: flex; gap: 32px; margin-bottom: 20px; }
+    .meta-item { display: flex; flex-direction: column; }
+    .meta-label { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: .05em; }
+    .meta-value { font-size: 15px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: #1e293b; color: #fff; }
+    thead th { padding: 8px 10px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing:.05em; }
+    .total { margin-top: 16px; text-align: right; font-size: 12px; color: #555; }
+    .footer { margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 10px; font-size: 10px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>Sheet Optimizer — Lote #${lot.number}</h1>
+  <div class="sub">Plano de Corte CNC</div>
+  <div class="meta">
+    <div class="meta-item"><span class="meta-label">Data / Hora</span><span class="meta-value">${dateStr}</span></div>
+    <div class="meta-item"><span class="meta-label">Chapa</span><span class="meta-value">${lot.sheetW} × ${lot.sheetH} mm</span></div>
+    <div class="meta-item"><span class="meta-label">Chapas usadas</span><span class="meta-value">${lot.totalSheets}</span></div>
+    <div class="meta-item"><span class="meta-label">Total de peças</span><span class="meta-value">${totalPieces}</span></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Dimensão</th>
+        <th style="text-align:center">Qtd</th>
+        <th>ID / Referência</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="total">${totalPieces} peça(s) em ${lot.totalSheets} chapa(s)</div>
+  <div class="footer">Gerado em ${dateStr} · Sheet Optimizer Pro</div>
+  <script>window.onload = function(){ window.print(); }<\/script>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=800,height=600");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
+  }, []);
 
   // ─── Render helpers ───
   type ActionItem = { id: string; tipo: string; valor: number; multi: number; depth: number; label?: string; active: boolean };
@@ -1451,9 +1603,39 @@ const Index = () => {
                   Resumo dos Layouts {filterActiveLabels ? `(filtrado: ${filterActiveLabels.join(", ")})` : ""}
                 </div>
                 <div className="text-[11px] mb-2" style={{ color: "hsl(210 25% 78%)" }}>
-                  {filterActiveLabels 
+                  {filterActiveLabels
                     ? `${filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • ${filteredLayoutGroups.length} layout(s) único(s) — total: ${chapas.length}`
                     : `${chapas.length} chapa(s) total • ${layoutGroups.length} layout(s) único(s)`}
+                </div>
+
+                {/* ── Aproveitamento global ── */}
+                <div
+                  className="flex items-center justify-between px-2 py-1.5 rounded mb-2"
+                  style={{ background: "hsl(222 47% 14%)", border: "1px solid hsl(222 47% 24%)" }}
+                >
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider font-bold" style={{ color: "hsl(210 25% 55%)" }}>
+                      Aproveitamento do plano
+                    </div>
+                    {lastLeftoverInfo && lastLeftoverInfo.w >= 200 && lastLeftoverInfo.h >= 200 ? (
+                      <div className="text-[9px] mt-0.5" style={{ color: "hsl(45 80% 60%)" }}>
+                        Sobra reaproveitável: {lastLeftoverInfo.w}×{lastLeftoverInfo.h} mm
+                      </div>
+                    ) : lastLeftoverInfo ? (
+                      <div className="text-[9px] mt-0.5" style={{ color: "hsl(210 25% 45%)" }}>
+                        Última sobra {lastLeftoverInfo.w}×{lastLeftoverInfo.h} mm (perda)
+                      </div>
+                    ) : null}
+                  </div>
+                  <span
+                    className="text-[18px] font-bold"
+                    style={{
+                      color: utilization > 85 ? "hsl(120 70% 55%)" : utilization > 65 ? "hsl(45 80% 55%)" : "hsl(0 60% 55%)",
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    {utilization.toFixed(1)}%
+                  </span>
                 </div>
                 {filteredLayoutGroups.map((group, gIdx) => {
                   const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
@@ -1521,6 +1703,143 @@ const Index = () => {
             {tree.filhos.length === 0 && (
               <div className="text-center text-[11px] py-4" style={{ color: "hsl(210 25% 52%)" }}>
                 Nenhum nó na árvore
+              </div>
+            )}
+          </div>
+        </SidebarSection>
+
+        {/* ─── SECTION 5: Lotes ─── */}
+        <SidebarSection title={`Lotes${lots.length > 0 ? ` (${lots.length})` : ""}`} icon="📋" defaultOpen={true}>
+          <div className="p-2.5" style={{ background: "hsl(222 47% 14%)" }}>
+            {lots.length === 0 ? (
+              <div className="text-center text-[11px] py-4" style={{ color: "hsl(210 25% 48%)" }}>
+                Nenhum lote gerado ainda.
+                <div className="text-[10px] mt-1" style={{ color: "hsl(210 25% 40%)" }}>
+                  Confirme um plano para criar o primeiro lote.
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {lots.map((lot) => {
+                  const isExpanded = expandedLotId === lot.id;
+                  const totalPiecesInLot = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
+                  return (
+                    <div
+                      key={lot.id}
+                      className="rounded overflow-hidden"
+                      style={{ border: `1px solid ${isExpanded ? "hsl(211 60% 38%)" : "hsl(222 47% 28%)"}`, background: "hsl(222 47% 11%)" }}
+                    >
+                      {/* Lot header */}
+                      <button
+                        className="w-full flex items-center justify-between px-2.5 py-2 text-left"
+                        style={{ background: isExpanded ? "hsl(211 60% 17%)" : "hsl(222 47% 14%)", cursor: "pointer", border: "none" }}
+                        onClick={() => setExpandedLotId(isExpanded ? null : lot.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] font-bold" style={{ color: "hsl(120 70% 55%)" }}>
+                            Lote #{lot.number}
+                          </span>
+                          <span className="text-[9px]" style={{ color: "hsl(210 25% 55%)" }}>
+                            {lot.totalSheets} chapa(s) • {totalPiecesInLot} peça(s)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px]" style={{ color: "hsl(210 25% 48%)" }}>
+                            {new Date(lot.date).toLocaleDateString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          <span style={{ color: "hsl(210 25% 55%)", fontSize: "8px" }}>{isExpanded ? "▲" : "▼"}</span>
+                        </div>
+                      </button>
+
+                      {/* Lot detail */}
+                      {isExpanded && (
+                        <div className="px-2.5 pb-2 pt-1.5" style={{ borderTop: "1px solid hsl(222 47% 22%)" }}>
+                          <div className="text-[9px] mb-2" style={{ color: "hsl(210 25% 50%)" }}>
+                            Chapa: {lot.sheetW}×{lot.sheetH} mm &nbsp;|&nbsp; {new Date(lot.date).toLocaleString("pt-BR")}
+                          </div>
+                          <table className="w-full mb-2" style={{ borderCollapse: "collapse" }}>
+                            <thead>
+                              <tr style={{ color: "hsl(210 25% 50%)", fontSize: "8px" }}>
+                                <th className="text-left py-0.5 font-semibold">Dimensão</th>
+                                <th className="text-center py-0.5 font-semibold">Qtd</th>
+                                <th className="text-left py-0.5 font-semibold">ID</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lot.piecesUsed.map((p, i) => (
+                                <tr
+                                  key={i}
+                                  style={{
+                                    color: "hsl(210 25% 75%)",
+                                    borderTop: "1px solid hsl(222 47% 19%)",
+                                    fontSize: "10px",
+                                  }}
+                                >
+                                  <td className="py-0.5 font-mono">{p.w}×{p.h}</td>
+                                  <td className="text-center py-0.5 font-bold" style={{ color: "hsl(120 70% 55%)" }}>
+                                    {p.qty}
+                                  </td>
+                                  <td className="py-0.5" style={{ color: "hsl(210 25% 55%)" }}>
+                                    {p.label || "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div className="flex gap-1.5 mt-1">
+                            <button
+                              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
+                              style={{
+                                background: "hsl(211 60% 28%)",
+                                color: "hsl(210 80% 85%)",
+                                border: "1px solid hsl(211 60% 40%)",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => printLot(lot)}
+                              title="Imprimir relatório deste lote"
+                            >
+                              🖨 Imprimir
+                            </button>
+                            <button
+                              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
+                              style={{
+                                background: "hsl(38 70% 28%)",
+                                color: "hsl(38 90% 85%)",
+                                border: "1px solid hsl(38 70% 40%)",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => returnLotToInventory(lot)}
+                              title="Devolver todas as peças deste lote ao inventário"
+                            >
+                              ↩ Devolver
+                            </button>
+                            <button
+                              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
+                              style={{
+                                background: "hsl(0 50% 22%)",
+                                color: "hsl(0 70% 75%)",
+                                border: "1px solid hsl(0 50% 32%)",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => {
+                                setLots((prev) => prev.filter((l) => l.id !== lot.id));
+                                if (expandedLotId === lot.id) setExpandedLotId(null);
+                              }}
+                              title="Remover lote permanentemente (sem devolver ao inventário)"
+                            >
+                              🗑 Remover
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
