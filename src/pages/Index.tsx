@@ -451,12 +451,19 @@ const Index = () => {
     }
 
     const sheetArea = usableW * usableH;
-    // Select best plan: fewest sheets first; tiebreaker — lowest utilization on the last sheet
+    const treeFingerprint = (node: TreeNode): string =>
+      `${node.tipo}:${node.valor}:${node.multi}[${node.filhos.map(treeFingerprint).join(',')}]`;
+    const uniqueLayouts = (plan: typeof candidates[0]) =>
+      new Set(plan.map(c => treeFingerprint(c.tree))).size;
+    // Criteria: 1) fewer sheets, 2) fewer unique layouts (more repetition), 3) lower utilization on last sheet
     candidates.sort((a, b) => {
       if (a.length !== b.length) return a.length - b.length;
+      const uA = uniqueLayouts(a);
+      const uB = uniqueLayouts(b);
+      if (uA !== uB) return uA - uB;
       const lastUtilA = a[a.length - 1].usedArea / sheetArea;
       const lastUtilB = b[b.length - 1].usedArea / sheetArea;
-      return lastUtilA - lastUtilB; // ascending: plan with lightest last sheet wins
+      return lastUtilA - lastUtilB;
     });
 
     const best = candidates[0] || [];
