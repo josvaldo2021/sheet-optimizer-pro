@@ -164,21 +164,14 @@ export async function optimizeGeneticAsync(
 
   const numPieces = pieces.length;
 
-  const largestIdx = pieces.reduce((best, p, i) => {
-    const area = p.w * p.h;
-    const bestArea = pieces[best].w * pieces[best].h;
-    return area > bestArea ? i : best;
-  }, 0);
-
   const GROUPING_MODES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
   function randomIndividual(): GAIndividual {
-    const rest = Array.from({ length: numPieces }, (_, i) => i).filter((i) => i !== largestIdx);
-    for (let i = rest.length - 1; i > 0; i--) {
+    const genome = Array.from({ length: numPieces }, (_, i) => i);
+    for (let i = genome.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [rest[i], rest[j]] = [rest[j], rest[i]];
+      [genome[i], genome[j]] = [genome[j], genome[i]];
     }
-    const genome = [largestIdx, ...rest];
     return {
       genome,
       rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
@@ -263,11 +256,6 @@ export async function optimizeGeneticAsync(
 
     const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
     const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as GAIndividual['groupingMode'];
-
-    const lIdx = childGenome.indexOf(largestIdx);
-    if (lIdx > 0) {
-      [childGenome[0], childGenome[lIdx]] = [childGenome[lIdx], childGenome[0]];
-    }
 
     return {
       genome: childGenome,
@@ -426,7 +414,7 @@ export async function optimizeGeneticAsync(
     let finalTree = bestTree || createRoot(usableW, usableH);
     if (bestTransposed) {
       finalTree.transposed = true;
-      finalTree = normalizeTree(finalTree, usableW, usableH);
+      finalTree = normalizeTree(finalTree, usableW, usableH, minBreak);
     }
 
     if (onProgress)
@@ -440,7 +428,7 @@ export async function optimizeGeneticAsync(
       minBreak,
       getSortStrategies,
       runPlacement,
-      normalizeTree,
+      (t, w, h) => normalizeTree(t, w, h, minBreak),
     );
     if (postResult.improved) {
       finalTree = postResult.tree;
@@ -510,7 +498,7 @@ export async function optimizeGeneticAsync(
   let finalTree = bestTree || createRoot(usableW, usableH);
   if (bestTransposed) {
     finalTree.transposed = true;
-    finalTree = normalizeTree(finalTree, usableW, usableH);
+    finalTree = normalizeTree(finalTree, usableW, usableH, minBreak);
   }
 
   if (onProgress)
@@ -529,7 +517,7 @@ export async function optimizeGeneticAsync(
     minBreak,
     getSortStrategies,
     runPlacement,
-    normalizeTree,
+    (t, w, h) => normalizeTree(t, w, h, minBreak),
   );
   if (postResult.improved) {
     finalTree = postResult.tree;

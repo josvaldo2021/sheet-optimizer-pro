@@ -166,6 +166,7 @@ export function runPlacement(
 
       for (const o of oris(pc)) {
         if (o.w <= freeZW && o.h <= baseH) {
+          if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
           const score = (baseH - o.h) * 2 + (freeZW - o.w);
           if (score < bestScore) {
             bestScore = score;
@@ -437,6 +438,13 @@ export function runPlacement(
 
         for (const o of oris(pc)) {
           if (o.w <= freeZW && o.h <= bestFit.pieceH) {
+            if (minBreak > 0) {
+              if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+              const allZPos = getAllZCutPositionsInColumn(col);
+              const yIdx = col.filhos.indexOf(combYNode);
+              const offset = combYNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
+              if (violatesZMinBreak([offset + o.w], allZPos, minBreak, yIdx)) continue;
+            }
             if (!lateralOri || o.w > lateralOri.w) lateralOri = o;
           }
         }

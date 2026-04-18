@@ -84,7 +84,32 @@ function extractAbsoluteRects(tree: TreeNode, usableW: number, usableH: number):
   return rects;
 }
 
-function findVerticalCuts(rects: AbsRect[], bx: number, by: number, bw: number, bh: number): number[] {
+function enforceCutMinBreak(cuts: number[], bound: number, minBreak: number): number[] {
+  if (minBreak <= 0 || cuts.length === 0) return cuts;
+  let filtered = [...cuts].sort((a, b) => a - b);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const boundaries = [0, ...filtered, bound];
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      const gap = boundaries[i + 1] - boundaries[i];
+      if (gap > 0 && gap < minBreak) {
+        // Remove whichever interior boundary creates the offending small gap.
+        // Prefer removing the right boundary; if it's `bound`, remove the left.
+        if (boundaries[i + 1] < bound) {
+          filtered = filtered.filter(c => c !== boundaries[i + 1]);
+        } else {
+          filtered = filtered.filter(c => c !== boundaries[i]);
+        }
+        changed = true;
+        break;
+      }
+    }
+  }
+  return filtered;
+}
+
+function findVerticalCuts(rects: AbsRect[], bx: number, by: number, bw: number, bh: number, minBreak = 0): number[] {
   const edges = new Set<number>();
   for (const r of rects) {
     const left = r.x - bx;
@@ -100,10 +125,10 @@ function findVerticalCuts(rects: AbsRect[], bx: number, by: number, bw: number, 
     if (!straddles) validCuts.push(cx);
   }
 
-  return validCuts;
+  return enforceCutMinBreak(validCuts, Math.round(bw), minBreak);
 }
 
-function findHorizontalCuts(rects: AbsRect[], bx: number, by: number, bw: number, bh: number): number[] {
+function findHorizontalCuts(rects: AbsRect[], bx: number, by: number, bw: number, bh: number, minBreak = 0): number[] {
   const edges = new Set<number>();
   for (const r of rects) {
     const bottom = r.y - by;
@@ -119,7 +144,7 @@ function findHorizontalCuts(rects: AbsRect[], bx: number, by: number, bw: number
     if (!straddles) validCuts.push(cy);
   }
 
-  return validCuts;
+  return enforceCutMinBreak(validCuts, Math.round(bh), minBreak);
 }
 
 function rectsInBounds(rects: AbsRect[], bx: number, by: number, bw: number, bh: number): AbsRect[] {
@@ -129,7 +154,7 @@ function rectsInBounds(rects: AbsRect[], bx: number, by: number, bw: number, bh:
   );
 }
 
-function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number): TreeNode {
+function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number, minBreak = 0): TreeNode {
   const root: TreeNode = { id: 'root', tipo: 'ROOT', valor: usableW, multi: 1, filhos: [] };
 
   if (rects.length === 0) return root;
@@ -150,26 +175,29 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number):
     const vertical = isVertical(level);
 
     const cuts = vertical
-      ? findVerticalCuts(subRects, bx, by, bw, bh)
-      : findHorizontalCuts(subRects, bx, by, bw, bh);
+      ? findVerticalCuts(subRects, bx, by, bw, bh, minBreak)
+      : findHorizontalCuts(subRects, bx, by, bw, bh, minBreak);
 
     if (cuts.length === 0) {
       if (subRects.length === 1) {
         const r = subRects[0];
+        // Snap dimension to parent bound when residual < minBreak to avoid invalid small cuts.
+        const snapW = (minBreak > 0 && bw - r.w > 0 && bw - r.w < minBreak) ? bw : r.w;
+        const snapH = (minBreak > 0 && bh - r.h > 0 && bh - r.h < minBreak) ? bh : r.h;
         if (vertical) {
-          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
+          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapW), multi: 1, filhos: [], label: r.label };
           parentNode.filhos.push(node);
           if (levelIdx + 1 < levelSequence.length) {
             const nextLevel = levelSequence[levelIdx + 1];
-            const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
+            const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(snapH), multi: 1, filhos: [], label: r.label };
             node.filhos.push(hNode);
           }
         } else {
-          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
+          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapH), multi: 1, filhos: [], label: r.label };
           parentNode.filhos.push(node);
           if (levelIdx + 1 < levelSequence.length) {
             const nextLevel = levelSequence[levelIdx + 1];
-            const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
+            const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(snapW), multi: 1, filhos: [], label: r.label };
             node.filhos.push(wNode);
           }
         }
@@ -292,6 +320,7 @@ function expandXMultiToZ(root: TreeNode): void {
 function nodesStructurallyEqual(a: TreeNode, b: TreeNode): boolean {
   if (a.tipo !== b.tipo || Math.abs(a.valor - b.valor) > 0.5) return false;
   if (a.multi !== b.multi) return false;
+  if (a.label !== b.label) return false;
   if (a.filhos.length !== b.filhos.length) return false;
   for (let i = 0; i < a.filhos.length; i++) {
     if (!nodesStructurallyEqual(a.filhos[i], b.filhos[i])) return false;
@@ -320,12 +349,12 @@ function compressMulti(node: TreeNode): void {
   node.filhos = compressed;
 }
 
-export function normalizeTree(tree: TreeNode, usableW: number, usableH: number): TreeNode {
+export function normalizeTree(tree: TreeNode, usableW: number, usableH: number, minBreak = 0): TreeNode {
   const rects = extractAbsoluteRects(tree, usableW, usableH);
 
   if (rects.length === 0) return tree;
 
-  const canonical = buildCanonicalTree(rects, usableW, usableH);
+  const canonical = buildCanonicalTree(rects, usableW, usableH, minBreak);
   compressMulti(canonical);
   expandXMultiToZ(canonical);
   compressMulti(canonical);

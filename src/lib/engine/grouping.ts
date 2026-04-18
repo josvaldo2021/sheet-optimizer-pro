@@ -2,35 +2,6 @@
 
 import { Piece } from './types';
 
-/**
- * REGRA ABSOLUTA: A peça com maior área INDIVIDUAL sempre inicia o layout (índice 0).
- */
-export function ensureLargestIndividualFirst(pieces: Piece[]): Piece[] {
-  if (pieces.length <= 1) return pieces;
-
-  let bestIdx = -1;
-  let bestArea = 0;
-  for (let i = 0; i < pieces.length; i++) {
-    const p = pieces[i];
-    const isIndividual = !p.count || p.count === 1;
-    if (isIndividual) {
-      const area = p.w * p.h;
-      if (area > bestArea) {
-        bestArea = area;
-        bestIdx = i;
-      }
-    }
-  }
-
-  if (bestIdx > 0) {
-    const largest = pieces[bestIdx];
-    pieces.splice(bestIdx, 1);
-    pieces.unshift(largest);
-  }
-
-  return pieces;
-}
-
 // ========== IMPROVED GROUPING ALGORITHMS ==========
 
 export function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity): Piece[] {
@@ -104,7 +75,6 @@ export function groupPiecesBySameWidth(pieces: Piece[], maxH: number = Infinity)
     return wB - wA;
   });
 
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -179,7 +149,6 @@ export function groupPiecesBySameHeight(pieces: Piece[], maxW: number = Infinity
     return hB - hA;
   });
 
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -261,7 +230,6 @@ export function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolea
     return hB - hA;
   });
 
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -336,7 +304,6 @@ export function groupPiecesFillCol(pieces: Piece[], usableH: number, raw: boolea
     return wB - wA;
   });
 
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -354,7 +321,6 @@ export function groupPiecesColumnWidth(pieces: Piece[], usableW: number): Piece[
   });
 
   const filtered = grouped.filter((p) => p.w <= usableW);
-  ensureLargestIndividualFirst(filtered);
   return filtered;
 }
 
@@ -371,7 +337,6 @@ export function groupPiecesBandFirst(pieces: Piece[], usableW: number, raw: bool
     return 0;
   });
 
-  ensureLargestIndividualFirst(grouped);
   return grouped;
 }
 
@@ -388,7 +353,6 @@ export function groupPiecesBandLast(pieces: Piece[], usableW: number, raw: boole
     return 0;
   });
 
-  ensureLargestIndividualFirst(grouped);
   return grouped;
 }
 
@@ -406,7 +370,6 @@ export function groupPiecesColumnHeight(pieces: Piece[], usableH: number): Piece
   });
 
   const filtered = grouped.filter((p) => p.h <= usableH);
-  ensureLargestIndividualFirst(filtered);
   return filtered;
 }
 
@@ -499,7 +462,6 @@ export function groupByCommonDimension(
 
   result.push(...others);
   result.sort((a, b) => b.area - a.area);
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -587,7 +549,6 @@ export function groupByCommonDimensionTransposed(
 
   result.push(...others);
   result.sort((a, b) => b.area - a.area);
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -739,7 +700,6 @@ export function groupStripPackingDP(
   }
 
   result.sort((a, b) => b.area - a.area);
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -846,7 +806,6 @@ export function groupStripPackingDPTransposed(
   }
 
   result.sort((a, b) => b.area - a.area);
-  ensureLargestIndividualFirst(result);
   return result;
 }
 
@@ -938,6 +897,5 @@ export function groupCommonDimensionDP(
   result.push(...others);
 
   result.sort((a, b) => b.area - a.area);
-  ensureLargestIndividualFirst(result);
   return result;
 }

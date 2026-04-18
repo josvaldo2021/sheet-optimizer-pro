@@ -150,6 +150,10 @@ export function unifyColumnWaste(
     const minWaste = Math.min(...yWastes);
     if (minWaste < 50) continue;
 
+    // After trimming by minWaste, strips with waste > minWaste would have residual = waste - minWaste.
+    // That residual must be 0 or >= minBreak; otherwise the trim would create an invalid gap.
+    if (minBreak > 0 && yWastes.some(w => { const r = w - minWaste; return r > 0 && r < minBreak; })) continue;
+
     const totalH = colX.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
     const canFit = remaining.some(p =>
       (p.w <= minWaste && p.h <= totalH) || (p.h <= minWaste && p.w <= totalH)
@@ -182,6 +186,8 @@ export function unifyColumnWaste(
       });
       const minWaste = Math.min(...zWastes);
       if (minWaste < 50) continue;
+
+      if (minBreak > 0 && zWastes.some(w => { const r = w - minWaste; return r > 0 && r < minBreak; })) continue;
 
       const totalW = yNode.filhos.reduce((a, z) => a + z.valor * z.multi, 0);
       const canFit = remaining.some(p =>
