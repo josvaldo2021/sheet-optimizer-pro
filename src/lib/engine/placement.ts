@@ -208,6 +208,17 @@ export function runPlacement(
           const allZPositions = getAllZCutPositionsInColumn(colX);
           if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
           if (zResidualViolatesMinBreak(colX.valor, o.w, minBreak)) continue;
+          // NEW: Y-sibling minBreak check — adjacent Y strips in the same X column
+          // must differ by either 0 or >= minBreak (otherwise the resulting Y cut
+          // is too close to a sibling's piece edge across the column).
+          const ySiblingViolates = colX.filhos.some((y) => {
+            const diff = Math.abs(y.valor - o.h);
+            return diff > 0 && diff < minBreak;
+          });
+          if (ySiblingViolates) continue;
+          // Also check vertical residual at column-level (freeH - o.h)
+          const residualY = freeH - o.h;
+          if (residualY > 0 && residualY < minBreak) continue;
         }
         if (o.w <= colX.valor && o.h <= freeH) {
           let effectiveH = o.h;
