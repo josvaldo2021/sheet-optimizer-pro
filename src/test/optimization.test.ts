@@ -106,7 +106,8 @@ describe("Optimization Regression", () => {
     }
 
     console.log(`Final Sheet Count: ${sheetCount}`);
-    expect(sheetCount).toBeLessThan(55);
-    expect(sheetCount).toBeLessThanOrEqual(51); // We hope for 50
+    // Note: limite afrouxado após correção do bug de inflação dimensional
+    // (peças agora preservam dimensões reais ao invés de inflar para preencher contêineres)
+    expect(sheetCount).toBeLessThanOrEqual(56);
   }, 60000);
 });
