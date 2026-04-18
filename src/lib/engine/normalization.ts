@@ -181,24 +181,44 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number, 
     if (cuts.length === 0) {
       if (subRects.length === 1) {
         const r = subRects[0];
-        // Snap dimension to parent bound when residual < minBreak to avoid invalid small cuts.
+        // Snap CONTAINER dimension to parent bound when residual < minBreak to avoid invalid small cuts.
+        // CRITICAL: Never inflate the actual piece dimensions — only the structural node dimension.
+        // The deepest node always carries the REAL piece w/h.
         const snapW = (minBreak > 0 && bw - r.w > 0 && bw - r.w < minBreak) ? bw : r.w;
         const snapH = (minBreak > 0 && bh - r.h > 0 && bh - r.h < minBreak) ? bh : r.h;
+        const containerInflatedW = snapW > r.w + 0.5;
+        const containerInflatedH = snapH > r.h + 0.5;
+
         if (vertical) {
-          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapW), multi: 1, filhos: [], label: r.label };
+          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapW), multi: 1, filhos: [], label: containerInflatedW ? undefined : r.label };
           parentNode.filhos.push(node);
           if (levelIdx + 1 < levelSequence.length) {
             const nextLevel = levelSequence[levelIdx + 1];
-            const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(snapH), multi: 1, filhos: [], label: r.label };
+            // Use REAL piece height, not snapH (snapH may have inflated to bh)
+            const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
             node.filhos.push(hNode);
+            // If container width was inflated, add a Q child carrying real piece width
+            if (containerInflatedW && levelIdx + 2 < levelSequence.length) {
+              const qLevel = levelSequence[levelIdx + 2];
+              const qNode: TreeNode = { id: gid(), tipo: qLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
+              hNode.filhos.push(qNode);
+              hNode.label = undefined;
+            }
           }
         } else {
-          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapH), multi: 1, filhos: [], label: r.label };
+          const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapH), multi: 1, filhos: [], label: containerInflatedH ? undefined : r.label };
           parentNode.filhos.push(node);
           if (levelIdx + 1 < levelSequence.length) {
             const nextLevel = levelSequence[levelIdx + 1];
-            const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(snapW), multi: 1, filhos: [], label: r.label };
+            // Use REAL piece width
+            const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
             node.filhos.push(wNode);
+            if (containerInflatedH && levelIdx + 2 < levelSequence.length) {
+              const qLevel = levelSequence[levelIdx + 2];
+              const qNode: TreeNode = { id: gid(), tipo: qLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
+              wNode.filhos.push(qNode);
+              wNode.label = undefined;
+            }
           }
         }
         return;
