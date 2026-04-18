@@ -597,16 +597,39 @@
 }
 
 /* ===== Progress Bar ===== */
-.cnc-progress-bar {
-  background: linear-gradient(
-    90deg,
-    hsl(200 80% 48%),
-    hsl(160 80% 50%),
-    hsl(211 100% 55%),
-    hsl(200 80% 48%)
-  );
-  background-size: 300% 100%;
-  animation: progressShimmer 1.8s linear infinite;
+.cnc-pixel-progress-wrap {
+  background: #111;
+  border: 2px solid #333;
+  outline: 1px solid #000;
+  padding: 3px;
+  display: flex;
+  gap: 2px;
+  image-rendering: pixelated;
+}
+
+.cnc-pixel-segment {
+  flex: 1;
+  height: 14px;
+  background: #1a1a1a;
+  border: 1px solid #000;
+  transition: background 0.12s;
+}
+
+.cnc-pixel-segment.active {
+  background: #22cc22;
+  box-shadow: 0 0 4px #22cc22aa;
+}
+
+.cnc-pixel-label {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #22cc22;
+  text-align: center;
+  margin-top: 4px;
+  text-shadow: 0 0 6px #22cc22;
 }
 
 /* ===== Suggestions Dropdown ===== */

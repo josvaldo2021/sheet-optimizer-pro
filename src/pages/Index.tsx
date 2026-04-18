@@ -48,6 +48,7 @@ const Index = () => {
   const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
+  const [globalProgress, setGlobalProgress] = useState<{ current: number; total: number } | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [priorityIds, setPriorityIds] = useState("");
   const [filterActiveLabels, setFilterActiveLabels] = useState<string[] | null>(null);
@@ -439,6 +440,7 @@ const Index = () => {
     ];
 
     const candidates: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }[]> = [];
+    setGlobalProgress({ current: 0, total: sortVariants.length });
     for (let vi = 0; vi < sortVariants.length; vi++) {
       const [sortFn, label] = sortVariants[vi];
       setProgress({
@@ -448,6 +450,7 @@ const Index = () => {
       });
       const result = await runAllSheets(sortFn ?? undefined, label);
       if (result && result.length > 0) candidates.push(result);
+      setGlobalProgress({ current: vi + 1, total: sortVariants.length });
     }
 
     const sheetArea = usableW * usableH;
@@ -475,6 +478,7 @@ const Index = () => {
     }
     setActiveChapa(0);
     setProgress(null);
+    setGlobalProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: "success" });
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
@@ -1521,34 +1525,32 @@ const Index = () => {
             </button>
 
             {/* Progress bar */}
-            {progress && (
-              <div
-                className="mt-3 p-2 rounded"
-                style={{ background: "hsl(222 47% 10%)", border: "1px solid hsl(222 47% 26%)" }}
-              >
-                <div className="text-[10px] font-bold mb-1" style={{ color: "hsl(45 100% 60%)" }}>
-                  {progress.phase}
-                </div>
-                <div className="w-full rounded-full overflow-hidden" style={{ height: 7, background: "hsl(222 47% 22%)" }}>
-                  <div
-                    className="h-full rounded-full cnc-progress-bar transition-all duration-150"
-                    style={{
-                      width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-[9px]" style={{ color: "hsl(210 25% 62%)" }}>
-                    {progress.current}/{progress.total}
-                  </span>
-                  {progress.bestUtil !== undefined && (
-                    <span className="text-[9px] font-bold" style={{ color: "hsl(120 70% 55%)" }}>
-                      Melhor: {progress.bestUtil.toFixed(1)}%
+            {progress && (() => {
+              const SEGMENTS = 12;
+              const bar = globalProgress ?? { current: progress.current, total: progress.total };
+              const pct = bar.total > 0 ? bar.current / bar.total : 0;
+              const filled = Math.round(pct * SEGMENTS);
+              return (
+                <div className="mt-3 p-2" style={{ background: "hsl(222 47% 8%)", border: "1px solid #222" }}>
+                  <div className="cnc-pixel-progress-wrap">
+                    {Array.from({ length: SEGMENTS }).map((_, i) => (
+                      <div key={i} className={`cnc-pixel-segment${i < filled ? " active" : ""}`} />
+                    ))}
+                  </div>
+                  <div className="cnc-pixel-label">{progress.phase}</div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[9px]" style={{ color: "#555", fontFamily: "monospace" }}>
+                      {bar.current}/{bar.total}
                     </span>
-                  )}
+                    {progress.bestUtil !== undefined && (
+                      <span className="text-[9px] font-bold" style={{ color: "#22cc22", fontFamily: "monospace" }}>
+                        {progress.bestUtil.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {layoutGroups.length > 0 && chapas.some((c) => !c.manual) && (
               <button
