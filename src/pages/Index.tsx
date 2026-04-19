@@ -19,11 +19,16 @@ import {
   optimizeGeneticV1,
   optimizeGeneticAsync,
 } from "@/lib/cnc-engine";
-import { groupIdenticalLayouts, LayoutGroup } from "@/lib/layout-utils";
-import { exportPdf } from "@/lib/pdf-export";
-import { exportLayoutsToExcel } from "@/lib/excel-export";
+import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
+import { exportPdf } from "@/lib/export/pdf-export";
+import { exportLayoutsToExcel } from "@/lib/export/excel-export";
 import SheetViewer from "@/components/SheetViewer";
 import SidebarSection from "@/components/SidebarSection";
+import SheetSetupPanel from "@/features/sheet-setup/SheetSetupPanel";
+import PieceListSection from "@/features/piece-list/PieceListSection";
+import OptimizationPanel from "@/features/optimization/OptimizationPanel";
+import LotsSection from "@/features/lots/LotsSection";
+import CommandBar from "@/features/command-bar/CommandBar";
 
 type CommandSuggestion = { cmd: string; label: string; desc: string; kind?: "direct" | "lookahead" };
 
@@ -1206,506 +1211,63 @@ const Index = () => {
         </div>
 
         {/* ─── SECTION 1: Setup da Chapa ─── */}
-        <SidebarSection title="Setup da Chapa" icon="📐" defaultOpen={true}>
-          <div className="p-4 text-xs" style={{ background: "hsl(222 47% 16%)" }}>
-            <div className="flex justify-between items-center mb-2 gap-1">
-              <span>Chapa:</span>
-              <input
-                type="number"
-                value={chapaW}
-                onChange={(e) => setChapaW(+e.target.value)}
-                className="cnc-input w-16"
-              />
-              <span>x</span>
-              <input
-                type="number"
-                value={chapaH}
-                onChange={(e) => setChapaH(+e.target.value)}
-                className="cnc-input w-16"
-              />
-            </div>
-            <div className="flex justify-between items-center mb-2 gap-1">
-              <span>Refilo L/R:</span>
-              <input type="number" value={ml} onChange={(e) => setMl(+e.target.value)} className="cnc-input w-16" />
-              <span>/</span>
-              <input type="number" value={mr} onChange={(e) => setMr(+e.target.value)} className="cnc-input w-16" />
-            </div>
-            <div className="flex justify-between items-center mb-2 gap-1">
-              <span>Refilo T/B:</span>
-              <input type="number" value={mt} onChange={(e) => setMt(+e.target.value)} className="cnc-input w-16" />
-              <span>/</span>
-              <input type="number" value={mb} onChange={(e) => setMb(+e.target.value)} className="cnc-input w-16" />
-            </div>
-            <div className="flex justify-between items-center mb-2 gap-1">
-              <span>Dist. Quebra:</span>
-              <input
-                type="number"
-                value={minBreak}
-                onChange={(e) => setMinBreak(+e.target.value)}
-                className="cnc-input w-16"
-              />
-              <span className="text-[9px]" style={{ color: "hsl(210 25% 62%)" }}>
-                mm
-              </span>
-            </div>
-            <div className="mt-2 text-[10px]" style={{ color: "hsl(210 25% 62%)" }}>
-              Área útil: {usableW} × {usableH} mm
-            </div>
-            <button onClick={applySetup} className="cnc-btn-success w-full mt-2">
-              APLICAR SETUP
-            </button>
-          </div>
-        </SidebarSection>
+        <SheetSetupPanel
+          chapaW={chapaW} setChapaW={setChapaW}
+          chapaH={chapaH} setChapaH={setChapaH}
+          ml={ml} setMl={setMl}
+          mr={mr} setMr={setMr}
+          mt={mt} setMt={setMt}
+          mb={mb} setMb={setMb}
+          minBreak={minBreak} setMinBreak={setMinBreak}
+          usableW={usableW} usableH={usableH}
+          onApply={applySetup}
+        />
 
         {/* ─── SECTION 2: Lista de Peças ─── */}
-        <SidebarSection title={`Lista de Peças (${totalPieces})`} icon="📦" defaultOpen={true}>
-          <div className="flex flex-col" style={{ background: "hsl(222 47% 11%)" }}>
-            <div
-              className="p-2.5 flex-shrink-0 space-y-2"
-              style={{ background: "hsl(222 47% 14%)", borderBottom: "1px solid hsl(222 47% 22%)" }}
-            >
-              <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcel} />
-              <button
-                className="cnc-btn-excel w-full"
-                onClick={() => document.getElementById("excelInput")?.click()}
-              >
-                📂 IMPORTAR EXCEL
-              </button>
-              
-              <div className="flex flex-col gap-1 mt-2">
-                <input
-                  type="text"
-                  placeholder="Filtrar peças (ID, L ou A)..."
-                  className="cnc-input w-full text-xs h-8"
-                  value={pieceFilter}
-                  onChange={(e) => setPieceFilter(e.target.value)}
-                />
-                <div className="flex gap-1">
-                  <button
-                    className="text-[9px] uppercase font-bold py-1 px-2 rounded transition-colors flex-1"
-                    style={{ background: "hsl(222 47% 22%)", color: "hsl(210 25% 68%)", border: "1px solid hsl(222 47% 30%)" }}
-                    onClick={() => {
-                      const lower = pieceFilter.toLowerCase();
-                      setPieces(ps => ps.map(p => {
-                        const matches = p.label?.toLowerCase().includes(lower) || 
-                                       String(p.w).includes(lower) || 
-                                       String(p.h).includes(lower);
-                        return matches ? { ...p, priority: true } : p;
-                      }));
-                    }}
-                  >
-                    Marcar Visíveis
-                  </button>
-                  <button
-                    className="text-[9px] uppercase font-bold py-1 px-2 rounded transition-colors flex-1"
-                    style={{ background: "hsl(222 47% 22%)", color: "hsl(210 25% 68%)", border: "1px solid hsl(222 47% 30%)" }}
-                    onClick={() => setPieces(ps => ps.map(p => ({ ...p, priority: false })))}
-                  >
-                    Desmarcar Todos
-                  </button>
-                </div>
-              </div>
+        <PieceListSection
+          pieces={pieces}
+          setPieces={setPieces}
+          pieceFilter={pieceFilter}
+          setPieceFilter={setPieceFilter}
+          totalPieces={totalPieces}
+          onImportExcel={handleExcel}
+        />
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => setPieces((p) => [...p, { id: `p${Date.now()}`, qty: 1, w: 1000, h: 1000 }])}
-                  className="cnc-btn-secondary flex-1"
-                >
-                  + ADICIONAR
-                </button>
-                {pieces.length > 0 && (
-                  <button
-                    onClick={() => {
-                      setPieces([]);
-                      setPieceFilter("");
-                    }}
-                    className="cnc-btn-secondary flex-1"
-                    style={{ background: "hsl(0 45% 25%)" }}
-                  >
-                    LIMPAR LISTA
-                  </button>
-                )}
-              </div>
-            </div>
+                {/* ─── SECTION 3: Execução ─── */}
+        <OptimizationPanel
+          priorityIds={priorityIds}
+          setPriorityIds={setPriorityIds}
+          filterActiveLabels={filterActiveLabels}
+          setFilterActiveLabels={setFilterActiveLabels}
+          gaPopSize={gaPopSize}
+          setGaPopSize={setGaPopSize}
+          gaGens={gaGens}
+          setGaGens={setGaGens}
+          isOptimizing={isOptimizing}
+          onOptimize={optimizeAllSheets}
+          progress={progress}
+          globalProgress={globalProgress}
+          layoutGroups={layoutGroups}
+          filteredLayoutGroups={filteredLayoutGroups}
+          chapas={chapas}
+          onConfirmPlan={confirmAutoPlan}
+          pdfFilename={pdfFilename}
+          setPdfFilename={setPdfFilename}
+          onExport={() => {
+            exportPdf({ chapas, layoutGroups, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb, utilization, filename: pdfFilename });
+            exportLayoutsToExcel(layoutGroups, pdfFilename);
+          }}
+          activeChapa={activeChapa}
+          usableW={usableW}
+          usableH={usableH}
+          utilization={utilization}
+          lastLeftoverInfo={lastLeftoverInfo}
+          setStatus={setStatus}
+          onSelectLayout={(idx, t) => { setActiveChapa(idx); setTree(t); setSelectedId("root"); }}
+          onDeleteLayout={deleteLayout}
+        />
 
-            <div className="max-h-[280px] overflow-y-auto p-2.5 cnc-scroll">
-              {/* Header */}
-              {pieces.length > 0 && (
-                <div
-                  className="grid gap-1 mb-1 text-[9px] font-bold uppercase"
-                  style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px", color: "hsl(210 25% 58%)" }}
-                >
-                  <span className="text-center" title="Prioridade">
-                    🚩
-                  </span>
-                  <span className="text-center">Qtd</span>
-                  <span className="text-center">Larg</span>
-                  <span></span>
-                  <span className="text-center">Alt</span>
-                  <span className="text-center">ID</span>
-                  <span></span>
-                </div>
-              )}
-              {pieces
-                .filter(p => {
-                  if (!pieceFilter) return true;
-                  const lower = pieceFilter.toLowerCase();
-                  return p.label?.toLowerCase().includes(lower) || 
-                         String(p.w).includes(lower) || 
-                         String(p.h).includes(lower);
-                })
-                .map((p) => (
-                  <div
-                    key={p.id}
-                    className="cnc-inv-item"
-                    style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px" }}
-                  >
-                  <div className="flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={!!p.priority}
-                      onChange={(e) =>
-                        setPieces((ps) => ps.map((x) => (x.id === p.id ? { ...x, priority: e.target.checked } : x)))
-                      }
-                      title="Processar somente este pedido"
-                      style={{ accentColor: "hsl(45 100% 50%)", cursor: "pointer", width: "12px", height: "12px" }}
-                    />
-                  </div>
-                  <input
-                    type="number"
-                    value={p.qty}
-                    onChange={(e) =>
-                      setPieces((ps) => ps.map((x) => (x.id === p.id ? { ...x, qty: +e.target.value } : x)))
-                    }
-                    className="cnc-input"
-                  />
-                  <input
-                    type="number"
-                    value={p.w}
-                    onChange={(e) =>
-                      setPieces((ps) => ps.map((x) => (x.id === p.id ? { ...x, w: +e.target.value } : x)))
-                    }
-                    className="cnc-input"
-                  />
-                  <span className="text-center text-[8px]" style={{ color: "hsl(210 25% 60%)" }}>
-                    ×
-                  </span>
-                  <input
-                    type="number"
-                    value={p.h}
-                    onChange={(e) =>
-                      setPieces((ps) => ps.map((x) => (x.id === p.id ? { ...x, h: +e.target.value } : x)))
-                    }
-                    className="cnc-input"
-                  />
-                  <input
-                    type="text"
-                    value={p.label || ""}
-                    onChange={(e) =>
-                      setPieces((ps) =>
-                        ps.map((x) => (x.id === p.id ? { ...x, label: e.target.value || undefined } : x)),
-                      )
-                    }
-                    className="cnc-input"
-                    placeholder="ID"
-                  />
-                  <button
-                    onClick={() => setPieces((ps) => ps.filter((x) => x.id !== p.id))}
-                    className="text-[12px] cursor-pointer hover:text-red-400 transition-colors"
-                    style={{ color: "hsl(210 25% 55%)", background: "none", border: "none", padding: 0 }}
-                    title="Remover peça"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {pieces.length === 0 && (
-                <div className="text-center text-[11px] py-6" style={{ color: "hsl(210 25% 52%)" }}>
-                  Nenhuma peça adicionada
-                </div>
-              )}
-            </div>
-          </div>
-        </SidebarSection>
-
-        {/* ─── SECTION 3: Execução ─── */}
-        <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
-          <div className="p-3" style={{ background: "hsl(222 47% 14%)" }}>
-            <div className="mb-3">
-              <label
-                className="text-[9px] uppercase tracking-wider font-bold block mb-1"
-                style={{ color: "hsl(210 25% 62%)" }}
-              >
-                IDs Prioritários
-              </label>
-              <div className="flex gap-1">
-                <input
-                  type="text"
-                  value={priorityIds}
-                  onChange={(e) => setPriorityIds(e.target.value)}
-                  className="cnc-input flex-1"
-                  placeholder="Ex: A1, A2, B3"
-                  style={{ fontSize: "10px" }}
-                />
-                <button
-                  onClick={() => {
-                    if (filterActiveLabels) {
-                      setFilterActiveLabels(null);
-                      setStatus({ msg: "Filtro removido. Todos os layouts visíveis.", type: "info" });
-                      return;
-                    }
-                    const labels = priorityIds
-                      .split(",")
-                      .map((s) => s.trim().toUpperCase())
-                      .filter(Boolean);
-                    if (labels.length === 0) {
-                      setStatus({ msg: "Preencha os IDs prioritários primeiro!", type: "error" });
-                      return;
-                    }
-                    setFilterActiveLabels(labels);
-                    setActiveChapa(0);
-                    setStatus({ msg: `🔍 Filtro aplicado: mostrando apenas layouts com ${labels.join(", ")}`, type: "success" });
-                  }}
-                  className="cnc-btn text-[8px] px-2 whitespace-nowrap"
-                  title={filterActiveLabels ? "Remover filtro e mostrar todos os layouts" : "Filtrar layouts que contêm os IDs listados"}
-                  style={{
-                    background: filterActiveLabels ? "hsl(211 60% 40%)" : "hsl(30 80% 40%)",
-                    color: "white",
-                    fontSize: "9px",
-                  }}
-                >
-                  {filterActiveLabels ? "✕ Limpar" : "🔍 Filtrar"}
-                </button>
-              </div>
-              <div style={{ fontSize: "8px", color: "hsl(210 25% 58%)", marginTop: "3px" }}>
-                Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Filtro visual — não remove layouts.
-              </div>
-            </div>
-            <div className="flex gap-2 mb-3">
-              <div className="flex-1">
-                <label
-                  className="text-[9px] uppercase tracking-wider font-bold block mb-1"
-                  style={{ color: "hsl(210 25% 62%)" }}
-                >
-                  População
-                </label>
-                <input
-                  type="number"
-                  value={gaPopSize}
-                  onChange={(e) => setGaPopSize(Math.max(10, parseInt(e.target.value) || 10))}
-                  className="cnc-input w-full"
-                  min={10}
-                  style={{ fontSize: "10px" }}
-                />
-              </div>
-              <div className="flex-1">
-                <label
-                  className="text-[9px] uppercase tracking-wider font-bold block mb-1"
-                  style={{ color: "hsl(210 25% 62%)" }}
-                >
-                  Gerações
-                </label>
-                <input
-                  type="number"
-                  value={gaGens}
-                  onChange={(e) => setGaGens(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="cnc-input w-full"
-                  min={0}
-                  style={{ fontSize: "10px" }}
-                />
-              </div>
-            </div>
-            <button
-              className="cnc-btn-primary w-full"
-              onClick={optimizeAllSheets}
-              disabled={isOptimizing}
-              style={{ background: "hsl(222 80% 42%)" }}
-            >
-              📋 OTIMIZAR TODAS AS CHAPAS
-            </button>
-
-            {/* Progress bar */}
-            {progress && (() => {
-              const SEGMENTS = 12;
-              const bar = globalProgress ?? { current: progress.current, total: progress.total };
-              const pct = bar.total > 0 ? bar.current / bar.total : 0;
-              const filled = Math.round(pct * SEGMENTS);
-              return (
-                <div className="mt-3 p-2" style={{ background: "hsl(222 47% 8%)", border: "1px solid #222" }}>
-                  <div className="cnc-pixel-progress-wrap">
-                    {Array.from({ length: SEGMENTS }).map((_, i) => (
-                      <div key={i} className={`cnc-pixel-segment${i < filled ? " active" : ""}`} />
-                    ))}
-                  </div>
-                  <div className="cnc-pixel-label">{progress.phase}</div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[9px]" style={{ color: "#555", fontFamily: "monospace" }}>
-                      {bar.current}/{bar.total}
-                    </span>
-                    {progress.bestUtil !== undefined && (
-                      <span className="text-[9px] font-bold" style={{ color: "#22cc22", fontFamily: "monospace" }}>
-                        {progress.bestUtil.toFixed(1)}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {layoutGroups.length > 0 && chapas.some((c) => !c.manual) && (
-              <button
-                className="cnc-btn-success w-full mt-2"
-                style={{ padding: "10px", fontSize: "12px", fontWeight: "bold" }}
-                onClick={confirmAutoPlan}
-              >
-                ✅ CONFIRMAR PLANO (ATUALIZAR INVENTÁRIO)
-              </button>
-            )}
-
-            {layoutGroups.length > 0 && (
-              <div className="mt-2 space-y-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-zinc-500 uppercase font-bold px-1">Nome do PDF</label>
-                  <input
-                    type="text"
-                    className="cnc-input h-9"
-                    value={pdfFilename}
-                    onChange={(e) => setPdfFilename(e.target.value)}
-                    placeholder="Nome do arquivo..."
-                  />
-                </div>
-                <button
-                  className="cnc-btn-success w-full"
-                  style={{ background: "hsl(211 60% 35%)", border: "1px solid hsl(211 60% 45%)", padding: "12px", fontSize: "14px", fontWeight: "bold" }}
-                  onClick={() => {
-                    // Export PDF
-                    exportPdf({
-                      chapas,
-                      layoutGroups,
-                      chapaW,
-                      chapaH,
-                      usableW,
-                      usableH,
-                      ml,
-                      mr,
-                      mt,
-                      mb,
-                      utilization,
-                      filename: pdfFilename,
-                    });
-                    // Export Excel
-                    exportLayoutsToExcel(layoutGroups, pdfFilename);
-                  }}
-                >
-                  📥 EXPORTAR ARQUIVOS
-                </button>
-              </div>
-            )}
-
-            {/* Layout summary */}
-            {filteredLayoutGroups.length > 0 && (
-              <div
-                className="mt-3 p-2 rounded"
-                style={{ background: "hsl(222 47% 10%)", border: "1px solid hsl(222 47% 22%)" }}
-              >
-                <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(210 25% 62%)" }}>
-                  Resumo dos Layouts {filterActiveLabels ? `(filtrado: ${filterActiveLabels.join(", ")})` : ""}
-                </div>
-                <div className="text-[11px] mb-2" style={{ color: "hsl(210 25% 78%)" }}>
-                  {filterActiveLabels
-                    ? `${filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • ${filteredLayoutGroups.length} layout(s) único(s) — total: ${chapas.length}`
-                    : `${chapas.length} chapa(s) total • ${layoutGroups.length} layout(s) único(s)`}
-                </div>
-
-                {/* ── Aproveitamento global ── */}
-                <div
-                  className="flex items-center justify-between px-2 py-1.5 rounded mb-2"
-                  style={{ background: "hsl(222 47% 14%)", border: "1px solid hsl(222 47% 24%)" }}
-                >
-                  <div>
-                    <div className="text-[9px] uppercase tracking-wider font-bold" style={{ color: "hsl(210 25% 55%)" }}>
-                      Aproveitamento do plano
-                    </div>
-                    {lastLeftoverInfo && lastLeftoverInfo.w >= 200 && lastLeftoverInfo.h >= 200 ? (
-                      <div className="text-[9px] mt-0.5" style={{ color: "hsl(45 80% 60%)" }}>
-                        Sobra reaproveitável: {lastLeftoverInfo.w}×{lastLeftoverInfo.h} mm
-                      </div>
-                    ) : lastLeftoverInfo ? (
-                      <div className="text-[9px] mt-0.5" style={{ color: "hsl(210 25% 45%)" }}>
-                        Última sobra {lastLeftoverInfo.w}×{lastLeftoverInfo.h} mm (perda)
-                      </div>
-                    ) : null}
-                  </div>
-                  <span
-                    className="text-[18px] font-bold"
-                    style={{
-                      color: utilization > 85 ? "hsl(120 70% 55%)" : utilization > 65 ? "hsl(45 80% 55%)" : "hsl(0 60% 55%)",
-                      fontFamily: "var(--font-mono)",
-                    }}
-                  >
-                    {utilization.toFixed(1)}%
-                  </span>
-                </div>
-                {filteredLayoutGroups.map((group, gIdx) => {
-                  const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
-                  return (
-                    <div key={gIdx} className="flex items-center gap-1 mb-1">
-                      <button
-                        className="flex-1 flex items-center justify-between p-2 rounded cursor-pointer transition-all text-left"
-                        style={{
-                          background: group.indices.includes(activeChapa) ? "hsl(211 60% 22%)" : "hsl(222 47% 17%)",
-                          border: `1px solid ${group.indices.includes(activeChapa) ? "hsl(211 60% 42%)" : "hsl(222 47% 26%)"}`,
-                        }}
-                        onClick={() => {
-                          const idx = group.indices[0];
-                          setActiveChapa(idx);
-                          setTree(chapas[idx].tree);
-                          setSelectedId("root");
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold" style={{ color: "white" }}>
-                            Layout {gIdx + 1}
-                          </span>
-                          {group.count > 1 && (
-                            <span
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                              style={{ background: "hsl(30 100% 45%)", color: "white" }}
-                            >
-                              ×{group.count}
-                            </span>
-                          )}
-                        </div>
-                        <span
-                          className="text-[14px] font-bold"
-                          style={{
-                            color: util > 80 ? "hsl(120 70% 55%)" : util > 50 ? "hsl(45 80% 55%)" : "hsl(0 60% 55%)",
-                            fontFamily: "var(--font-mono)",
-                          }}
-                        >
-                          {util.toFixed(1)}%
-                        </span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const origIdx = layoutGroups.findIndex((g) => g.indices[0] === group.indices[0]); deleteLayout(origIdx >= 0 ? origIdx : gIdx);
-                        }}
-                        className="p-1.5 rounded transition-colors cursor-pointer"
-                        style={{ background: "hsl(0 50% 25%)", border: "1px solid hsl(0 40% 35%)" }}
-                        title={`Excluir layout ${gIdx + 1} (×${group.count}) e devolver peças ao inventário`}
-                      >
-                        <span className="text-[10px]">🗑️</span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </SidebarSection>
-
-        {/* ─── SECTION 4: Estrutura de Corte (advanced) ─── */}
+                {/* ─── SECTION 4: Estrutura de Corte (advanced) ─── */}
         <SidebarSection title="Estrutura de Corte" icon="🌳" defaultOpen={false}>
           <div className="max-h-[200px] overflow-y-auto p-2 cnc-scroll" style={{ background: "hsl(222 47% 9%)" }}>
             {renderActionTree(tree)}
@@ -1718,141 +1280,14 @@ const Index = () => {
         </SidebarSection>
 
         {/* ─── SECTION 5: Lotes ─── */}
-        <SidebarSection title={`Lotes${lots.length > 0 ? ` (${lots.length})` : ""}`} icon="📋" defaultOpen={true}>
-          <div className="p-2.5" style={{ background: "hsl(222 47% 14%)" }}>
-            {lots.length === 0 ? (
-              <div className="text-center text-[11px] py-4" style={{ color: "hsl(210 25% 48%)" }}>
-                Nenhum lote gerado ainda.
-                <div className="text-[10px] mt-1" style={{ color: "hsl(210 25% 40%)" }}>
-                  Confirme um plano para criar o primeiro lote.
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {lots.map((lot) => {
-                  const isExpanded = expandedLotId === lot.id;
-                  const totalPiecesInLot = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
-                  return (
-                    <div
-                      key={lot.id}
-                      className="rounded overflow-hidden"
-                      style={{ border: `1px solid ${isExpanded ? "hsl(211 60% 38%)" : "hsl(222 47% 28%)"}`, background: "hsl(222 47% 11%)" }}
-                    >
-                      {/* Lot header */}
-                      <button
-                        className="w-full flex items-center justify-between px-2.5 py-2 text-left"
-                        style={{ background: isExpanded ? "hsl(211 60% 17%)" : "hsl(222 47% 14%)", cursor: "pointer", border: "none" }}
-                        onClick={() => setExpandedLotId(isExpanded ? null : lot.id)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-[12px] font-bold" style={{ color: "hsl(120 70% 55%)" }}>
-                            Lote #{lot.number}
-                          </span>
-                          <span className="text-[9px]" style={{ color: "hsl(210 25% 55%)" }}>
-                            {lot.totalSheets} chapa(s) • {totalPiecesInLot} peça(s)
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px]" style={{ color: "hsl(210 25% 48%)" }}>
-                            {new Date(lot.date).toLocaleDateString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                          <span style={{ color: "hsl(210 25% 55%)", fontSize: "8px" }}>{isExpanded ? "▲" : "▼"}</span>
-                        </div>
-                      </button>
-
-                      {/* Lot detail */}
-                      {isExpanded && (
-                        <div className="px-2.5 pb-2 pt-1.5" style={{ borderTop: "1px solid hsl(222 47% 22%)" }}>
-                          <div className="text-[9px] mb-2" style={{ color: "hsl(210 25% 50%)" }}>
-                            Chapa: {lot.sheetW}×{lot.sheetH} mm &nbsp;|&nbsp; {new Date(lot.date).toLocaleString("pt-BR")}
-                          </div>
-                          <table className="w-full mb-2" style={{ borderCollapse: "collapse" }}>
-                            <thead>
-                              <tr style={{ color: "hsl(210 25% 50%)", fontSize: "8px" }}>
-                                <th className="text-left py-0.5 font-semibold">Dimensão</th>
-                                <th className="text-center py-0.5 font-semibold">Qtd</th>
-                                <th className="text-left py-0.5 font-semibold">ID</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {lot.piecesUsed.map((p, i) => (
-                                <tr
-                                  key={i}
-                                  style={{
-                                    color: "hsl(210 25% 75%)",
-                                    borderTop: "1px solid hsl(222 47% 19%)",
-                                    fontSize: "10px",
-                                  }}
-                                >
-                                  <td className="py-0.5 font-mono">{p.w}×{p.h}</td>
-                                  <td className="text-center py-0.5 font-bold" style={{ color: "hsl(120 70% 55%)" }}>
-                                    {p.qty}
-                                  </td>
-                                  <td className="py-0.5" style={{ color: "hsl(210 25% 55%)" }}>
-                                    {p.label || "—"}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <div className="flex gap-1.5 mt-1">
-                            <button
-                              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
-                              style={{
-                                background: "hsl(211 60% 28%)",
-                                color: "hsl(210 80% 85%)",
-                                border: "1px solid hsl(211 60% 40%)",
-                                cursor: "pointer",
-                              }}
-                              onClick={() => printLot(lot)}
-                              title="Imprimir relatório deste lote"
-                            >
-                              🖨 Imprimir
-                            </button>
-                            <button
-                              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
-                              style={{
-                                background: "hsl(38 70% 28%)",
-                                color: "hsl(38 90% 85%)",
-                                border: "1px solid hsl(38 70% 40%)",
-                                cursor: "pointer",
-                              }}
-                              onClick={() => returnLotToInventory(lot)}
-                              title="Devolver todas as peças deste lote ao inventário"
-                            >
-                              ↩ Devolver
-                            </button>
-                            <button
-                              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
-                              style={{
-                                background: "hsl(0 50% 22%)",
-                                color: "hsl(0 70% 75%)",
-                                border: "1px solid hsl(0 50% 32%)",
-                                cursor: "pointer",
-                              }}
-                              onClick={() => {
-                                setLots((prev) => prev.filter((l) => l.id !== lot.id));
-                                if (expandedLotId === lot.id) setExpandedLotId(null);
-                              }}
-                              title="Remover lote permanentemente (sem devolver ao inventário)"
-                            >
-                              🗑 Remover
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </SidebarSection>
+        <LotsSection
+          lots={lots}
+          setLots={setLots}
+          expandedLotId={expandedLotId}
+          setExpandedLotId={setExpandedLotId}
+          onPrint={printLot}
+          onReturn={returnLotToInventory}
+        />
       </div>
 
       {/* MAIN */}
@@ -1880,242 +1315,38 @@ const Index = () => {
           layoutGroups={layoutGroups}
         />
 
-        <div
-          className="flex flex-col p-2 px-4"
-          style={{ height: "auto", minHeight: 80, background: "white", borderTop: "3px solid hsl(211 100% 50%)" }}
-        >
-          <div
-            className="text-xs font-semibold h-5 mb-1 flex items-center gap-1.5"
-            style={{
-              fontFamily: "var(--font-ui)",
-              color:
-                status.type === "error"
-                  ? "hsl(0 70% 50%)"
-                  : status.type === "success"
-                    ? "hsl(142 55% 32%)"
-                    : "hsl(38 90% 40%)",
-            }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                flexShrink: 0,
-                background:
-                  status.type === "error"
-                    ? "hsl(0 70% 50%)"
-                    : status.type === "success"
-                      ? "hsl(142 55% 32%)"
-                      : "hsl(38 90% 40%)",
-              }}
-            />
-            {status.msg}
-          </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                ref={cmdInputRef}
-                type="text"
-                autoFocus
-                autoComplete="off"
-                value={cmdInput}
-                onChange={(e) => {
-                  setCmdInput(e.target.value);
-                  setShowSuggestions(true);
-                  setSelectedSuggestionIdx(-1);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
-                className="cnc-command-input w-full"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    if (selectedSuggestionIdx >= 0 && filteredSuggestions[selectedSuggestionIdx]) {
-                      applySuggestion(filteredSuggestions[selectedSuggestionIdx]);
-                    } else {
-                      const typed = cmdInput.trim().toUpperCase();
-                      const lookAhead = filteredSuggestions.find((s) => s.kind === "lookahead");
-                      processCommand(typed);
-                      setCmdInput("");
-                      setShowSuggestions(true);
-                    }
-                    setSelectedSuggestionIdx(-1);
-                    e.preventDefault();
-                  } else if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setSelectedSuggestionIdx((i) => Math.min(i + 1, filteredSuggestions.length - 1));
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSelectedSuggestionIdx((i) => Math.max(i - 1, -1));
-                  } else if (e.key === "Escape") {
-                    setShowSuggestions(false);
-                  } else if (e.key === "Tab" && filteredSuggestions.length > 0) {
-                    e.preventDefault();
-                    const idx = selectedSuggestionIdx >= 0 ? selectedSuggestionIdx : 0;
-                    if (filteredSuggestions[idx]) {
-                      setCmdInput(filteredSuggestions[idx].cmd);
-                      setSelectedSuggestionIdx(idx);
-                    }
-                  }
-                }}
-              />
-              {/* Suggestions dropdown */}
-              {showSuggestions && filteredSuggestions.length > 0 && (
-                <div
-                  className="absolute bottom-full left-0 right-0 mb-1 max-h-[240px] overflow-y-auto rounded cnc-scroll cnc-suggestions-drop"
-                  style={{
-                    background: "hsl(222 47% 11%)",
-                    border: "1px solid hsl(222 47% 28%)",
-                    boxShadow: "0 -6px 24px hsla(222 47% 5% / 0.7)",
-                    zIndex: 1000,
-                  }}
-                >
-                  <div
-                    className="px-2 py-1 text-[8px] uppercase tracking-wider font-bold"
-                    style={{ color: "hsl(210 25% 55%)", borderBottom: "1px solid hsl(222 47% 22%)" }}
-                  >
-                    Sugestões do inventário ({filteredSuggestions.length})
-                  </div>
-                  {filteredSuggestions.map((s, i) => (
-                    <div
-                      key={s.cmd + i}
-                      className="flex items-center justify-between px-2 py-1.5 cursor-pointer transition-colors"
-                      style={{
-                        background: i === selectedSuggestionIdx ? "hsl(211 60% 22%)" : "transparent",
-                        borderBottom: "1px solid hsl(222 47% 18%)",
-                      }}
-                      onMouseEnter={() => setSelectedSuggestionIdx(i)}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        applySuggestion(s);
-                      }}
-                    >
-                      <span className="text-[12px] font-bold font-mono" style={{ color: "hsl(120 80% 60%)" }}>
-                        {s.cmd}
-                      </span>
-                      <span className="text-[10px] ml-2" style={{ color: "hsl(210 25% 60%)" }}>
-                        {s.desc}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => saveLayout(replicationInfo?.count || 1)}
-              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
-              style={{ background: "hsl(120 60% 25%)", fontWeight: "bold" }}
-              title="Salvar layout atual na lista de chapas e deduzir peças do inventário"
-            >
-              💾 SALVAR LAYOUT
-            </button>
-            <button
-              onClick={() => {
-                setTree(createRoot(usableW, usableH));
-                setSelectedId("root");
-                setEditingExistingChapa(false);
-                setReplicationInfo(null);
-              }}
-              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
-              style={{ background: "hsl(0 50% 30%)", fontWeight: "bold" }}
-              title="Limpar a chapa atual e começar um novo layout do zero"
-            >
-              🧹 LIMPAR
-            </button>
-            <button
-              onClick={calcReplication}
-              className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
-              style={{ background: "hsl(270 60% 35%)", fontWeight: "bold" }}
-              title="Calcular quantas vezes o layout atual pode ser repetido com o inventário disponível"
-            >
-              🔄 REPETIÇÕES
-            </button>
-          </div>
-
-          {/* Replication info */}
-          {replicationInfo && (
-            <div
-              className="mt-2 p-2 rounded text-[10px]"
-              style={{ background: "hsl(222 47% 10%)", border: "1px solid hsl(222 47% 26%)" }}
-            >
-              <div className="flex justify-between items-center mb-1">
-                <span className="font-bold uppercase tracking-wider" style={{ color: "hsl(210 25% 62%)" }}>
-                  Repetições possíveis
-                </span>
-                <span
-                  className="text-[14px] font-bold"
-                  style={{ color: replicationInfo.count > 0 ? "hsl(120 70% 55%)" : "hsl(0 70% 55%)" }}
-                >
-                  ×{replicationInfo.count}
-                </span>
-                <button
-                  onClick={() => setReplicationInfo(null)}
-                  className="text-[10px] cursor-pointer"
-                  style={{ color: "hsl(210 25% 55%)", background: "none", border: "none" }}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex gap-2 mb-2 items-center">
-                <span style={{ color: "hsl(210 25% 68%)" }}>Salvar</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={replicationInfo.count}
-                  defaultValue={replicationInfo.count}
-                  id="saveRepCount"
-                  className="cnc-input w-14 text-center"
-                />
-                <span style={{ color: "hsl(210 25% 68%)" }}>cópias</span>
-                <button
-                  onClick={() => {
-                    const val = parseInt((document.getElementById("saveRepCount") as HTMLInputElement)?.value || "1");
-                    saveLayout(Math.max(1, Math.min(val, replicationInfo?.count || 1)));
-                  }}
-                  className="cnc-btn-secondary flex-1 text-[10px]"
-                  style={{ background: "hsl(120 60% 25%)", fontWeight: "bold" }}
-                >
-                  💾 SALVAR ×{replicationInfo.count}
-                </button>
-              </div>
-              <table className="w-full" style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ color: "hsl(210 25% 58%)", fontSize: "8px" }}>
-                    <th className="text-left py-0.5">Peça</th>
-                    <th className="text-center py-0.5">Precisa</th>
-                    <th className="text-center py-0.5">Disponível</th>
-                    <th className="text-center py-0.5">Máx Rep.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {replicationInfo.bom.map((item, i) => {
-                    const maxRep = Math.floor(item.available / item.need);
-                    return (
-                      <tr key={i} style={{ color: "hsl(210 25% 78%)", borderTop: "1px solid hsl(222 47% 22%)" }}>
-                        <td className="py-0.5">
-                          {item.w}×{item.h}
-                        </td>
-                        <td className="text-center py-0.5">{item.need}</td>
-                        <td className="text-center py-0.5">{item.available}</td>
-                        <td
-                          className="text-center py-0.5 font-bold"
-                          style={{ color: maxRep > 0 ? "hsl(120 60% 50%)" : "hsl(0 60% 50%)" }}
-                        >
-                          {maxRep}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <CommandBar
+          status={status}
+          cmdInput={cmdInput}
+          setCmdInput={setCmdInput}
+          showSuggestions={showSuggestions}
+          setShowSuggestions={setShowSuggestions}
+          selectedSuggestionIdx={selectedSuggestionIdx}
+          setSelectedSuggestionIdx={setSelectedSuggestionIdx}
+          filteredSuggestions={filteredSuggestions}
+          applySuggestion={applySuggestion}
+          processCommand={processCommand}
+          replicationInfo={replicationInfo}
+          setReplicationInfo={setReplicationInfo}
+          onSaveLayout={saveLayout}
+          onClear={() => {
+            setTree(createRoot(usableW, usableH));
+            setSelectedId("root");
+            setEditingExistingChapa(false);
+            setReplicationInfo(null);
+          }}
+          onCalcReplication={calcReplication}
+          usableW={usableW}
+          usableH={usableH}
+          setTree={setTree}
+          setSelectedId={setSelectedId}
+          setEditingExistingChapa={setEditingExistingChapa}
+          cmdInputRef={cmdInputRef}
+        />
       </div>
     </div>
   );
 };
 
 export default Index;
+

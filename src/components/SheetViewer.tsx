@@ -1,6 +1,6 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { TreeNode, findNode } from '@/lib/cnc-engine';
-import { LayoutGroup } from '@/lib/layout-utils';
+import { LayoutGroup } from '@/lib/export/layout-utils';
 
 // Clean piece style
 const PIECE_BG = 'hsl(0 0% 100%)';
