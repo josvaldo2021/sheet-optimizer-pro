@@ -53,8 +53,6 @@ Arquivos na raiz do projeto que fornecem contexto adicional.
 
 | Arquivo | Responsabilidade Principal | Quando Consultar |
 | :--- | :--- | :--- |
-| `ALGORITHM_IMPROVEMENTS.md` | Registro de melhorias recentes no algoritmo. | Para entender o histórico de decisões arquiteturais. |
-| `BUG ARVORE.MD` | Descrição de bugs conhecidos na geração da árvore. | Para investigar problemas de redundância de nós (Q, R). |
 | `package.json` | Dependências e scripts do projeto. | Para verificar bibliotecas instaladas ou comandos de build/teste. |
 | `vite.config.ts` | Configuração do bundler Vite. | Para alterar configurações de build ou plugins. |
 

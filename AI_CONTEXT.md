@@ -44,15 +44,10 @@ A `TreeNode` representa a estrutura hierárquica dos cortes e o posicionamento d
 
 *   **`id`:** Identificador único do nó.
 *   **`tipo`:** Indica o **nível de profundidade de corte** ou a **coordenada de alocação** que o algoritmo utiliza para posicionar peças ou identificar regiões. No contexto do corte guilhotina, cada letra representa um estágio sucessivo na hierarquia de cortes. Os tipos são:
-    *   `ROOT`: O nó raiz, representando a chapa inteira, o ponto de partida para as coordenadas de corte.
-    *   `X`: Representa uma coordenada de corte ao longo do eixo X (horizontal), dividindo a chapa verticalmente. O `valor` associado a este nó é a dimensão da largura do corte neste nível.
-    *   `Y`: Representa uma coordenada de corte ao longo do eixo Y (vertical), dividindo a chapa horizontalmente. O `valor` associado a este nó é a dimensão da altura do corte neste nível.
-    *   `Z`: Representa uma coordenada de alocação para uma peça individual. O `valor` associado é a dimensão da peça no eixo correspondente ao corte. Geralmente tem `multi: 1` ou `multi: 2` (para peças agrupadas que foram cortadas juntas).
-    *   `W`: Representa uma coordenada de alocação para uma área de desperdício (waste). O `valor` associado é a dimensão do desperdício no eixo correspondente ao corte.
-    *   `Q`: Representa uma coordenada de alocação para uma área de sobra (queda), que pode ser reutilizada. O `valor` associado é a dimensão da sobra no eixo correspondente ao corte.
-    *   `R`: Representa uma coordenada de alocação para uma área de refugo, que é um tipo específico de desperdício. O `valor` associado é a dimensão do refugo no eixo correspondente ao corte.
 
-    **Exemplo:** Uma peça de 1000x1000 é alocada através de uma sequência de coordenadas de corte, como um nó `X` com `valor: 1000` e um nó `Y` com `valor: 1000` em níveis sucessivos da árvore, culminando em um nó `Z` que representa a peça final.
+    `ROOT` -> `X` (Executa um corte na vertical) -> `Y` (Executa um corte na horizontal dentro do espaço criado pelo corte X) -> `Z` (Executa um corte na vertical dentro do espaço criado pelo corte Y) / `W` (Executa um corte na horizontal dentro do espaço criado pelo corte Z) / `Q` (Executa um corte na vertical dentro do espaço criado pelo corte Z) / `R` (Executa um corte na horizontal dentro do espaço criado pelo corte R).
+
+    **Exemplo:** Uma peça de 1000x1000 é alocada através de uma sequência de coordenadas de corte, como um nó `X` com `valor: 1000` e um nó `Y` com `valor: 1000`.
 *   **`valor`:** A dimensão do corte (largura para X, altura para Y) ou a dimensão da peça/desperdício.
 *   **`multi`:** Multiplicidade do nó, útil para agrupar peças idênticas ou indicar que um nó `Z` representa múltiplas peças cortadas em conjunto.
 *   **`filhos`:** Array de `TreeNode`s, representando os sub-cortes ou peças resultantes.
@@ -72,11 +67,3 @@ A `TreeNode` representa a estrutura hierárquica dos cortes e o posicionamento d
 *   **Agrupamento de Peças:** O algoritmo tenta agrupar peças com dimensões compatíveis para otimizar os cortes. Por exemplo, `groupPiecesBySameHeight` agrupa peças com a mesma altura para um corte X único, seguido de cortes Z para separar as peças individuais.
 *   **Rotação de Peças:** Peças podem ser rotacionadas em 90 graus para melhor encaixe, a menos que explicitamente restrito.
 
-## 6. Problemas Conhecidos e Melhorias Atuais
-
-O projeto está em constante evolução, e alguns pontos de atenção incluem:
-
-*   **`ALGORITHM_IMPROVEMENTS.md`:** Documenta melhorias recentes, como a lógica de agrupamento por altura, que visa reduzir o número de cortes primários e melhorar o aproveitamento.
-*   **`BUG ARVORE.MD`:** Descreve um bug na geração da árvore de corte onde nós `Q` e `R` podem ser redundantes após a criação de nós `Z` e `W`, indicando uma possível duplicação ou representação ineficiente de peças/desperdícios na árvore. Além disso, há menção a inconsistências nas medidas de peças geradas, sugerindo um problema na precisão ou na correspondência com o inventário original.
-
-Este contexto deve fornecer uma base sólida para a IA entender o projeto e auxiliar em tarefas como depuração, refatoração ou implementação de novas funcionalidades.

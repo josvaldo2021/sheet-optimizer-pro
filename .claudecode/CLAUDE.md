@@ -20,9 +20,9 @@ Sempre que iniciar uma nova sessão ou tarefa complexa, leia primeiro os seguint
 ## 3. Estrutura da Árvore de Corte (`TreeNode`)
 
 A árvore segue a lógica de corte guilhotina. Lembre-se da hierarquia e do significado de cada nó como uma **coordenada de corte** ou **nível de alocação**:
-`ROOT` -> `X` (Coordenada de corte horizontal) -> `Y` (Coordenada de corte vertical) -> `Z` (Coordenada de alocação de peça) / `W` (Coordenada de alocação de desperdício) / `Q` (Coordenada de alocação de sobra) / `R` (Coordenada de alocação de refugo).
+`ROOT` -> `X` (Executa um corte na vertical) -> `Y` (Executa um corte na horizontal dentro do espaço criado pelo corte X) -> `Z` (Executa um corte na vertical dentro do espaço criado pelo corte Y) / `W` (Executa um corte na horizontal dentro do espaço criado pelo corte Z) / `Q` (Executa um corte na vertical dentro do espaço criado pelo corte Z) / `R` (Executa um corte na horizontal dentro do espaço criado pelo corte R).
 
-**Exemplo:** Uma peça de 1000x1000 é alocada através de uma sequência de coordenadas de corte, como um nó `X` com `valor: 1000` e um nó `Y` com `valor: 1000` em níveis sucessivos da árvore, culminando em um nó `Z` que representa a peça final.
+**Exemplo:** Uma peça de 1000x1000 é alocada através de uma sequência de coordenadas de corte, como um nó `X` com `valor: 1000` e um nó `Y` com `valor: 1000`.
 
 ## 4. Como Economizar Tokens
 
