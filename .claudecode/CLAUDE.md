@@ -19,8 +19,10 @@ Sempre que iniciar uma nova sessão ou tarefa complexa, leia primeiro os seguint
 
 ## 3. Estrutura da Árvore de Corte (`TreeNode`)
 
-A árvore segue a lógica de corte guilhotina. Lembre-se da hierarquia:
-`ROOT` -> `X` (Corte Horizontal) -> `Y` (Corte Vertical) -> `Z` (Peça) / `W` (Desperdício) / `Q` (Sobra) / `R` (Refugo).
+A árvore segue a lógica de corte guilhotina. Lembre-se da hierarquia e do significado de cada nó como um corte dimensional:
+`ROOT` -> `X` (Corte Horizontal com dimensão X) -> `Y` (Corte Vertical com dimensão Y) -> `Z` (Peça com dimensão Z) / `W` (Desperdício com dimensão W) / `Q` (Sobra com dimensão Q) / `R` (Refugo com dimensão R).
+
+**Exemplo:** Uma peça de 1000x1000 é o resultado de um nó `X` com `valor: 1000` e um nó `Y` com `valor: 1000` em níveis sucessivos da árvore.
 
 ## 4. Como Economizar Tokens
 

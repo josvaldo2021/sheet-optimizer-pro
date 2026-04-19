@@ -43,14 +43,16 @@ Este é um otimizador mais avançado que utiliza um algoritmo genético para exp
 A `TreeNode` representa a estrutura hierárquica dos cortes e o posicionamento das peças na chapa. É uma árvore que descreve como a chapa é dividida.
 
 *   **`id`:** Identificador único do nó.
-*   **`tipo`:** Tipo do nó, indicando o tipo de corte ou região. Os tipos são:
+*   **`tipo`:** Indica o tipo de corte ou a natureza da região resultante. No contexto do corte guilhotina, cada letra representa um nível de corte sucessivo e a dimensão associada a esse corte. Os tipos são:
     *   `ROOT`: O nó raiz, representando a chapa inteira.
-    *   `X`: Um corte horizontal, dividindo a chapa verticalmente (ao longo do eixo X).
-    *   `Y`: Um corte vertical, dividindo a chapa horizontalmente (ao longo do eixo Y).
-    *   `Z`: Representa uma peça individual posicionada. Geralmente tem `multi: 1` ou `multi: 2` (para peças agrupadas que foram cortadas juntas).
-    *   `W`: Representa uma área de desperdício (waste).
-    *   `Q`: Representa uma área de sobra (queda), que pode ser reutilizada.
-    *   `R`: Representa uma área de refugo, que é um tipo específico de desperdício.
+    *   `X`: Representa um corte ao longo do eixo X (horizontal), dividindo a chapa verticalmente. O `valor` associado a este nó é a dimensão da largura do corte.
+    *   `Y`: Representa um corte ao longo do eixo Y (vertical), dividindo a chapa horizontalmente. O `valor` associado a este nó é a dimensão da altura do corte.
+    *   `Z`: Representa uma peça individual posicionada. O `valor` associado é a dimensão da peça no eixo correspondente ao corte. Geralmente tem `multi: 1` ou `multi: 2` (para peças agrupadas que foram cortadas juntas).
+    *   `W`: Representa uma área de desperdício (waste). O `valor` associado é a dimensão do desperdício no eixo correspondente ao corte.
+    *   `Q`: Representa uma área de sobra (queda), que pode ser reutilizada. O `valor` associado é a dimensão da sobra no eixo correspondente ao corte.
+    *   `R`: Representa uma área de refugo, que é um tipo específico de desperdício. O `valor` associado é a dimensão do refugo no eixo correspondente ao corte.
+
+    **Exemplo:** Uma peça de 1000x1000 seria o resultado de um nó `X` com `valor: 1000` e um nó `Y` com `valor: 1000` em níveis sucessivos da árvore.
 *   **`valor`:** A dimensão do corte (largura para X, altura para Y) ou a dimensão da peça/desperdício.
 *   **`multi`:** Multiplicidade do nó, útil para agrupar peças idênticas ou indicar que um nó `Z` representa múltiplas peças cortadas em conjunto.
 *   **`filhos`:** Array de `TreeNode`s, representando os sub-cortes ou peças resultantes.
