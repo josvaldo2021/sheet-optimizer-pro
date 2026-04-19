@@ -184,10 +184,10 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number, 
         // Snap CONTAINER dimension to parent bound when residual < minBreak to avoid invalid small cuts.
         // CRITICAL: Never inflate the actual piece dimensions — only the structural node dimension.
         // The deepest node always carries the REAL piece w/h.
-        const snapW = (minBreak > 0 && bw - r.w > 0 && bw - r.w < minBreak) ? bw : r.w;
-        const snapH = (minBreak > 0 && bh - r.h > 0 && bh - r.h < minBreak) ? bh : r.h;
-        const containerInflatedW = snapW > r.w + 0.5;
-        const containerInflatedH = snapH > r.h + 0.5;
+        const snapW = r.w;
+        const snapH = r.h;
+        const containerInflatedW = false;
+        const containerInflatedH = false;
 
         if (vertical) {
           const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapW), multi: 1, filhos: [], label: containerInflatedW ? undefined : r.label };

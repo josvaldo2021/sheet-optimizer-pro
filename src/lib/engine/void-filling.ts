@@ -60,6 +60,8 @@ function fillRect(
             const allZPositions = getAllZCutPositionsInColumn(colX);
             if (violatesZMinBreak([o.w], allZPositions, minBreak)) continue;
             if (zResidualViolatesMinBreak(maxW, o.w, minBreak)) continue;
+            const residualH = maxH - o.h;
+            if (residualH > 0 && residualH < minBreak) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {
@@ -79,10 +81,6 @@ function fillRect(
     if (actualUsedH + bestO.h > actualUsedH + maxH + 0.5) break;
 
     let consumed = bestO.h;
-    const residualH = maxH - bestO.h;
-    if (residualH > 0 && !canResidualFitAnyPiece(maxW, residualH, remaining, minBreak)) {
-      consumed = maxH;
-    }
     const yId = insertNode(tree, colX.id, "Y", consumed, 1);
     const yNode = findNode(tree, yId)!;
 
@@ -125,6 +123,8 @@ function fillRectZ(
               if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
             }
             if (zResidualViolatesMinBreak(maxW, o.w, minBreak)) continue;
+            const residualW = maxW - o.w;
+            if (residualW > 0 && residualW < minBreak) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {
@@ -140,10 +140,6 @@ function fillRectZ(
 
     const pc = remaining[bestIdx];
     let consumed = bestO.w;
-    const residualW = maxW - bestO.w;
-    if (residualW > 0 && !canResidualFitAnyPiece(residualW, maxH, remaining, minBreak)) {
-      consumed = maxW;
-    }
     createPieceNodes(_tree, yNode, pc, bestO.w, bestO.h, bestO.w !== pc.w);
     filled += bestO.w * bestO.h;
     maxW -= consumed;
@@ -193,10 +189,6 @@ function fillRectW(
 
     const pc = remaining[bestIdx];
     let consumed = bestO.h;
-    const residualH = maxH - bestO.h;
-    if (residualH > 0 && !canResidualFitAnyPiece(zWidth, residualH, remaining, minBreak)) {
-      consumed = maxH;
-    }
 
     const actualRotated = bestO.w !== pc.w;
     createPieceNodes(tree, zNode, pc, bestO.w, bestO.h, actualRotated, zNode);

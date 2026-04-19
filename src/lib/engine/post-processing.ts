@@ -396,6 +396,8 @@ export function collapseTreeWaste(
                     const newCutPos = acc + o.w;
                     if (violatesZMinBreak([newCutPos], otherZPositions, minBreak)) continue;
                   }
+                  const residualH = freeH - o.h;
+                  if (residualH > 0 && residualH < minBreak) continue;
                 }
                 bestArea = o.w * o.h;
                 bestIdx = i;
@@ -408,10 +410,6 @@ export function collapseTreeWaste(
 
           const pc = remaining[bestIdx];
           let consumed = bestO.h;
-          const residualH = freeH - bestO.h;
-          if (residualH > 0 && !canResidualFitAnyPiece(spaceW, residualH, remaining, minBreak)) {
-            consumed = freeH;
-          }
 
           const zNode: TreeNode = {
             id: gid(),
@@ -526,29 +524,33 @@ export function collapseTreeWaste(
             if (bestIdx < 0 || !bestO) break;
 
             const pc = remaining[bestIdx];
-            const wNode: TreeNode = {
-              id: gid(),
-              tipo: 'W',
-              valor: bestO.h,
-              multi: 1,
-              filhos: [],
-              label: pc.label,
-            };
-
-            if (bestO.w < spaceW) {
-              const qNode: TreeNode = {
+            if (bestO.h === spaceH && bestO.w === spaceW && freeH === spaceH) {
+              collapsedZ.label = pc.label;
+            } else {
+              const wNode: TreeNode = {
                 id: gid(),
-                tipo: 'Q',
-                valor: bestO.w,
+                tipo: 'W',
+                valor: bestO.h,
                 multi: 1,
                 filhos: [],
                 label: pc.label,
               };
-              wNode.filhos.push(qNode);
-              wNode.label = undefined;
-            }
 
-            collapsedZ.filhos.push(wNode);
+              if (bestO.w < spaceW) {
+                const qNode: TreeNode = {
+                  id: gid(),
+                  tipo: 'Q',
+                  valor: bestO.w,
+                  multi: 1,
+                  filhos: [],
+                  label: pc.label,
+                };
+                wNode.filhos.push(qNode);
+                wNode.label = undefined;
+              }
+
+              collapsedZ.filhos.push(wNode);
+            }
             filled += spaceW * bestO.h;
             freeH -= bestO.h;
             remaining.splice(bestIdx, 1);
@@ -604,28 +606,32 @@ export function collapseTreeWaste(
               if (bestIdx < 0 || !bestO) break;
 
               const pc = remaining[bestIdx];
-              const qNode: TreeNode = {
-                id: gid(),
-                tipo: 'Q',
-                valor: bestO.w,
-                multi: 1,
-                filhos: [],
-                label: pc.label,
-              };
-
-              if (bestO.h < collapsedW.valor) {
-                const rNode: TreeNode = {
+              if (bestO.w === spaceW && bestO.h === collapsedW.valor && freeW === spaceW) {
+                collapsedW.label = pc.label;
+              } else {
+                const qNode: TreeNode = {
                   id: gid(),
-                  tipo: 'R',
-                  valor: bestO.h,
+                  tipo: 'Q',
+                  valor: bestO.w,
                   multi: 1,
                   filhos: [],
                   label: pc.label,
                 };
-                qNode.filhos.push(rNode);
-              }
 
-              collapsedW.filhos.push(qNode);
+                if (bestO.h < collapsedW.valor) {
+                  const rNode: TreeNode = {
+                    id: gid(),
+                    tipo: 'R',
+                    valor: bestO.h,
+                    multi: 1,
+                    filhos: [],
+                    label: pc.label,
+                  };
+                  qNode.filhos.push(rNode);
+                }
+
+                collapsedW.filhos.push(qNode);
+              }
               filled += bestO.w * collapsedW.valor;
               freeW -= bestO.w;
               remaining.splice(bestIdx, 1);
@@ -682,15 +688,19 @@ export function collapseTreeWaste(
                 if (bestIdx < 0 || !bestO) break;
 
                 const pc = remaining[bestIdx];
-                const rNode: TreeNode = {
-                  id: gid(),
-                  tipo: 'R',
-                  valor: bestO.h,
-                  multi: 1,
-                  filhos: [],
-                  label: pc.label,
-                };
-                collapsedQ.filhos.push(rNode);
+                if (bestO.h === spaceH && freeH === spaceH) {
+                  collapsedQ.label = pc.label;
+                } else {
+                  const rNode: TreeNode = {
+                    id: gid(),
+                    tipo: 'R',
+                    valor: bestO.h,
+                    multi: 1,
+                    filhos: [],
+                    label: pc.label,
+                  };
+                  collapsedQ.filhos.push(rNode);
+                }
                 filled += spaceW * bestO.h;
                 freeH -= bestO.h;
                 remaining.splice(bestIdx, 1);
@@ -715,6 +725,7 @@ export function regroupAdjacentStrips(
   usableW: number,
   usableH: number,
   minBreak: number,
+  inventory?: Piece[],
 ): number {
   let totalAdded = 0;
 
@@ -734,6 +745,10 @@ export function regroupAdjacentStrips(
 
           const extractedPieces: Piece[] = [];
 
+          const pushExtracted = (pw: number, ph: number, lbl: string) => {
+            extractedPieces.push({ w: pw, h: ph, area: pw * ph, label: lbl });
+          };
+
           let yOff = 0;
           for (const yNode of yGroup) {
             for (let iy = 0; iy < yNode.multi; iy++) {
@@ -742,27 +757,27 @@ export function regroupAdjacentStrips(
                 for (let iz = 0; iz < zNode.multi; iz++) {
                   if (zNode.filhos.length === 0) {
                     if (zNode.label) {
-                      extractedPieces.push({ w: zNode.valor, h: yNode.valor, area: zNode.valor * yNode.valor, label: zNode.label });
+                      pushExtracted(zNode.valor, yNode.valor, zNode.label);
                     }
                   } else {
                     for (const wNode of zNode.filhos) {
                       for (let iw = 0; iw < wNode.multi; iw++) {
                         if (wNode.filhos.length === 0) {
                           if (wNode.label) {
-                            extractedPieces.push({ w: zNode.valor, h: wNode.valor, area: zNode.valor * wNode.valor, label: wNode.label });
+                            pushExtracted(zNode.valor, wNode.valor, wNode.label);
                           }
                         } else {
                           for (const qNode of wNode.filhos) {
                             for (let iq = 0; iq < qNode.multi; iq++) {
                               if (qNode.filhos.length === 0) {
                                 if (qNode.label) {
-                                  extractedPieces.push({ w: qNode.valor, h: wNode.valor, area: qNode.valor * wNode.valor, label: qNode.label });
+                                  pushExtracted(qNode.valor, wNode.valor, qNode.label);
                                 }
                               } else {
                                 for (const rNode of qNode.filhos) {
                                   for (let ir = 0; ir < rNode.multi; ir++) {
                                     if (rNode.label) {
-                                      extractedPieces.push({ w: qNode.valor, h: rNode.valor, area: qNode.valor * rNode.valor, label: rNode.label });
+                                      pushExtracted(qNode.valor, rNode.valor, rNode.label);
                                     }
                                   }
                                 }
@@ -842,12 +857,14 @@ export function regroupAdjacentStrips(
                     if (violatesZMinBreak([newCutPos], otherZPositions, minBreak)) continue;
                     // Check against already-placed Z nodes in this new Y strip
                     const newYZPositions: number[] = [];
-                    let acc = 0;
+                    let accZ = 0;
                     for (const existingZ of newYNode.filhos) {
-                      acc += existingZ.valor * existingZ.multi;
-                      newYZPositions.push(acc);
+                      accZ += existingZ.valor * existingZ.multi;
+                      newYZPositions.push(accZ);
                     }
                     if (newYZPositions.length > 0 && violatesZMinBreak([newCutPos], [newYZPositions], minBreak)) continue;
+                    const residualH = combinedH - o.h;
+                    if (residualH > 0 && residualH < minBreak) continue;
                   }
                   const score = scoreFit(colW - usedW, combinedH, o.w, o.h, []);
                   if (score < bestScore) {
@@ -893,6 +910,8 @@ export function regroupAdjacentStrips(
                   if (minBreak > 0) {
                     const lateralResidual = zWidth - o.w;
                     if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                    const residualH = (combinedH - usedH) - o.h;
+                    if (residualH > 0 && residualH < minBreak) continue;
                   }
                   if (o.w <= zWidth && o.h <= combinedH - usedH && o.w * o.h > bestFillArea) {
                     bestFillArea = o.w * o.h;
@@ -1414,41 +1433,46 @@ export function clampTreeHeights(tree: TreeNode, usableW: number, usableH: numbe
 
 function extractPlacedPieces(
   tree: TreeNode,
+  allPieces?: Piece[]
 ): Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> {
   const pieces: Array<{ w: number; h: number; label?: string; colIndex: number; yIndex: number }> = [];
   const T = tree.transposed || false;
 
   tree.filhos.forEach((colX, ci) => {
     colX.filhos.forEach((yNode, yi) => {
-      for (const zNode of yNode.filhos) {
-        if (zNode.filhos.length === 0) {
-          const pw = T ? yNode.valor : zNode.valor;
-          const ph = T ? zNode.valor : yNode.valor;
-          pieces.push({ w: pw, h: ph, label: zNode.label, colIndex: ci, yIndex: yi });
-        } else {
-          for (const wNode of zNode.filhos) {
-            if (wNode.filhos.length === 0) {
-              const pw = T ? wNode.valor : zNode.valor;
-              const ph = T ? zNode.valor : wNode.valor;
-              pieces.push({ w: pw, h: ph, label: wNode.label, colIndex: ci, yIndex: yi });
+          const pushPiece = (pw: number, ph: number, lbl: string | undefined, ci: number, yi: number) => {
+            pieces.push({ w: pw, h: ph, label: lbl, colIndex: ci, yIndex: yi });
+          };
+
+          for (const zNode of yNode.filhos) {
+            if (zNode.filhos.length === 0) {
+              const pw = T ? yNode.valor : zNode.valor;
+              const ph = T ? zNode.valor : yNode.valor;
+              pushPiece(pw, ph, zNode.label, ci, yi);
             } else {
-              for (const qNode of wNode.filhos) {
-                if (qNode.filhos.length === 0) {
-                  const pw = T ? wNode.valor : qNode.valor;
-                  const ph = T ? qNode.valor : wNode.valor;
-                  pieces.push({ w: pw, h: ph, label: qNode.label, colIndex: ci, yIndex: yi });
+              for (const wNode of zNode.filhos) {
+                if (wNode.filhos.length === 0) {
+                  const pw = T ? wNode.valor : zNode.valor;
+                  const ph = T ? zNode.valor : wNode.valor;
+                  pushPiece(pw, ph, wNode.label, ci, yi);
                 } else {
-                  for (const rNode of qNode.filhos) {
-                    const pw = T ? rNode.valor : qNode.valor;
-                    const ph = T ? qNode.valor : rNode.valor;
-                    pieces.push({ w: pw, h: ph, label: rNode.label, colIndex: ci, yIndex: yi });
+                  for (const qNode of wNode.filhos) {
+                    if (qNode.filhos.length === 0) {
+                      const pw = T ? wNode.valor : qNode.valor;
+                      const ph = T ? qNode.valor : wNode.valor;
+                      pushPiece(pw, ph, qNode.label, ci, yi);
+                    } else {
+                      for (const rNode of qNode.filhos) {
+                        const pw = T ? rNode.valor : qNode.valor;
+                        const ph = T ? qNode.valor : rNode.valor;
+                        pushPiece(pw, ph, rNode.label, ci, yi);
+                      }
+                    }
                   }
                 }
               }
             }
           }
-        }
-      }
     });
   });
 
@@ -1466,7 +1490,7 @@ export function postOptimizeRegroup(
   runPlacementFn: (inventory: Piece[], usableW: number, usableH: number, minBreak: number) => { tree: TreeNode; area: number; remaining: Piece[] },
   normalizeTreeFn: (tree: TreeNode, usableW: number, usableH: number) => TreeNode,
 ): { tree: TreeNode; area: number; improved: boolean } {
-  const placedPieces = extractPlacedPieces(originalTree);
+  const placedPieces = extractPlacedPieces(originalTree, allPieces);
 
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
@@ -1503,10 +1527,12 @@ export function postOptimizeRegroup(
     const usedLabels = new Set<string>();
 
     const groupLabels: string[] = [];
+    const dims: number[] = [];
     let sumW = 0;
     for (const p of opp.pieces) {
       const w = Math.max(p.w, p.h);
       sumW += w;
+      dims.push(w);
       if (p.label) {
         groupLabels.push(p.label);
         usedLabels.add(p.label);
@@ -1520,6 +1546,7 @@ export function postOptimizeRegroup(
       count: opp.pieces.length,
       labels: groupLabels.length > 0 ? groupLabels : undefined,
       groupedAxis: "w",
+      individualDims: dims,
     });
 
     for (const p of allPieces) {
@@ -1557,9 +1584,12 @@ export function postOptimizeRegroup(
 
     for (const opp of regroupOpportunities) {
       const groupLabels: string[] = [];
+      const dims: number[] = [];
       let sumW = 0;
       for (const p of opp.pieces) {
-        sumW += Math.max(p.w, p.h);
+        const pd = Math.max(p.w, p.h);
+        sumW += pd;
+        dims.push(pd);
         if (p.label) {
           groupLabels.push(p.label);
           usedLabels.add(p.label);
@@ -1573,6 +1603,7 @@ export function postOptimizeRegroup(
           count: opp.pieces.length,
           labels: groupLabels.length > 0 ? groupLabels : undefined,
           groupedAxis: "w",
+          individualDims: dims,
         });
       }
     }

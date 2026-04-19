@@ -221,14 +221,8 @@ export function runPlacement(
           if (residualY > 0 && residualY < minBreak) continue;
         }
         if (o.w <= colX.valor && o.h <= freeH) {
-          let effectiveH = o.h;
           const residualH = freeH - o.h;
-          if (residualH > 0) {
-            const ySibValues = colX.filhos.map((y) => y.valor);
-            if (!canResidualFitAnyPiece(colX.valor, residualH, remaining.slice(1), minBreak, ySibValues, "h")) {
-              effectiveH = freeH;
-            }
-          }
+          if (minBreak > 0 && residualH > 0 && residualH < minBreak) continue;
           const widthRatio = o.w / colX.valor;
           const baseScore = (1 - widthRatio) * 3 + (1 - o.h / freeH) * 0.5;
 
@@ -256,7 +250,7 @@ export function runPlacement(
               type: "EXISTING",
               col: colX,
               w: o.w,
-              h: effectiveH,
+              h: o.h,
               pieceW: o.w,
               pieceH: o.h,
               score,
@@ -281,18 +275,11 @@ export function runPlacement(
           if (violatesX) continue;
         }
         if (o.w <= freeW && o.h <= usableH) {
-          let effectiveW = o.w;
           const residualW = freeW - o.w;
-          if (residualW > 0) {
-            const xSibValues = tree.filhos.map((x) => x.valor);
-            if (!canResidualFitAnyPiece(residualW, usableH, remaining.slice(1), minBreak, xSibValues, "w")) {
-              effectiveW = freeW;
-            }
-          }
-          if (minBreak > 0 && zResidualViolatesMinBreak(effectiveW, o.w, minBreak)) continue;
-          const score = ((freeW - effectiveW) / usableW) * 0.5;
+          if (minBreak > 0 && residualW > 0 && residualW < minBreak) continue;
+          const score = ((freeW - o.w) / usableW) * 0.5;
           if (!bestFit || score < bestFit.score) {
-            bestFit = { type: "NEW", w: effectiveW, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
+            bestFit = { type: "NEW", w: o.w, h: o.h, pieceW: o.w, pieceH: o.h, score, rotated: o.w !== piece.w };
           }
         }
       }
@@ -395,21 +382,24 @@ export function runPlacement(
       }
     }
 
-    const useCombinedY = maxPossibleStack >= 2 && !stackViolatesMinBreak && !isGroupedPiece;
+    let useCombinedY = maxPossibleStack >= 2 && !stackViolatesMinBreak && !isGroupedPiece;
 
     if (useCombinedY) {
       // === COMBINED Y STRIP STRATEGY ===
       const stackCount = maxPossibleStack;
       const combinedH_raw = stackCount * bestFit.pieceH;
-      let combinedH = combinedH_raw;
 
       const residualH = colFreeH - combinedH_raw;
-      if (residualH > 0) {
-        const canFitResidual = remaining.some(p =>
-          oris(p).some(o => o.w <= col.valor && o.h <= residualH)
-        );
-        if (!canFitResidual) combinedH = colFreeH;
+      if (minBreak > 0 && residualH > 0 && residualH < minBreak) {
+        // If the resulting stack leaves an invalid minBreak gap, fallback to single strip.
+        useCombinedY = false;
       }
+    }
+
+    if (useCombinedY) {
+      const stackCount = maxPossibleStack;
+      const combinedH_raw = stackCount * bestFit.pieceH;
+      let combinedH = combinedH_raw;
 
       const combYId = insertNode(tree, col.id, "Y", combinedH, 1);
       const combYNode = findNode(tree, combYId)!;
@@ -613,7 +603,7 @@ export function runPlacement(
     placedArea += collapseTreeWaste(tree, remaining, usableW, usableH, minBreak);
   }
 
-  placedArea += regroupAdjacentStrips(tree, remaining, usableW, usableH, minBreak);
+  placedArea += regroupAdjacentStrips(tree, remaining, usableW, usableH, minBreak, inventory);
 
   if (remaining.length > 0) {
     placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
