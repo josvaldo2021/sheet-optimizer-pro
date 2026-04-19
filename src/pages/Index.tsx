@@ -227,7 +227,7 @@ const Index = () => {
           isLeaf = true;
         }
 
-        if (isLeaf && pieceW > 0 && pieceH > 0) {
+        if (isLeaf && pieceW > 0 && pieceH > 0 && n.label) {
           for (let m = 0; m < totalMulti; m++) {
             used.push({ w: pieceW, h: pieceH, label: n.label });
           }

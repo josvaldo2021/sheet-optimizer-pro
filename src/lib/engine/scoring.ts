@@ -77,6 +77,11 @@ export function zResidualViolatesMinBreak(slotW: number, pieceW: number, minBrea
   return residual > 0 && residual < minBreak;
 }
 
+/** Generic: returns true if newValue creates a gap < minBreak with any sibling value. */
+export function siblingViolatesMinBreak(existingValues: number[], newValue: number, minBreak: number): boolean {
+  return existingValues.some(v => { const d = Math.abs(v - newValue); return d > 0 && d < minBreak; });
+}
+
 export function getZCutPositions(yStrip: TreeNode): number[] {
   const positions: number[] = [];
   let acc = 0;

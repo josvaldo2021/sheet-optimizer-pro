@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { gid, insertNode, findNode, isWasteSubtree, calculateZArea, calculateWArea, calculateNodeArea } from './tree-utils';
-import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak, getAllZCutPositionsInColumn, violatesZMinBreak } from './scoring';
+import { oris, scoreFit, canResidualFitAnyPiece, zResidualViolatesMinBreak, getAllZCutPositionsInColumn, violatesZMinBreak, siblingViolatesMinBreak } from './scoring';
 import { createPieceNodes } from './placement';
 
 interface AbsRect {
@@ -97,6 +97,9 @@ export function unifyColumnWaste(
               if (minBreak > 0) {
                 const lateralResidual = bestOri.w - o.w;
                 if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                const wHeightResidual = freeWH - o.h;
+                if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
+                if (siblingViolatesMinBreak(zNode.filhos.map(w => w.valor), o.h, minBreak)) continue;
               }
               if (o.w <= bestOri.w && o.h <= freeWH) {
                 const wId2 = insertNode(tree, zNode.id, "W", o.h, 1);
@@ -508,6 +511,9 @@ export function collapseTreeWaste(
                 if (minBreak > 0) {
                   const lateralResidual = spaceW - o.w;
                   if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                  const wHeightResidual = freeH - o.h;
+                  if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
+                  if (siblingViolatesMinBreak(collapsedZ.filhos.map(w => w.valor), o.h, minBreak)) continue;
                 }
                 if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
                   bestArea = o.w * o.h;
@@ -578,10 +584,19 @@ export function collapseTreeWaste(
 
               for (let i = 0; i < remaining.length; i++) {
                 for (const o of oris(remaining[i])) {
-                  if (o.w <= freeW && o.h <= collapsedW.valor && o.w * o.h > bestArea) {
-                    bestArea = o.w * o.h;
-                    bestIdx = i;
-                    bestO = o;
+                  if (o.w <= freeW && o.h <= collapsedW.valor) {
+                    if (minBreak > 0) {
+                      const qResidual = freeW - o.w;
+                      if (qResidual > 0 && qResidual < minBreak) continue;
+                      const rResidual = collapsedW.valor - o.h;
+                      if (rResidual > 0 && rResidual < minBreak) continue;
+                      if (siblingViolatesMinBreak(collapsedW.filhos.map(q => q.valor), o.w, minBreak)) continue;
+                    }
+                    if (o.w * o.h > bestArea) {
+                      bestArea = o.w * o.h;
+                      bestIdx = i;
+                      bestO = o;
+                    }
                   }
                 }
               }
@@ -649,10 +664,17 @@ export function collapseTreeWaste(
 
                 for (let i = 0; i < remaining.length; i++) {
                   for (const o of oris(remaining[i])) {
-                    if (o.w <= spaceW && o.h <= freeH && o.w * o.h > bestArea) {
-                      bestArea = o.w * o.h;
-                      bestIdx = i;
-                      bestO = o;
+                    if (o.w <= spaceW && o.h <= freeH) {
+                      if (minBreak > 0) {
+                        const rResidual = freeH - o.h;
+                        if (rResidual > 0 && rResidual < minBreak) continue;
+                        if (siblingViolatesMinBreak(collapsedQ.filhos.map(r => r.valor), o.h, minBreak)) continue;
+                      }
+                      if (o.w * o.h > bestArea) {
+                        bestArea = o.w * o.h;
+                        bestIdx = i;
+                        bestO = o;
+                      }
                     }
                   }
                 }
@@ -1017,6 +1039,9 @@ export function regroupAdjacentStrips(
                   if (minBreak > 0) {
                     const lateralResidual = combinedW - o.w;
                     if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                    const wHeightResidual = stripH - usedH - o.h;
+                    if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
+                    if (siblingViolatesMinBreak(mergedZ.filhos.map(w => w.valor), o.h, minBreak)) continue;
                   }
                   if (o.w <= combinedW && o.h <= stripH - usedH && o.w * o.h > bestArea) {
                     bestArea = o.w * o.h;
@@ -1149,10 +1174,17 @@ export function regroupAdjacentStrips(
                   if (placedHere.includes(allToPlace[k])) continue;
                   for (const o of oris(allToPlace[k])) {
                     if (Math.abs(o.h - combinedH) > 0.5) continue;
-                    if (o.w <= zWidth - usedW && o.w * o.h > bestArea) {
-                      bestArea = o.w * o.h;
-                      bestIdx = k;
-                      bestO = o;
+                    if (o.w <= zWidth - usedW) {
+                      if (minBreak > 0) {
+                        const qResidual = zWidth - usedW - o.w;
+                        if (qResidual > 0 && qResidual < minBreak) continue;
+                        if (siblingViolatesMinBreak(mergedW.filhos.map(q => q.valor), o.w, minBreak)) continue;
+                      }
+                      if (o.w * o.h > bestArea) {
+                        bestArea = o.w * o.h;
+                        bestIdx = k;
+                        bestO = o;
+                      }
                     }
                   }
                 }

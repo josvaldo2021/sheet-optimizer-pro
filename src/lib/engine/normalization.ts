@@ -192,7 +192,11 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number, 
         if (vertical) {
           const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapW), multi: 1, filhos: [], label: containerInflatedW ? undefined : r.label };
           parentNode.filhos.push(node);
-          if (levelIdx + 1 < levelSequence.length) {
+          // At Q level (4), R child is only needed when piece height < W slot height.
+          // If r.h == bh, R.valor would equal W.valor — redundant.
+          const needsVerticalChild = levelIdx + 1 < levelSequence.length &&
+            (levelIdx < 4 || containerInflatedW || Math.round(r.h) < Math.round(bh));
+          if (needsVerticalChild) {
             const nextLevel = levelSequence[levelIdx + 1];
             // Use REAL piece height, not snapH (snapH may have inflated to bh)
             const hNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.h), multi: 1, filhos: [], label: r.label };
@@ -208,7 +212,11 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number, 
         } else {
           const node: TreeNode = { id: gid(), tipo: level, valor: Math.round(snapH), multi: 1, filhos: [], label: containerInflatedH ? undefined : r.label };
           parentNode.filhos.push(node);
-          if (levelIdx + 1 < levelSequence.length) {
+          // At W level (3), Q child is only needed when piece width < Z slot width.
+          // If r.w == bw, Q.valor would equal Z.valor — redundant.
+          const needsHorizontalChild = levelIdx + 1 < levelSequence.length &&
+            (levelIdx < 3 || containerInflatedH || Math.round(r.w) < Math.round(bw));
+          if (needsHorizontalChild) {
             const nextLevel = levelSequence[levelIdx + 1];
             // Use REAL piece width
             const wNode: TreeNode = { id: gid(), tipo: nextLevel, valor: Math.round(r.w), multi: 1, filhos: [], label: r.label };
@@ -277,7 +285,10 @@ function buildCanonicalTree(rects: AbsRect[], usableW: number, usableH: number, 
 
         if (fillsW && fillsH) {
           node.label = r.label;
-          if (levelIdx + 1 < levelSequence.length) {
+          // Only add a child at X/Y/Z levels (0–2). At W(3) and Q(4) the piece
+          // dimensions are already captured by Z.valor × W.valor — adding Q or R
+          // with the same values would be redundant.
+          if (levelIdx + 1 < levelSequence.length && levelIdx < 3) {
             const nextLevel = levelSequence[levelIdx + 1];
             const childValor = vertical ? Math.round(segBh) : Math.round(segBw);
             const child: TreeNode = { id: gid(), tipo: nextLevel, valor: childValor, multi: 1, filhos: [], label: r.label };

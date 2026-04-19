@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { insertNode, findNode } from './tree-utils';
-import { oris, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak, zResidualViolatesMinBreak } from './scoring';
+import { oris, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak, zResidualViolatesMinBreak, siblingViolatesMinBreak } from './scoring';
 import { createPieceNodes } from './placement';
 
 export function fillVoids(tree: TreeNode, remaining: Piece[], usableW: number, usableH: number, minBreak: number = 0): number {
@@ -173,13 +173,11 @@ function fillRectW(
       for (const o of oris(pc)) {
         if (o.w <= zWidth && o.h <= maxH) {
           if (minBreak > 0) {
-            const violates = zNode.filhos.some((w) => {
-              const diff = Math.abs(w.valor - o.h);
-              return diff > 0 && diff < minBreak;
-            });
-            if (violates) continue;
+            if (siblingViolatesMinBreak(zNode.filhos.map(w => w.valor), o.h, minBreak)) continue;
             const lateralResidual = zWidth - o.w;
             if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+            const wHeightResidual = maxH - o.h;
+            if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {

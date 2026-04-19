@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece } from './types';
 import { gid, createRoot, findNode, insertNode } from './tree-utils';
-import { oris, scoreFit, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak, zResidualViolatesMinBreak } from './scoring';
+import { oris, scoreFit, canResidualFitAnyPiece, getAllZCutPositionsInColumn, violatesZMinBreak, zResidualViolatesMinBreak, siblingViolatesMinBreak } from './scoring';
 import { fillVoids } from './void-filling';
 import { unifyColumnWaste, collapseTreeWaste, regroupAdjacentStrips, clampTreeHeights } from './post-processing';
 
@@ -577,6 +577,8 @@ export function runPlacement(
                 if (violatesW) continue;
                 const lateralResidual = zNodeCurrent.valor - wo.w;
                 if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                const wHeightResidual = freeWH_remaining - wo.h;
+                if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
               }
               if (wo.w <= zNodeCurrent.valor && wo.h <= freeWH_remaining) {
                 const actualRotated = wo.w !== pw.w;
