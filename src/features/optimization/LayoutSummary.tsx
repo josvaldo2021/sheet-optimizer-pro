@@ -27,11 +27,23 @@ const LayoutSummary = ({
     <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(210 25% 62%)" }}>
       Resumo dos Layouts {filterActiveLabels ? `(filtrado: ${filterActiveLabels.join(", ")})` : ""}
     </div>
-    <div className="text-[11px] mb-2" style={{ color: "hsl(210 25% 78%)" }}>
-      {filterActiveLabels
-        ? `${filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • ${filteredLayoutGroups.length} layout(s) único(s) — total: ${chapas.length}`
-        : `${chapas.length} chapa(s) total • ${layoutGroups.length} layout(s) único(s)`}
-    </div>
+    {(() => {
+      const groups = filterActiveLabels ? filteredLayoutGroups : layoutGroups;
+      const totalPieces = groups.reduce((s, g) => {
+        const perSheet = countAllocatedPieces(chapas[g.indices[0]].tree);
+        return s + perSheet * g.count;
+      }, 0);
+      return (
+        <div className="text-[11px] mb-2 flex flex-wrap gap-x-3 gap-y-0.5" style={{ color: "hsl(210 25% 78%)" }}>
+          {filterActiveLabels
+            ? <span>{filteredLayoutGroups.reduce((s, g) => s + g.count, 0)} chapa(s) filtrada(s) • {filteredLayoutGroups.length} layout(s) único(s) — total: {chapas.length}</span>
+            : <span>{chapas.length} chapa(s) • {layoutGroups.length} layout(s) único(s)</span>}
+          <span style={{ color: "hsl(210 80% 70%)", fontWeight: 700 }}>
+            {totalPieces} peças alocadas no total
+          </span>
+        </div>
+      );
+    })()}
 
     <div
       className="flex items-center justify-between px-2 py-1.5 rounded mb-2"
@@ -75,7 +87,12 @@ const LayoutSummary = ({
             onClick={() => onSelectLayout(group.indices[0], chapas[group.indices[0]].tree)}
           >
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold" style={{ color: "white" }}>Layout {gIdx + 1}</span>
+              <div className="flex flex-col">
+                <span className="text-[11px] font-bold" style={{ color: "white" }}>Layout {gIdx + 1}</span>
+                <span className="text-[9px] font-medium" style={{ color: "hsl(210 25% 60%)" }}>
+                  {pieceCount} peças alocadas
+                </span>
+              </div>
               {group.count > 1 && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "hsl(30 100% 45%)", color: "white" }}>
                   ×{group.count}
