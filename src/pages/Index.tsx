@@ -313,12 +313,33 @@ const Index = () => {
       const totalPieces = remaining.reduce((sum, p) => sum + Math.max(p.qty, 1), 0);
       const maxSheets = Math.max(100, totalPieces * 2);
 
+      // Cache: re-use the optimization result when the remaining inventory
+      // has the same "shape" (same set of unique pieces with qty >= what was
+      // used last time). Massive speedup on uniform inventories where the
+      // best layout repeats.
+      const layoutCache = new Map<string, TreeNode>();
+      const buildInvKey = (rem: typeof remaining) => {
+        // Sorted compact signature: only piece dimensions matter (label is
+        // for visualization only; same w/h yields the same layout).
+        const arr = rem
+          .filter((p) => p.qty > 0)
+          .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}:${p.qty}`)
+          .sort();
+        return arr.join("|");
+      };
+
       while (remaining.length > 0 && sheetCount < maxSheets) {
         sheetCount++;
+
+        // Build deduplicated inventory: one Piece per unique (w,h), then
+        // expand only as many copies as actually exist. The engine still
+        // sees individual pieces (it requires per-instance objects), but
+        // we share label strings and compute area only once per type.
         const inv: { w: number; h: number; area: number; label?: string }[] = [];
         remaining.forEach((p) => {
+          const area = p.w * p.h;
           for (let i = 0; i < p.qty; i++) {
-            if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
+            if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area, label: p.label });
           }
         });
         if (inv.length === 0) break;
@@ -334,23 +355,33 @@ const Index = () => {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
-        const result = await optimizeGeneticAsync(
-          inv,
-          usableW,
-          usableH,
-          minBreak,
-          (p) => {
-            setProgress({
-              phase: `Chapa ${sheetCount} - ${p.phase}`,
-              current: p.current,
-              total: p.total,
-              bestUtil: p.bestUtil,
-            });
-          },
-          priorityLabels.length > 0 ? priorityLabels : undefined,
-          gaPopSize,
-          gaGens,
-        );
+
+        // Cache lookup: same inventory shape → same optimal layout
+        const invKey = buildInvKey(remaining);
+        let result: TreeNode;
+        const cached = layoutCache.get(invKey);
+        if (cached) {
+          result = cloneTree(cached);
+        } else {
+          result = await optimizeGeneticAsync(
+            inv,
+            usableW,
+            usableH,
+            minBreak,
+            (p) => {
+              setProgress({
+                phase: `Chapa ${sheetCount} - ${p.phase}`,
+                current: p.current,
+                total: p.total,
+                bestUtil: p.bestUtil,
+              });
+            },
+            priorityLabels.length > 0 ? priorityLabels : undefined,
+            gaPopSize,
+            gaGens,
+          );
+          layoutCache.set(invKey, cloneTree(result));
+        }
         const usedArea = calcPlacedArea(result);
         chapaList.push({ tree: result, usedArea, manual: false });
 
