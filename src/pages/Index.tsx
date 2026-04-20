@@ -21,7 +21,7 @@ import {
 } from "@/lib/cnc-engine";
 import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { exportPdf } from "@/lib/export/pdf-export";
-import { exportLayoutsToExcel } from "@/lib/export/excel-export";
+import { printLayout } from "@/lib/export/print-layout";
 import SheetViewer from "@/components/SheetViewer";
 import SidebarSection from "@/components/SidebarSection";
 import SheetSetupPanel from "@/features/sheet-setup/SheetSetupPanel";
@@ -1255,7 +1255,10 @@ const Index = () => {
           setPdfFilename={setPdfFilename}
           onExport={() => {
             exportPdf({ chapas, layoutGroups, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb, utilization, filename: pdfFilename });
-            exportLayoutsToExcel(layoutGroups, pdfFilename);
+          }}
+          onPrintLayout={(groupIdx) => {
+            const group = filteredLayoutGroups[groupIdx];
+            if (group) printLayout({ group, groupIdx, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb });
           }}
           activeChapa={activeChapa}
           usableW={usableW}

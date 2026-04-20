@@ -1,6 +1,15 @@
 import { TreeNode } from "@/lib/cnc-engine";
 import { LayoutGroup } from "@/lib/export/layout-utils";
 
+function countAllocatedPieces(node: TreeNode, mult = 1): number {
+  const m = mult * node.multi;
+  const t = node.tipo;
+  if (t === "R" || ((t === "Z" || t === "W" || t === "Q") && node.filhos.length === 0)) {
+    return m;
+  }
+  return node.filhos.reduce((s, child) => s + countAllocatedPieces(child, m), 0);
+}
+
 interface Props {
   chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>;
   layoutGroups: LayoutGroup[];
@@ -13,12 +22,13 @@ interface Props {
   lastLeftoverInfo: { w: number; h: number } | null;
   onSelectLayout: (idx: number, tree: TreeNode) => void;
   onDeleteLayout: (origIdx: number) => void;
+  onPrintLayout: (groupIdx: number) => void;
 }
 
 const LayoutSummary = ({
   chapas, layoutGroups, filteredLayoutGroups, filterActiveLabels,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
-  onSelectLayout, onDeleteLayout,
+  onSelectLayout, onDeleteLayout, onPrintLayout,
 }: Props) => (
   <div
     className="mt-3 p-2 rounded"
@@ -64,6 +74,7 @@ const LayoutSummary = ({
 
     {filteredLayoutGroups.map((group, gIdx) => {
       const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
+      const pieceCount = countAllocatedPieces(chapas[group.indices[0]].tree);
       return (
         <div key={gIdx} className="flex items-center gap-1 mb-1">
           <button
@@ -75,7 +86,12 @@ const LayoutSummary = ({
             onClick={() => onSelectLayout(group.indices[0], chapas[group.indices[0]].tree)}
           >
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold" style={{ color: "white" }}>Layout {gIdx + 1}</span>
+              <div className="flex flex-col">
+                <span className="text-[11px] font-bold" style={{ color: "white" }}>Layout {gIdx + 1}</span>
+                <span className="text-[9px] font-medium" style={{ color: "hsl(210 25% 60%)" }}>
+                  {pieceCount} peças alocadas
+                </span>
+              </div>
               {group.count > 1 && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "hsl(30 100% 45%)", color: "white" }}>
                   ×{group.count}
@@ -93,12 +109,20 @@ const LayoutSummary = ({
             </span>
           </button>
           <button
+            onClick={(e) => { e.stopPropagation(); onPrintLayout(gIdx); }}
+            className="p-1.5 rounded transition-all cursor-pointer hover:brightness-125 hover:scale-110"
+            style={{ background: "hsl(211 60% 25%)", border: "1px solid hsl(211 60% 38%)" }}
+            title={`Imprimir layout ${gIdx + 1}`}
+          >
+            <span className="text-[10px]">🖨️</span>
+          </button>
+          <button
             onClick={(e) => {
               e.stopPropagation();
               const origIdx = layoutGroups.findIndex((g) => g.indices[0] === group.indices[0]);
               onDeleteLayout(origIdx >= 0 ? origIdx : gIdx);
             }}
-            className="p-1.5 rounded transition-colors cursor-pointer"
+            className="p-1.5 rounded transition-all cursor-pointer hover:brightness-125 hover:scale-110"
             style={{ background: "hsl(0 50% 25%)", border: "1px solid hsl(0 40% 35%)" }}
             title={`Excluir layout ${gIdx + 1} (×${group.count}) e devolver peças ao inventário`}
           >

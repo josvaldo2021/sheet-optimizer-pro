@@ -171,35 +171,35 @@ function drawTreePieces(
       const y1 = py + Math.max(0, -i);
       const x2 = px + Math.min(pw, i + ph);
       const y2 = py + Math.min(ph, ph - (i + ph - pw));
-      
+
       // Basic diagonal line clipping logic
       // Line: x - x0 = y0 - y  => x + y = x0 + y0
       // Let's use a simpler fixed-length segment clipping for the rectangle
       const lineX1 = Math.max(px, px + i);
-      const lineY1 = Math.max(py, py + (pw - (px+i-px)) ); // Wrong logic, let's simplify
+      const lineY1 = Math.max(py, py + (pw - (px + i - px))); // Wrong logic, let's simplify
     }
-    
+
     // Simpler hatching: vertical/horizontal stripes or just diagonal lines with bounding box check
     for (let d = step; d < pw + ph; d += step) {
-        let x1 = px + d;
-        let y1 = py;
-        let x2 = px;
-        let y2 = py + d;
-        
-        // Clip to rectangle
-        if (x1 > px + pw) {
-            y1 = py + (x1 - (px + pw));
-            x1 = px + pw;
-        }
-        if (y2 > py + ph) {
-            x2 = px + (y2 - (py + ph));
-            y2 = py + ph;
-        }
-        
-        if (x1 >= px && x1 <= px + pw && x2 >= px && x2 <= px + pw &&
-            y1 >= py && y1 <= py + ph && y2 >= py && y2 <= py + ph) {
-            doc.line(x1, y1, x2, y2);
-        }
+      let x1 = px + d;
+      let y1 = py;
+      let x2 = px;
+      let y2 = py + d;
+
+      // Clip to rectangle
+      if (x1 > px + pw) {
+        y1 = py + (x1 - (px + pw));
+        x1 = px + pw;
+      }
+      if (y2 > py + ph) {
+        x2 = px + (y2 - (py + ph));
+        y2 = py + ph;
+      }
+
+      if (x1 >= px && x1 <= px + pw && x2 >= px && x2 <= px + pw &&
+        y1 >= py && y1 <= py + ph && y2 >= py && y2 <= py + ph) {
+        doc.line(x1, y1, x2, y2);
+      }
     }
 
     if (pw > 10 && ph > 5) {

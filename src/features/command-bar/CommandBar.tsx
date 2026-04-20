@@ -117,7 +117,7 @@ const CommandBar = ({
 
         <button
           onClick={() => onSaveLayout(replicationInfo?.count || 1)}
-          className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+          className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap transition-all hover:bg-green-700 hover:brightness-110"
           style={{ background: "hsl(120 60% 25%)", fontWeight: "bold" }}
           title="Salvar layout atual na lista de chapas e deduzir peças do inventário"
         >
@@ -125,7 +125,7 @@ const CommandBar = ({
         </button>
         <button
           onClick={onClear}
-          className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+          className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap transition-all hover:bg-red-600 hover:brightness-125"
           style={{ background: "hsl(0 50% 30%)", fontWeight: "bold" }}
           title="Limpar a chapa atual e começar um novo layout do zero"
         >
@@ -133,7 +133,7 @@ const CommandBar = ({
         </button>
         <button
           onClick={onCalcReplication}
-          className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
+          className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap transition-all hover:bg-purple-700 hover:brightness-110"
           style={{ background: "hsl(270 60% 35%)", fontWeight: "bold" }}
           title="Calcular quantas vezes o layout atual pode ser repetido com o inventário disponível"
         >

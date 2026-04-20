@@ -70,7 +70,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
           {pieces.length > 0 && (
             <button
               onClick={() => { setPieces([]); setPieceFilter(""); }}
-              className="cnc-btn-secondary flex-1"
+              className="cnc-btn-secondary flex-1 transition-all hover:brightness-125 hover:bg-red-700"
               style={{ background: "hsl(0 45% 25%)" }}
             >
               LIMPAR LISTA
@@ -149,11 +149,10 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
               />
               <button
                 onClick={() => setPieces((ps) => ps.filter((x) => x.id !== p.id))}
-                className="text-[12px] cursor-pointer hover:text-red-400 transition-colors"
-                style={{ color: "hsl(210 25% 55%)", background: "none", border: "none", padding: 0 }}
+                className="w-5 h-5 flex items-center justify-center rounded transition-all bg-transparent text-zinc-400 hover:bg-red-600 hover:text-white border-0 p-0 cursor-pointer"
                 title="Remover peça"
               >
-                ×
+                <span className="text-[18px] leading-none mb-0.5">×</span>
               </button>
             </div>
           ))}

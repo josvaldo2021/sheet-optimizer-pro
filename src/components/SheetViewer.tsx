@@ -128,15 +128,15 @@ export default function SheetViewer({
 
       const fs = vertical
         ? Math.min(
-            byBox,
-            (longSide * 0.92) / Math.max(dimText.length, idText?.length || 1),
-            (shortSide * 0.9) / (lines * 1.1),
-          )
+          byBox,
+          (longSide * 0.92) / Math.max(dimText.length, idText?.length || 1),
+          (shortSide * 0.9) / (lines * 1.1),
+        )
         : Math.min(
-            byBox,
-            availW / (Math.max(dimText.length, idText?.length || 0) * 0.58),
-            availH / (lines * 1.2),
-          );
+          byBox,
+          availW / (Math.max(dimText.length, idText?.length || 0) * 0.58),
+          availH / (lines * 1.2),
+        );
 
       return Math.max(6, Math.min(26, fs));
     };

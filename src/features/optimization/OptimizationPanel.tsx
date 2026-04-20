@@ -23,6 +23,7 @@ interface Props {
   pdfFilename: string;
   setPdfFilename: (v: string) => void;
   onExport: () => void;
+  onPrintLayout: (groupIdx: number) => void;
   activeChapa: number;
   usableW: number;
   usableH: number;
@@ -37,7 +38,7 @@ const OptimizationPanel = ({
   priorityIds, setPriorityIds, filterActiveLabels, setFilterActiveLabels,
   gaPopSize, setGaPopSize, gaGens, setGaGens, isOptimizing, onOptimize,
   progress, globalProgress, layoutGroups, filteredLayoutGroups, chapas,
-  onConfirmPlan, pdfFilename, setPdfFilename, onExport,
+  onConfirmPlan, pdfFilename, setPdfFilename, onExport, onPrintLayout,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
   setStatus, onSelectLayout, onDeleteLayout,
 }: Props) => {
@@ -177,7 +178,7 @@ const OptimizationPanel = ({
               style={{ background: "hsl(211 60% 35%)", border: "1px solid hsl(211 60% 45%)", padding: "12px", fontSize: "14px", fontWeight: "bold" }}
               onClick={onExport}
             >
-              📥 EXPORTAR ARQUIVOS
+              📄 EXPORTAR PDF
             </button>
           </div>
         )}
@@ -196,6 +197,7 @@ const OptimizationPanel = ({
             lastLeftoverInfo={lastLeftoverInfo}
             onSelectLayout={onSelectLayout}
             onDeleteLayout={onDeleteLayout}
+            onPrintLayout={onPrintLayout}
           />
         )}
       </div>
