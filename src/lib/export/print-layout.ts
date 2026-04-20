@@ -1,4 +1,4 @@
-import { TreeNode } from '../engine/cnc-engine';
+import { TreeNode } from '../cnc-engine';
 import { LayoutGroup } from './layout-utils';
 
 export interface PrintLayoutOptions {

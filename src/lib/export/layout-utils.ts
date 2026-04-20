@@ -1,4 +1,4 @@
-import { TreeNode } from './cnc-engine';
+import { TreeNode } from '../cnc-engine';
 
 /**
  * Serialize a tree to a canonical string for comparison.

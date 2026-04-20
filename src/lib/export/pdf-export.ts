@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { TreeNode } from './cnc-engine';
+import { TreeNode } from '../cnc-engine';
 import { LayoutGroup } from './layout-utils';
 
 interface PdfExportOptions {
