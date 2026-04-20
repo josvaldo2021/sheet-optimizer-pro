@@ -465,14 +465,11 @@ const Index = () => {
 
     await new Promise((r) => setTimeout(r, 20));
 
-    // Each entry: [sortFn, label] — different piece orderings to explore the multi-sheet space
+    // Each entry: [sortFn, label] — keep only the highest-value variants.
+    // Reduced from 6 to 2 for ~3× speedup; the others rarely beat these.
     const sortVariants: Array<[(a: PieceItem, b: PieceItem) => number, string] | [undefined, string]> = [
       [undefined, "ordem original"],
       [(a, b) => (b.w * b.h) - (a.w * a.h), "área desc"],
-      [(a, b) => (a.w * a.h) - (b.w * b.h), "área asc"],
-      [(a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h), "maior dim desc"],
-      [(a, b) => (b.w + b.h) - (a.w + a.h), "perímetro desc"],
-      [(a, b) => b.h - a.h, "altura desc"],
     ];
 
     const candidates: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }[]> = [];
