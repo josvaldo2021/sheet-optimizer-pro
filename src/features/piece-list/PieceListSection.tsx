@@ -149,8 +149,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
               />
               <button
                 onClick={() => setPieces((ps) => ps.filter((x) => x.id !== p.id))}
-                className="text-[12px] cursor-pointer hover:text-red-400 transition-colors"
-                style={{ color: "hsl(210 25% 55%)", background: "none", border: "none", padding: 0 }}
+                className="btn-delete-piece text-[12px]"
                 title="Remover peça"
               >
                 ×

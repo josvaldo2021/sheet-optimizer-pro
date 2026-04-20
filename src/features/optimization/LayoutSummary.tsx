@@ -13,12 +13,13 @@ interface Props {
   lastLeftoverInfo: { w: number; h: number } | null;
   onSelectLayout: (idx: number, tree: TreeNode) => void;
   onDeleteLayout: (origIdx: number) => void;
+  onPrintLayout: (chapaIdx: number, layoutNum: number, count: number) => void;
 }
 
 const LayoutSummary = ({
   chapas, layoutGroups, filteredLayoutGroups, filterActiveLabels,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
-  onSelectLayout, onDeleteLayout,
+  onSelectLayout, onDeleteLayout, onPrintLayout,
 }: Props) => (
   <div
     className="mt-3 p-2 rounded"
@@ -113,10 +114,21 @@ const LayoutSummary = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
+              onPrintLayout(group.indices[0], gIdx + 1, group.count);
+            }}
+            className="p-1.5 rounded cursor-pointer transition-colors"
+            style={{ background: "hsl(211 60% 25%)", border: "1px solid hsl(211 60% 38%)", color: "hsl(210 80% 75%)" }}
+            title={`Imprimir layout ${gIdx + 1}`}
+          >
+            <span className="text-[10px]">🖨️</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
               const origIdx = layoutGroups.findIndex((g) => g.indices[0] === group.indices[0]);
               onDeleteLayout(origIdx >= 0 ? origIdx : gIdx);
             }}
-            className="p-1.5 rounded transition-colors cursor-pointer"
+            className="btn-delete-layout p-1.5 rounded cursor-pointer"
             style={{ background: "hsl(0 50% 25%)", border: "1px solid hsl(0 40% 35%)" }}
             title={`Excluir layout ${gIdx + 1} (×${group.count}) e devolver peças ao inventário`}
           >

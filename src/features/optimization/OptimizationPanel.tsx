@@ -31,6 +31,7 @@ interface Props {
   setStatus: (s: { msg: string; type: string }) => void;
   onSelectLayout: (idx: number, tree: TreeNode) => void;
   onDeleteLayout: (idx: number) => void;
+  onPrintLayout: (chapaIdx: number, layoutNum: number, count: number) => void;
 }
 
 const OptimizationPanel = ({
@@ -39,7 +40,7 @@ const OptimizationPanel = ({
   progress, globalProgress, layoutGroups, filteredLayoutGroups, chapas,
   onConfirmPlan, pdfFilename, setPdfFilename, onExport,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
-  setStatus, onSelectLayout, onDeleteLayout,
+  setStatus, onSelectLayout, onDeleteLayout, onPrintLayout,
 }: Props) => {
   const SEGMENTS = 12;
 
@@ -196,6 +197,7 @@ const OptimizationPanel = ({
             lastLeftoverInfo={lastLeftoverInfo}
             onSelectLayout={onSelectLayout}
             onDeleteLayout={onDeleteLayout}
+            onPrintLayout={onPrintLayout}
           />
         )}
       </div>

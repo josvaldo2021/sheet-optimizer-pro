@@ -1049,6 +1049,181 @@ const Index = () => {
     [expandedLotId],
   );
 
+  const printLayout = useCallback((chapaIdx: number, layoutNum: number, count: number) => {
+    const chapa = chapas[chapaIdx];
+    if (!chapa) return;
+
+    const T = chapa.tree.transposed || false;
+    type PP = { x: number; y: number; w: number; h: number; label?: string; isWaste: boolean; dim: string };
+    const pieces: PP[] = [];
+
+    const dLabel = (d1: number, d2: number) =>
+      T ? `${Math.round(d2)}×${Math.round(d1)}` : `${Math.round(d1)}×${Math.round(d2)}`;
+
+    let xOff = 0;
+    chapa.tree.filhos.forEach((xNode) => {
+      for (let ix = 0; ix < xNode.multi; ix++) {
+        const cx = xOff;
+        let yOff = 0;
+        xNode.filhos.forEach((yNode) => {
+          for (let iy = 0; iy < yNode.multi; iy++) {
+            const cy = yOff;
+            let zOff = 0;
+            yNode.filhos.forEach((zNode) => {
+              for (let iz = 0; iz < zNode.multi; iz++) {
+                if (zNode.filhos.length === 0) {
+                  pieces.push({ x: T ? cy : cx + zOff, y: T ? cx + zOff : cy, w: T ? yNode.valor : zNode.valor, h: T ? zNode.valor : yNode.valor, label: zNode.label, isWaste: !zNode.label, dim: dLabel(zNode.valor, yNode.valor) });
+                } else {
+                  let wOff = 0;
+                  zNode.filhos.forEach((wNode) => {
+                    for (let iw = 0; iw < wNode.multi; iw++) {
+                      if (wNode.filhos.length === 0) {
+                        pieces.push({ x: T ? cy + wOff : cx + zOff, y: T ? cx + zOff : cy + wOff, w: T ? wNode.valor : zNode.valor, h: T ? zNode.valor : wNode.valor, label: wNode.label, isWaste: !wNode.label, dim: dLabel(zNode.valor, wNode.valor) });
+                      } else {
+                        let qOff = 0;
+                        wNode.filhos.forEach((qNode) => {
+                          for (let iq = 0; iq < qNode.multi; iq++) {
+                            if (qNode.filhos.length === 0) {
+                              pieces.push({ x: T ? cy + wOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff, w: T ? wNode.valor : qNode.valor, h: T ? qNode.valor : wNode.valor, label: qNode.label, isWaste: !qNode.label, dim: dLabel(qNode.valor, wNode.valor) });
+                            } else {
+                              let rOff = 0;
+                              qNode.filhos.forEach((rNode) => {
+                                for (let ir = 0; ir < rNode.multi; ir++) {
+                                  pieces.push({ x: T ? cy + wOff + rOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff + rOff, w: T ? rNode.valor : qNode.valor, h: T ? qNode.valor : rNode.valor, label: rNode.label, isWaste: !rNode.label, dim: dLabel(qNode.valor, rNode.valor) });
+                                  rOff += rNode.valor;
+                                }
+                              });
+                            }
+                            qOff += qNode.valor;
+                          }
+                        });
+                      }
+                      wOff += wNode.valor;
+                    }
+                  });
+                }
+                zOff += zNode.valor;
+              }
+            });
+            yOff += yNode.valor;
+          }
+        });
+        xOff += xNode.valor;
+      }
+    });
+
+    const SVG_W = 760;
+    const sc = SVG_W / chapaW;
+    const SVG_H = Math.round(chapaH * sc);
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const piecesSvg = pieces.map((p) => {
+      const px = (ml + p.x) * sc;
+      const py = (chapaH - mb - p.y - p.h) * sc;
+      const pw = p.w * sc;
+      const ph = p.h * sc;
+      if (p.isWaste) {
+        const fs = Math.max(7, Math.min(11, Math.min(pw, ph) * 0.12));
+        return `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="#e0e0e0" stroke="#bbb" stroke-width="0.5"/>
+<text x="${(px+pw/2).toFixed(1)}" y="${(py+ph/2).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="#aaa" font-size="${fs}" font-family="Arial">SOBRA</text>`;
+      }
+      const fs = Math.max(9, Math.min(28, Math.min(pw, ph) * 0.22));
+      const idFs = Math.max(8, fs * 0.78);
+      const hasId = !!p.label;
+      const textCX = (px + pw / 2).toFixed(1);
+      const midY = py + ph / 2;
+      const dimY = hasId ? (midY + idFs * 0.6).toFixed(1) : midY.toFixed(1);
+      const idY = hasId ? (midY - fs * 0.6).toFixed(1) : "";
+      return `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="white" stroke="#2a2a2a" stroke-width="1.5"/>
+${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline="middle" fill="#0f2d6e" font-size="${idFs.toFixed(1)}" font-weight="bold" font-family="Arial,sans-serif">${esc(p.label!)}</text>` : ""}
+<text x="${textCX}" y="${dimY}" text-anchor="middle" dominant-baseline="middle" fill="#1a1a1a" font-size="${fs.toFixed(1)}" font-family="Arial,monospace">${p.dim}</text>`;
+    }).join("\n");
+
+    const usableLeft = ml * sc;
+    const usableTop = mt * sc;
+    const usableW_px = usableW * sc;
+    const usableH_px = usableH * sc;
+    const pieceCount = pieces.filter((p) => !p.isWaste).length;
+    const util = usableW > 0 && usableH > 0 ? ((chapa.usedArea / (usableW * usableH)) * 100).toFixed(1) : "0";
+    const utilColor = parseFloat(util) > 80 ? "#16a34a" : parseFloat(util) > 60 ? "#d97706" : "#dc2626";
+    const dateStr = new Date().toLocaleString("pt-BR");
+
+    const legendRows = pieces
+      .filter((p) => !p.isWaste)
+      .reduce<Array<{ id: string; dim: string; qty: number }>>((acc, p) => {
+        const key = `${p.label || ""}||${p.dim}`;
+        const existing = acc.find((r) => `${r.id}||${r.dim}` === key);
+        if (existing) existing.qty++;
+        else acc.push({ id: p.label || "—", dim: p.dim, qty: 1 });
+        return acc;
+      }, []);
+
+    const legendHtml = legendRows.map((r, i) =>
+      `<tr style="background:${i % 2 === 0 ? "#f9fafb" : "#fff"}">
+        <td style="padding:5px 10px;font-weight:bold;color:#0f2d6e">${r.id}</td>
+        <td style="padding:5px 10px;font-family:monospace">${r.dim} mm</td>
+        <td style="padding:5px 10px;text-align:center;font-weight:bold">${r.qty}</td>
+      </tr>`
+    ).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Layout ${layoutNum} — Sheet Optimizer</title>
+  <style>
+    @media print { .no-print { display:none; } body { margin:0; padding:12px; } }
+    body { font-family:Arial,sans-serif; color:#111; padding:24px; max-width:900px; margin:0 auto; }
+    h1 { font-size:24px; margin:0 0 4px; color:#0f2d6e; letter-spacing:-0.02em; }
+    .sub { color:#555; font-size:13px; margin-bottom:16px; }
+    .meta { display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px; padding:12px 16px; background:#f0f4ff; border-radius:8px; border:1px solid #c8d4f0; }
+    .meta-item { display:flex; flex-direction:column; }
+    .meta-label { font-size:9px; text-transform:uppercase; color:#888; letter-spacing:.06em; margin-bottom:2px; }
+    .meta-value { font-size:18px; font-weight:bold; color:#0f2d6e; }
+    .sheet-wrap { text-align:center; margin:20px 0; }
+    svg { border:2px solid #888; border-radius:4px; background:#ccc; max-width:100%; }
+    .sheet-caption { font-size:11px; color:#888; margin-top:6px; }
+    h2 { font-size:14px; color:#333; margin:24px 0 8px; border-bottom:1px solid #e5e7eb; padding-bottom:4px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    thead tr { background:#1e3a6e; color:#fff; }
+    thead th { padding:7px 10px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+    .footer { margin-top:28px; border-top:1px solid #e5e7eb; padding-top:10px; font-size:10px; color:#aaa; }
+    .print-btn { background:#1e3a6e; color:white; border:none; padding:10px 24px; font-size:14px; border-radius:6px; cursor:pointer; margin-bottom:16px; }
+    .print-btn:hover { background:#2a4e8e; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  <h1>Layout ${layoutNum}${count > 1 ? ` <span style="font-size:16px;color:#e67e00;font-weight:600">(×${count} chapas idênticas)</span>` : ""}</h1>
+  <div class="sub">Sheet Optimizer Pro — Plano de Corte</div>
+  <div class="meta">
+    <div class="meta-item"><span class="meta-label">Data / Hora</span><span class="meta-value">${dateStr}</span></div>
+    <div class="meta-item"><span class="meta-label">Chapa</span><span class="meta-value">${chapaW} × ${chapaH} mm</span></div>
+    <div class="meta-item"><span class="meta-label">Área útil</span><span class="meta-value">${usableW} × ${usableH} mm</span></div>
+    <div class="meta-item"><span class="meta-label">Aproveitamento</span><span class="meta-value" style="color:${utilColor}">${util}%</span></div>
+    <div class="meta-item"><span class="meta-label">Peças alocadas</span><span class="meta-value">${pieceCount}</span></div>
+  </div>
+  <div class="sheet-wrap">
+    <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}">
+      <rect x="0" y="0" width="${SVG_W}" height="${SVG_H}" fill="#cccccc" stroke="#555" stroke-width="2"/>
+      <rect x="${usableLeft.toFixed(1)}" y="${usableTop.toFixed(1)}" width="${usableW_px.toFixed(1)}" height="${usableH_px.toFixed(1)}" fill="#f0f0f0" stroke="#999" stroke-width="1" stroke-dasharray="5,3"/>
+      ${piecesSvg}
+    </svg>
+    <div class="sheet-caption">Chapa ${chapaW}×${chapaH} mm · Margem L${ml} R${mr} T${mt} B${mb} mm · Área útil ${usableW}×${usableH} mm</div>
+  </div>
+  <h2>Peças neste layout (${pieceCount} no total)</h2>
+  <table>
+    <thead><tr><th>ID / Referência</th><th>Dimensão</th><th style="text-align:center">Qtd</th></tr></thead>
+    <tbody>${legendHtml}</tbody>
+  </table>
+  <div class="footer">Gerado em ${dateStr} · Sheet Optimizer Pro</div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=960,height=800");
+    if (win) { win.document.write(html); win.document.close(); }
+  }, [chapas, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb]);
+
   const printLot = useCallback((lot: Lot) => {
     const totalPieces = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
     const dateStr = new Date(lot.date).toLocaleString("pt-BR");
@@ -1265,6 +1440,7 @@ const Index = () => {
           setStatus={setStatus}
           onSelectLayout={(idx, t) => { setActiveChapa(idx); setTree(t); setSelectedId("root"); }}
           onDeleteLayout={deleteLayout}
+          onPrintLayout={printLayout}
         />
 
                 {/* ─── SECTION 4: Estrutura de Corte (advanced) ─── */}

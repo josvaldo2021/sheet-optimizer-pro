@@ -642,3 +642,25 @@
 .cnc-scroll::-webkit-scrollbar-track { background: hsl(222 47% 9%); }
 .cnc-scroll::-webkit-scrollbar-thumb { background: hsl(222 47% 32%); border-radius: 3px; }
 .cnc-scroll { scrollbar-width: thin; scrollbar-color: hsl(222 47% 32%) hsl(222 47% 9%); }
+
+/* ===== Delete button hover effects ===== */
+.btn-delete-layout {
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-delete-layout:hover {
+  background: hsl(0 72% 42%) !important;
+  border-color: hsl(0 65% 55%) !important;
+  color: white;
+}
+
+.btn-delete-piece {
+  transition: color 0.15s;
+  color: hsl(210 25% 55%);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.btn-delete-piece:hover {
+  color: hsl(0 70% 55%);
+}
