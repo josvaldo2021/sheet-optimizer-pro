@@ -58,9 +58,21 @@ export function optimizeV6(
 
   const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
 
+  // Performance gating: count repetitions among unique (w,h) pairs.
+  // Grouping variants are expensive AND only useful when many identical
+  // pieces exist. With mostly unique pieces (typical large jobs), they
+  // burn CPU without ever winning. Skip them for n>50 with low repetition.
+  const dimCounts = new Map<string, number>();
+  for (const p of pieces) {
+    const k = `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}`;
+    dimCounts.set(k, (dimCounts.get(k) || 0) + 1);
+  }
+  const maxRepetition = Math.max(0, ...Array.from(dimCounts.values()));
+  const skipExpensiveGrouping = pieces.length > 50 && maxRepetition < 3;
+
   const pieceVariants: Piece[][] = hasLabels
     ? [pieces, rotatedPieces]
-    : useGrouping === false
+    : useGrouping === false || skipExpensiveGrouping
       ? [pieces, rotatedPieces]
       : [
           pieces,

@@ -217,11 +217,13 @@ export async function optimizeGeneticAsync(
 
   function evaluate(ind: GAIndividual): { tree: TreeNode; fitness: number; transposed: boolean } {
     const work = buildPieces(ind);
-    const lookahead = Math.min(3, Math.ceil(work.length / 5));
+    // Lookahead reduced from min(3, n/5) to 1 for ~3× speedup. The next
+    // sheet will be re-optimized in the next outer iteration anyway.
+    const lookahead = 1;
     const eW = ind.transposed ? usableH : usableW;
     const eH = ind.transposed ? usableW : usableH;
     const horizontalHint = getHorizontalStripHint(ind, work, eW, eH);
-    const result = simulateSheets(work, eW, eH, minBreak, lookahead || 1, horizontalHint);
+    const result = simulateSheets(work, eW, eH, minBreak, lookahead, horizontalHint);
     return { tree: result.firstTree, fitness: result.fitness, transposed: ind.transposed };
   }
 
