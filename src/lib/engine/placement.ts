@@ -148,38 +148,174 @@ export function runPlacement(
     // X = full sheet width (neutral vertical cut)
     const xId = insertNode(tree, "root", "X", usableW, 1);
     const xNode = findNode(tree, xId)!;
-    // Y = base piece height (first effective horizontal cut)
-    const yId = insertNode(tree, xNode.id, "Y", baseH, 1);
-    const yNode = findNode(tree, yId)!;
 
-    // Place the base piece as a Z column within the Y strip
+    // --- Detect vertical stacking opportunity for the pre-seeded Y strip ---
+    // If identical pieces can stack and the resulting taller Z-residual accommodates
+    // pieces that wouldn't fit in a single-height strip, use a combined Y strip.
     const basePiece = remaining[0];
-    placedArea += createPieceNodes(tree, yNode, basePiece, baseW, baseH, baseW !== basePiece.w);
-    remaining.shift();
+    const isGroupedBase = basePiece.count && basePiece.count > 1;
+    let preStackCount = 1;
+    const preStackIndices: number[] = [];
 
-    // Fill remaining width in the Y strip with other pieces
-    let freeZW = usableW - baseW;
-    for (let i = 0; i < remaining.length && freeZW > 0; i++) {
-      const pc = remaining[i];
-      let bestOri: { w: number; h: number } | null = null;
-      let bestScore = Infinity;
-
-      for (const o of oris(pc)) {
-        if (o.w <= freeZW && o.h <= baseH) {
-          if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
-          const score = (baseH - o.h) * 2 + (freeZW - o.w);
-          if (score < bestScore) {
-            bestScore = score;
-            bestOri = o;
+    if (!isGroupedBase) {
+      for (let i = 1; i < remaining.length; i++) {
+        const pc = remaining[i];
+        if (pc.count && pc.count > 1) continue;
+        if (oris(pc).some(o => o.w === baseW && o.h === baseH)) {
+          if ((preStackCount + 1) * baseH <= usableH) {
+            preStackCount++;
+            preStackIndices.push(i);
           }
         }
       }
+    }
 
-      if (bestOri) {
-        placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
-        freeZW -= bestOri.w;
-        remaining.splice(i, 1);
-        i--;
+    let useCombinedPreSeed = false;
+    let bestPreStack = 1;
+
+    if (preStackCount >= 2) {
+      const zResidual = usableW - baseW;
+      const nonStackPieces = remaining.filter((_, idx) =>
+        idx > 0 && !preStackIndices.includes(idx)
+      );
+
+      // Try stacking from max down to 2
+      for (let tryStack = preStackCount; tryStack >= 2; tryStack--) {
+        const combinedH = tryStack * baseH;
+        const freeHAfter = usableH - combinedH;
+
+        // Does any non-stack piece benefit from the taller Z-residual?
+        const benefitsFromCombining = zResidual > 0 && nonStackPieces.some(p =>
+          oris(p).some(o => o.w <= zResidual && o.h <= combinedH && o.h > baseH)
+        );
+        if (!benefitsFromCombining) continue;
+
+        // Verify remaining non-stackable pieces can still fit somewhere
+        // (in the leftover column height OR in the Z-residual of this strip)
+        const nonStackNeedBelow = nonStackPieces.filter(p =>
+          !oris(p).some(o => o.w <= zResidual && o.h <= combinedH)
+        );
+        const allCanFit = nonStackNeedBelow.length === 0 ||
+          freeHAfter > 0 && nonStackNeedBelow.some(p =>
+            oris(p).some(o => o.h <= freeHAfter)
+          );
+
+        if (allCanFit) {
+          useCombinedPreSeed = true;
+          bestPreStack = tryStack;
+          break;
+        }
+      }
+    }
+
+    const effectiveH = useCombinedPreSeed ? bestPreStack * baseH : baseH;
+    const yId = insertNode(tree, xNode.id, "Y", effectiveH, 1);
+    const yNode = findNode(tree, yId)!;
+
+    if (useCombinedPreSeed) {
+      // === Combined pre-seed: place stacked pieces in first Z column ===
+      const zId = insertNode(tree, yNode.id, "Z", baseW, 1);
+      const zNode = findNode(tree, zId)!;
+
+      // Base piece: first W node
+      const wId = insertNode(tree, zNode.id, "W", baseH, 1);
+      const wNode = findNode(tree, wId)!;
+      if (basePiece.label) { wNode.label = basePiece.label; zNode.label = basePiece.label; }
+      placedArea += baseW * baseH;
+      remaining.shift();
+
+      // Stack identical pieces as additional W nodes
+      let stacked = 1;
+      const idxToRemove: number[] = [];
+      for (const origIdx of preStackIndices) {
+        if (stacked >= bestPreStack) break;
+        const adjIdx = origIdx - 1; // adjusted after removing first piece
+        if (adjIdx < 0 || adjIdx >= remaining.length) continue;
+        const pc = remaining[adjIdx];
+        const sWId = insertNode(tree, zNode.id, "W", baseH, 1);
+        const sWNode = findNode(tree, sWId)!;
+        if (pc.label) sWNode.label = pc.label;
+        placedArea += baseW * baseH;
+        idxToRemove.push(adjIdx);
+        stacked++;
+      }
+      idxToRemove.sort((a, b) => b - a).forEach(i => remaining.splice(i, 1));
+
+      // Lateral fill: place more pieces in remaining Z width
+      let freeZW = usableW - baseW;
+      for (let i = 0; i < remaining.length && freeZW > 0; ) {
+        const pc = remaining[i];
+        let lateralOri: { w: number; h: number } | null = null;
+
+        for (const o of oris(pc)) {
+          if (o.w <= freeZW && o.h <= effectiveH) {
+            if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+            if (!lateralOri || o.w > lateralOri.w) lateralOri = o;
+          }
+        }
+
+        if (lateralOri) {
+          const latZId = insertNode(tree, yNode.id, "Z", lateralOri.w, 1);
+          const latZNode = findNode(tree, latZId)!;
+          const latWId = insertNode(tree, latZNode.id, "W", lateralOri.h, 1);
+          const latWNode = findNode(tree, latWId)!;
+          if (pc.label) { latWNode.label = pc.label; latZNode.label = pc.label; }
+          placedArea += lateralOri.w * lateralOri.h;
+          remaining.splice(i, 1);
+
+          // Try stacking below the lateral piece within the combined strip
+          let latUsedH = lateralOri.h;
+          for (let j = 0; j < remaining.length && latUsedH < effectiveH; ) {
+            const lpc = remaining[j];
+            let stackOri: { w: number; h: number } | null = null;
+            for (const o of oris(lpc)) {
+              if (o.w <= lateralOri.w && o.h <= effectiveH - latUsedH) {
+                if (!stackOri || o.w * o.h > stackOri.w * stackOri.h) stackOri = o;
+              }
+            }
+            if (stackOri) {
+              placedArea += createPieceNodes(tree, yNode, lpc, stackOri.w, stackOri.h, stackOri.w !== lpc.w, latZNode);
+              latUsedH += stackOri.h;
+              remaining.splice(j, 1);
+            } else {
+              j++;
+            }
+          }
+
+          freeZW -= lateralOri.w;
+        } else {
+          i++;
+        }
+      }
+    } else {
+      // === Original behavior: single Y strip ===
+      placedArea += createPieceNodes(tree, yNode, basePiece, baseW, baseH, baseW !== basePiece.w);
+      remaining.shift();
+
+      // Fill remaining width in the Y strip with other pieces
+      let freeZW = usableW - baseW;
+      for (let i = 0; i < remaining.length && freeZW > 0; i++) {
+        const pc = remaining[i];
+        let bestOri: { w: number; h: number } | null = null;
+        let bestScore = Infinity;
+
+        for (const o of oris(pc)) {
+          if (o.w <= freeZW && o.h <= baseH) {
+            if (minBreak > 0 && zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+            const score = (baseH - o.h) * 2 + (freeZW - o.w);
+            if (score < bestScore) {
+              bestScore = score;
+              bestOri = o;
+            }
+          }
+        }
+
+        if (bestOri) {
+          placedArea += createPieceNodes(tree, yNode, pc, bestOri.w, bestOri.h, bestOri.w !== pc.w);
+          freeZW -= bestOri.w;
+          remaining.splice(i, 1);
+          i--;
+        }
       }
     }
   }
@@ -286,6 +422,12 @@ export function runPlacement(
     }
 
     if (!bestFit) {
+      // Before discarding, attempt void-filling — the piece may fit in a Z-residual
+      // slot (e.g. 459×1000 in a 459-wide gap of a Y=1450 combined strip) that the
+      // main loop scoring doesn't consider.
+      const filledBeforeDiscard = fillVoids(tree, remaining, usableW, usableH, minBreak);
+      placedArea += filledBeforeDiscard;
+      if (filledBeforeDiscard > 0) continue; // piece may have been placed; re-evaluate
       remaining.shift();
       continue;
     }
@@ -348,7 +490,16 @@ export function runPlacement(
           const canFitOther = otherPieces.some(p =>
             oris(p).some(o => o.w <= col.valor && o.h <= freeAfterStack)
           );
-          if (canFitOther) {
+          // Also check: can the piece fit in the Z-residual of the combined strip?
+          // The combined strip creates a lateral gap (col width - piece width) that
+          // is taller than a single strip, potentially fitting pieces that are too
+          // tall for a single strip but narrow enough for the residual.
+          const zResidual = col.valor - bestFit.pieceW;
+          const combinedStripH = tryStack * bestFit.pieceH;
+          const canFitInZResidual = zResidual > 0 && otherPieces.some(p =>
+            oris(p).some(o => o.w <= zResidual && o.h <= combinedStripH)
+          );
+          if (canFitOther || canFitInZResidual) {
             maxPossibleStack = tryStack;
             break;
           }
@@ -438,7 +589,7 @@ export function runPlacement(
         let lateralOri: { w: number; h: number } | null = null;
 
         for (const o of oris(pc)) {
-          if (o.w <= freeZW && o.h <= bestFit.pieceH) {
+          if (o.w <= freeZW && o.h <= combinedH) {
             if (minBreak > 0) {
               if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
               const allZPos = getAllZCutPositionsInColumn(col);
