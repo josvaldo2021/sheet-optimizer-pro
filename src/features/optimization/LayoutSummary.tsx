@@ -1,4 +1,4 @@
-import { TreeNode } from "@/lib/cnc-engine";
+import { TreeNode, countAllocatedPieces } from "@/lib/cnc-engine";
 import { LayoutGroup } from "@/lib/export/layout-utils";
 
 interface Props {
@@ -76,6 +76,7 @@ const LayoutSummary = ({
 
     {filteredLayoutGroups.map((group, gIdx) => {
       const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
+      const pieceCount = countAllocatedPieces(chapas[group.indices[0]].tree);
       return (
         <div key={gIdx} className="flex items-center gap-1 mb-1">
           <button

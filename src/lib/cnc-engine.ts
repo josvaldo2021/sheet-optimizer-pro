@@ -15,6 +15,7 @@ export {
   getLastLeftover,
   calcPlanUtilization,
   annotateTreeLabels,
+  countAllocatedPieces,
 } from './engine/tree-utils';
 
 export { normalizeTree } from './engine/normalization';
