@@ -1501,12 +1501,7 @@ export function postOptimizeRegroup(
   normalizeTreeFn: (tree: TreeNode, usableW: number, usableH: number) => TreeNode,
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree, allPieces);
-  const uniqueLabels = new Set(allPieces.map((p) => p.label).filter(Boolean));
   const enableVerboseLogs = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-
-  if (allPieces.length > 120 || uniqueLabels.size < 2) {
-    return { tree: originalTree, area: originalArea, improved: false };
-  }
 
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
