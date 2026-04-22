@@ -1502,6 +1502,16 @@ export function postOptimizeRegroup(
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree, allPieces);
   const enableVerboseLogs = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const pieceSignature = (p: Piece) => [
+    p.w,
+    p.h,
+    p.count || 1,
+    p.label || '',
+    p.groupedAxis || '',
+    p.labels?.join(',') || '',
+    p.individualDims?.join(',') || '',
+  ].join(':');
+  const sequenceSignature = (arr: Piece[]) => arr.map(pieceSignature).join('|');
 
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
@@ -1534,8 +1544,14 @@ export function postOptimizeRegroup(
   let bestTree = originalTree;
   let bestArea = originalArea;
   let improved = false;
+  const seenForcedInventories = new Set<string>();
+  const sortedOpportunities = [...regroupOpportunities].sort((a, b) => {
+    const areaB = b.pieces.reduce((sum, p) => sum + p.area, 0);
+    const areaA = a.pieces.reduce((sum, p) => sum + p.area, 0);
+    return areaB - areaA;
+  });
 
-  for (const opp of regroupOpportunities) {
+  for (const opp of sortedOpportunities.slice(0, 8)) {
     const forcedPieces: Piece[] = [];
     const usedLabels = new Set<string>();
 
@@ -1567,7 +1583,12 @@ export function postOptimizeRegroup(
       forcedPieces.push({ ...p });
     }
 
+    const forcedKey = sequenceSignature(forcedPieces);
+    if (seenForcedInventories.has(forcedKey)) continue;
+    seenForcedInventories.add(forcedKey);
+
     const strategies = getSortStrategies();
+    const seenSortedOrders = new Set<string>();
     for (const transposed of [false, true]) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
@@ -1576,6 +1597,9 @@ export function postOptimizeRegroup(
         const grouped = forcedPieces.slice(0, 1);
         const rest = [...forcedPieces.slice(1)].sort(sortFn);
         const sorted = [...grouped, ...rest];
+        const sortedKey = `${transposed ? 'T' : 'N'}|${sequenceSignature(sorted)}`;
+        if (seenSortedOrders.has(sortedKey)) continue;
+        seenSortedOrders.add(sortedKey);
 
         const result = runPlacementFn(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
@@ -1627,6 +1651,7 @@ export function postOptimizeRegroup(
     }
 
     const strategies = getSortStrategies();
+    const seenSortedOrders = new Set<string>();
     for (const transposed of [false, true]) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
@@ -1634,6 +1659,9 @@ export function postOptimizeRegroup(
         const grouped = forcedPieces.filter((p) => (p.count || 1) > 1);
         const rest = forcedPieces.filter((p) => (p.count || 1) <= 1).sort(sortFn);
         const sorted = [...grouped, ...rest];
+        const sortedKey = `${transposed ? 'T' : 'N'}|${sequenceSignature(sorted)}`;
+        if (seenSortedOrders.has(sortedKey)) continue;
+        seenSortedOrders.add(sortedKey);
         const result = runPlacementFn(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
