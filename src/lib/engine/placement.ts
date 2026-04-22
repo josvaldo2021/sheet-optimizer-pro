@@ -547,6 +547,8 @@ export function runPlacement(
             const newCutPos = currentOffset + o.w;
             if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
             if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+            const wHeightResidual = bestFit.h - o.h;
+            if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
           }
           if (o.w <= freeZW && o.h <= bestFit.h) {
             const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
