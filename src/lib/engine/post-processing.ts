@@ -1546,8 +1546,8 @@ export function postOptimizeRegroup(
   let improved = false;
   const seenForcedInventories = new Set<string>();
   const sortedOpportunities = [...regroupOpportunities].sort((a, b) => {
-    const areaB = b.pieces.reduce((sum, p) => sum + p.area, 0);
-    const areaA = a.pieces.reduce((sum, p) => sum + p.area, 0);
+    const areaB = b.pieces.reduce((sum, p) => sum + p.w * p.h, 0);
+    const areaA = a.pieces.reduce((sum, p) => sum + p.w * p.h, 0);
     return areaB - areaA;
   });
 
