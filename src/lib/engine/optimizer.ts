@@ -53,6 +53,18 @@ export function optimizeV6(
 ): { tree: TreeNode; remaining: Piece[] } {
   if (pieces.length === 0) return { tree: createRoot(usableW, usableH), remaining: [] };
 
+  const pieceSignature = (p: Piece) => [
+    p.w,
+    p.h,
+    p.count || 1,
+    p.label || '',
+    p.groupedAxis || '',
+    p.labels?.join(',') || '',
+    p.individualDims?.join(',') || '',
+  ].join(':');
+
+  const sequenceSignature = (arr: Piece[]) => arr.map(pieceSignature).join('|');
+
   const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
@@ -70,64 +82,64 @@ export function optimizeV6(
   const maxRepetition = Math.max(0, ...Array.from(dimCounts.values()));
   const skipExpensiveGrouping = pieces.length > 50 && maxRepetition < 3;
 
-  const pieceVariants: Piece[][] = hasLabels
-    ? [pieces, rotatedPieces]
+  const pieceVariantBuilders: Array<() => Piece[]> = hasLabels
+    ? [() => pieces, () => rotatedPieces]
     : useGrouping === false || skipExpensiveGrouping
-      ? [pieces, rotatedPieces]
+      ? [() => pieces, () => rotatedPieces]
       : [
-          pieces,
-          rotatedPieces,
-          groupPiecesBySameWidth(pieces, usableH),
-          groupPiecesBySameWidth(rotatedPieces, usableH),
-          groupPiecesBySameWidth(pieces),
-          groupPiecesBySameWidth(rotatedPieces),
-          groupPiecesBySameHeight(pieces, usableW),
-          groupPiecesBySameHeight(rotatedPieces, usableW),
-          groupPiecesBySameHeight(pieces),
-          groupPiecesBySameHeight(rotatedPieces),
-          groupPiecesFillRow(pieces, usableW),
-          groupPiecesFillRow(rotatedPieces, usableW),
-          groupPiecesFillRow(pieces, usableW, true),
-          groupPiecesFillRow(rotatedPieces, usableW, true),
-          groupPiecesFillCol(pieces, usableH),
-          groupPiecesFillCol(rotatedPieces, usableH),
-          groupPiecesFillCol(pieces, usableH, true),
-          groupPiecesFillCol(rotatedPieces, usableH, true),
-          groupPiecesFillRow(groupPiecesBySameWidth(pieces, usableH), usableW),
-          groupPiecesFillRow(groupPiecesBySameHeight(pieces, usableW), usableW),
-          groupPiecesColumnWidth(pieces, usableW),
-          groupPiecesColumnWidth(rotatedPieces, usableW),
-          groupPiecesColumnHeight(pieces, usableH),
-          groupPiecesColumnHeight(rotatedPieces, usableH),
-          groupPiecesBandFirst(pieces, usableW),
-          groupPiecesBandFirst(rotatedPieces, usableW),
-          groupPiecesBandFirst(pieces, usableW, true),
-          groupPiecesBandFirst(rotatedPieces, usableW, true),
-          groupPiecesBandLast(pieces, usableW),
-          groupPiecesBandLast(rotatedPieces, usableW),
-          groupByCommonDimension(pieces, usableW, usableH),
-          groupByCommonDimension(rotatedPieces, usableW, usableH),
-          groupByCommonDimension(pieces, usableW, usableH, 0.3),
-          groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
-          groupByCommonDimensionTransposed(pieces, usableW, usableH),
-          groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
-          groupStripPackingDP(pieces, usableW, usableH, 0),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 0),
-          groupStripPackingDP(pieces, usableW, usableH, 5),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 5),
-          groupStripPackingDP(pieces, usableW, usableH, 30),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 30),
-          groupStripPackingDP(pieces, usableW, usableH, 100),
-          groupStripPackingDP(pieces, usableW, usableH, 5, "raw"),
-          groupStripPackingDP(rotatedPieces, usableW, usableH, 5, "raw"),
-          groupStripPackingDPTransposed(pieces, usableW, usableH, 0),
-          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 0),
-          groupStripPackingDPTransposed(pieces, usableW, usableH, 5),
-          groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 5),
-          groupCommonDimensionDP(pieces, usableW, usableH),
-          groupCommonDimensionDP(rotatedPieces, usableW, usableH),
-          groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
-          groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
+          () => pieces,
+          () => rotatedPieces,
+          () => groupPiecesBySameWidth(pieces, usableH),
+          () => groupPiecesBySameWidth(rotatedPieces, usableH),
+          () => groupPiecesBySameWidth(pieces),
+          () => groupPiecesBySameWidth(rotatedPieces),
+          () => groupPiecesBySameHeight(pieces, usableW),
+          () => groupPiecesBySameHeight(rotatedPieces, usableW),
+          () => groupPiecesBySameHeight(pieces),
+          () => groupPiecesBySameHeight(rotatedPieces),
+          () => groupPiecesFillRow(pieces, usableW),
+          () => groupPiecesFillRow(rotatedPieces, usableW),
+          () => groupPiecesFillRow(pieces, usableW, true),
+          () => groupPiecesFillRow(rotatedPieces, usableW, true),
+          () => groupPiecesFillCol(pieces, usableH),
+          () => groupPiecesFillCol(rotatedPieces, usableH),
+          () => groupPiecesFillCol(pieces, usableH, true),
+          () => groupPiecesFillCol(rotatedPieces, usableH, true),
+          () => groupPiecesFillRow(groupPiecesBySameWidth(pieces, usableH), usableW),
+          () => groupPiecesFillRow(groupPiecesBySameHeight(pieces, usableW), usableW),
+          () => groupPiecesColumnWidth(pieces, usableW),
+          () => groupPiecesColumnWidth(rotatedPieces, usableW),
+          () => groupPiecesColumnHeight(pieces, usableH),
+          () => groupPiecesColumnHeight(rotatedPieces, usableH),
+          () => groupPiecesBandFirst(pieces, usableW),
+          () => groupPiecesBandFirst(rotatedPieces, usableW),
+          () => groupPiecesBandFirst(pieces, usableW, true),
+          () => groupPiecesBandFirst(rotatedPieces, usableW, true),
+          () => groupPiecesBandLast(pieces, usableW),
+          () => groupPiecesBandLast(rotatedPieces, usableW),
+          () => groupByCommonDimension(pieces, usableW, usableH),
+          () => groupByCommonDimension(rotatedPieces, usableW, usableH),
+          () => groupByCommonDimension(pieces, usableW, usableH, 0.3),
+          () => groupByCommonDimension(rotatedPieces, usableW, usableH, 0.3),
+          () => groupByCommonDimensionTransposed(pieces, usableW, usableH),
+          () => groupByCommonDimensionTransposed(rotatedPieces, usableW, usableH),
+          () => groupStripPackingDP(pieces, usableW, usableH, 0),
+          () => groupStripPackingDP(rotatedPieces, usableW, usableH, 0),
+          () => groupStripPackingDP(pieces, usableW, usableH, 5),
+          () => groupStripPackingDP(rotatedPieces, usableW, usableH, 5),
+          () => groupStripPackingDP(pieces, usableW, usableH, 30),
+          () => groupStripPackingDP(rotatedPieces, usableW, usableH, 30),
+          () => groupStripPackingDP(pieces, usableW, usableH, 100),
+          () => groupStripPackingDP(pieces, usableW, usableH, 5, "raw"),
+          () => groupStripPackingDP(rotatedPieces, usableW, usableH, 5, "raw"),
+          () => groupStripPackingDPTransposed(pieces, usableW, usableH, 0),
+          () => groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 0),
+          () => groupStripPackingDPTransposed(pieces, usableW, usableH, 5),
+          () => groupStripPackingDPTransposed(rotatedPieces, usableW, usableH, 5),
+          () => groupCommonDimensionDP(pieces, usableW, usableH),
+          () => groupCommonDimensionDP(rotatedPieces, usableW, usableH),
+          () => groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
+          () => groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
         ];
 
   let bestTree: TreeNode | null = null;
@@ -135,6 +147,8 @@ export function optimizeV6(
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
   let bestCompactness = Infinity;
+  const seenVariants = new Set<string>();
+  const seenSortedOrders = new Set<string>();
 
   /** Fewer top-level columns = more compact waste = better layout */
   function calcCompactness(tree: TreeNode): number {
@@ -150,9 +164,18 @@ export function optimizeV6(
     const eW = transposed ? usableH : usableW;
     const eH = transposed ? usableW : usableH;
 
-    for (const variant of pieceVariants) {
+    for (const buildVariant of pieceVariantBuilders) {
+      const variant = buildVariant();
+      const variantKey = `${transposed ? 'T' : 'N'}|${sequenceSignature(variant)}`;
+      if (seenVariants.has(variantKey)) continue;
+      seenVariants.add(variantKey);
+
       for (const sortFn of strategies) {
         const sorted = [...variant].sort(sortFn);
+        const sortedKey = `${transposed ? 'T' : 'N'}|${sequenceSignature(sorted)}`;
+        if (seenSortedOrders.has(sortedKey)) continue;
+        seenSortedOrders.add(sortedKey);
+
         const result = runPlacement(sorted, eW, eH, minBreak);
         const compactness = calcCompactness(result.tree);
         if (result.area > bestArea || (result.area === bestArea && compactness < bestCompactness)) {

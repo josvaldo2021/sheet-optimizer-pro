@@ -312,9 +312,11 @@ export function collapseTreeWaste(
           continue;
         }
 
-        console.log(
-          `[COLLAPSE] ${childType} level: merging ${runLength} waste nodes (total=${totalVal}mm) → space ${spaceW}×${spaceH}mm`
-        );
+        if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+          console.log(
+            `[COLLAPSE] ${childType} level: merging ${runLength} waste nodes (total=${totalVal}mm) → space ${spaceW}×${spaceH}mm`
+          );
+        }
 
         const removed = parent.filhos.splice(i, runLength);
 
@@ -333,9 +335,11 @@ export function collapseTreeWaste(
 
         if (filled > 0) {
           modified = true;
-          console.log(
-            `[COLLAPSE] Filled ${filled.toFixed(0)}mm² in collapsed ${childType} node`
-          );
+          if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+            console.log(
+              `[COLLAPSE] Filled ${filled.toFixed(0)}mm² in collapsed ${childType} node`
+            );
+          }
         } else {
           parent.filhos.splice(i, 1);
           parent.filhos.splice(i, 0, ...removed);
@@ -955,10 +959,12 @@ export function regroupAdjacentStrips(
           const wasteConsolidated = groupSize > 1;
           if (usedFromRemaining.length === 0 && !wasteConsolidated) continue;
 
-          console.log(
-            `[REGROUP] Merged ${groupSize} Y strips (${yGroup.map(y => `Y${y.valor}`).join('+')} = Y${combinedH}) in X${colX.valor}, ` +
-            `fitted ${usedFromRemaining.length} new piece(s)`
-          );
+          if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+            console.log(
+              `[REGROUP] Merged ${groupSize} Y strips (${yGroup.map(y => `Y${y.valor}`).join('+')} = Y${combinedH}) in X${colX.valor}, ` +
+              `fitted ${usedFromRemaining.length} new piece(s)`
+            );
+          }
 
           colX.filhos.splice(i, groupSize, newYNode);
 
@@ -1093,10 +1099,12 @@ export function regroupAdjacentStrips(
             const zWasteConsolidated = groupSize > 1 && hasWaste;
             if (newFromRemaining.length === 0 && !zWasteConsolidated) continue;
 
-            console.log(
-              `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
-              `fitted ${newFromRemaining.length} new piece(s)`
-            );
+            if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+              console.log(
+                `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
+                `fitted ${newFromRemaining.length} new piece(s)`
+              );
+            }
 
             yNode.filhos.splice(i, groupSize, mergedZ);
 
@@ -1227,10 +1235,12 @@ export function regroupAdjacentStrips(
               const wWasteConsolidated = groupSize > 1 && hasWaste;
               if (newFromRemaining.length === 0 && !wWasteConsolidated) continue;
 
-              console.log(
-                `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
-                `fitted ${newFromRemaining.length} new piece(s)`
-              );
+              if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+                console.log(
+                  `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
+                  `fitted ${newFromRemaining.length} new piece(s)`
+                );
+              }
 
               zNode.filhos.splice(i, groupSize, mergedW);
 
@@ -1491,6 +1501,17 @@ export function postOptimizeRegroup(
   normalizeTreeFn: (tree: TreeNode, usableW: number, usableH: number) => TreeNode,
 ): { tree: TreeNode; area: number; improved: boolean } {
   const placedPieces = extractPlacedPieces(originalTree, allPieces);
+  const enableVerboseLogs = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const pieceSignature = (p: Piece) => [
+    p.w,
+    p.h,
+    p.count || 1,
+    p.label || '',
+    p.groupedAxis || '',
+    p.labels?.join(',') || '',
+    p.individualDims?.join(',') || '',
+  ].join(':');
+  const sequenceSignature = (arr: Piece[]) => arr.map(pieceSignature).join('|');
 
   const heightMap = new Map<number, typeof placedPieces>();
   for (const p of placedPieces) {
@@ -1514,15 +1535,23 @@ export function postOptimizeRegroup(
     return { tree: originalTree, area: originalArea, improved: false };
   }
 
-  console.log(
-    `[CNC-ENGINE] Pós-análise: ${regroupOpportunities.length} oportunidade(s) de reagrupamento encontrada(s)`,
-  );
+  if (enableVerboseLogs) {
+    console.log(
+      `[CNC-ENGINE] Pós-análise: ${regroupOpportunities.length} oportunidade(s) de reagrupamento encontrada(s)`,
+    );
+  }
 
   let bestTree = originalTree;
   let bestArea = originalArea;
   let improved = false;
+  const seenForcedInventories = new Set<string>();
+  const sortedOpportunities = [...regroupOpportunities].sort((a, b) => {
+    const areaB = b.pieces.reduce((sum, p) => sum + p.w * p.h, 0);
+    const areaA = a.pieces.reduce((sum, p) => sum + p.w * p.h, 0);
+    return areaB - areaA;
+  });
 
-  for (const opp of regroupOpportunities) {
+  for (const opp of sortedOpportunities.slice(0, 8)) {
     const forcedPieces: Piece[] = [];
     const usedLabels = new Set<string>();
 
@@ -1554,7 +1583,12 @@ export function postOptimizeRegroup(
       forcedPieces.push({ ...p });
     }
 
+    const forcedKey = sequenceSignature(forcedPieces);
+    if (seenForcedInventories.has(forcedKey)) continue;
+    seenForcedInventories.add(forcedKey);
+
     const strategies = getSortStrategies();
+    const seenSortedOrders = new Set<string>();
     for (const transposed of [false, true]) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
@@ -1563,6 +1597,9 @@ export function postOptimizeRegroup(
         const grouped = forcedPieces.slice(0, 1);
         const rest = [...forcedPieces.slice(1)].sort(sortFn);
         const sorted = [...grouped, ...rest];
+        const sortedKey = `${transposed ? 'T' : 'N'}|${sequenceSignature(sorted)}`;
+        if (seenSortedOrders.has(sortedKey)) continue;
+        seenSortedOrders.add(sortedKey);
 
         const result = runPlacementFn(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
@@ -1614,6 +1651,7 @@ export function postOptimizeRegroup(
     }
 
     const strategies = getSortStrategies();
+    const seenSortedOrders = new Set<string>();
     for (const transposed of [false, true]) {
       const eW = transposed ? usableH : usableW;
       const eH = transposed ? usableW : usableH;
@@ -1621,6 +1659,9 @@ export function postOptimizeRegroup(
         const grouped = forcedPieces.filter((p) => (p.count || 1) > 1);
         const rest = forcedPieces.filter((p) => (p.count || 1) <= 1).sort(sortFn);
         const sorted = [...grouped, ...rest];
+        const sortedKey = `${transposed ? 'T' : 'N'}|${sequenceSignature(sorted)}`;
+        if (seenSortedOrders.has(sortedKey)) continue;
+        seenSortedOrders.add(sortedKey);
         const result = runPlacementFn(sorted, eW, eH, minBreak);
         if (result.area > bestArea) {
           bestArea = result.area;
