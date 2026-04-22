@@ -465,6 +465,14 @@ export function runPlacement(
             let stackOri: { w: number; h: number } | null = null;
             for (const o of oris(lpc)) {
               if (o.w <= lateralOri.w && o.h <= combinedH - latUsedH) {
+                if (minBreak > 0) {
+                  const existingWValues = latZNode.filhos.map(w => w.valor);
+                  if (siblingViolatesMinBreak(existingWValues, o.h, minBreak)) continue;
+                  const heightResidual = combinedH - latUsedH - o.h;
+                  if (heightResidual > 0 && heightResidual < minBreak) continue;
+                  const lateralResidual = lateralOri.w - o.w;
+                  if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                }
                 if (!stackOri || o.w * o.h > stackOri.w * stackOri.h) stackOri = o;
               }
             }
