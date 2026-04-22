@@ -465,12 +465,19 @@ const Index = () => {
 
     await new Promise((r) => setTimeout(r, 20));
 
-    // Each entry: [sortFn, label] — keep only the highest-value variants.
-    // Reduced from 6 to 2 for ~3× speedup; the others rarely beat these.
-    const sortVariants: Array<[(a: PieceItem, b: PieceItem) => number, string] | [undefined, string]> = [
-      [undefined, "ordem original"],
-      [(a, b) => (b.w * b.h) - (a.w * a.h), "área desc"],
-    ];
+      const uniqueDims = new Set(
+        pieces
+          .filter((p) => p.qty > 0)
+          .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}`),
+      ).size;
+      const sortVariants: Array<[(a: PieceItem, b: PieceItem) => number, string] | [undefined, string]> = [
+        [undefined, "ordem original"],
+        [(a, b) => (b.w * b.h) - (a.w * a.h), "área desc"],
+      ];
+
+      if (uniqueDims <= 80) {
+        sortVariants.push([(a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h), "maior lado"]);
+      }
 
     const candidates: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }[]> = [];
     setGlobalProgress({ current: 0, total: sortVariants.length });
