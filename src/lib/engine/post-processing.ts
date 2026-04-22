@@ -312,9 +312,11 @@ export function collapseTreeWaste(
           continue;
         }
 
-        console.log(
-          `[COLLAPSE] ${childType} level: merging ${runLength} waste nodes (total=${totalVal}mm) → space ${spaceW}×${spaceH}mm`
-        );
+        if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+          console.log(
+            `[COLLAPSE] ${childType} level: merging ${runLength} waste nodes (total=${totalVal}mm) → space ${spaceW}×${spaceH}mm`
+          );
+        }
 
         const removed = parent.filhos.splice(i, runLength);
 
@@ -333,9 +335,11 @@ export function collapseTreeWaste(
 
         if (filled > 0) {
           modified = true;
-          console.log(
-            `[COLLAPSE] Filled ${filled.toFixed(0)}mm² in collapsed ${childType} node`
-          );
+          if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+            console.log(
+              `[COLLAPSE] Filled ${filled.toFixed(0)}mm² in collapsed ${childType} node`
+            );
+          }
         } else {
           parent.filhos.splice(i, 1);
           parent.filhos.splice(i, 0, ...removed);
@@ -955,10 +959,12 @@ export function regroupAdjacentStrips(
           const wasteConsolidated = groupSize > 1;
           if (usedFromRemaining.length === 0 && !wasteConsolidated) continue;
 
-          console.log(
-            `[REGROUP] Merged ${groupSize} Y strips (${yGroup.map(y => `Y${y.valor}`).join('+')} = Y${combinedH}) in X${colX.valor}, ` +
-            `fitted ${usedFromRemaining.length} new piece(s)`
-          );
+          if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+            console.log(
+              `[REGROUP] Merged ${groupSize} Y strips (${yGroup.map(y => `Y${y.valor}`).join('+')} = Y${combinedH}) in X${colX.valor}, ` +
+              `fitted ${usedFromRemaining.length} new piece(s)`
+            );
+          }
 
           colX.filhos.splice(i, groupSize, newYNode);
 
@@ -1093,10 +1099,12 @@ export function regroupAdjacentStrips(
             const zWasteConsolidated = groupSize > 1 && hasWaste;
             if (newFromRemaining.length === 0 && !zWasteConsolidated) continue;
 
-            console.log(
-              `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
-              `fitted ${newFromRemaining.length} new piece(s)`
-            );
+            if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+              console.log(
+                `[REGROUP-Z] Merged ${groupSize} Z nodes (${zGroup.map(z => `Z${z.valor}`).join('+')} = Z${combinedW}) in Y${yNode.valor}, ` +
+                `fitted ${newFromRemaining.length} new piece(s)`
+              );
+            }
 
             yNode.filhos.splice(i, groupSize, mergedZ);
 
@@ -1227,10 +1235,12 @@ export function regroupAdjacentStrips(
               const wWasteConsolidated = groupSize > 1 && hasWaste;
               if (newFromRemaining.length === 0 && !wWasteConsolidated) continue;
 
-              console.log(
-                `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
-                `fitted ${newFromRemaining.length} new piece(s)`
-              );
+              if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+                console.log(
+                  `[REGROUP-W] Merged ${groupSize} W nodes (${wGroup.map(w => `W${w.valor}`).join('+')} = W${combinedH}) in Z${zNode.valor}, ` +
+                  `fitted ${newFromRemaining.length} new piece(s)`
+                );
+              }
 
               zNode.filhos.splice(i, groupSize, mergedW);
 
