@@ -3,6 +3,11 @@ import { LayoutGroup } from "@/lib/export/layout-utils";
 import SidebarSection from "@/components/SidebarSection";
 import LayoutSummary from "./LayoutSummary";
 
+interface OptimizationGroup {
+  label: string;
+  chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>;
+}
+
 interface Props {
   priorityIds: string;
   setPriorityIds: (v: string) => void;
@@ -20,6 +25,9 @@ interface Props {
   filteredLayoutGroups: LayoutGroup[];
   chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>;
   onConfirmPlan: () => void;
+  optimizationGroups: OptimizationGroup[] | null;
+  activeGroupIdx: number;
+  onSelectGroup: (idx: number) => void;
   pdfFilename: string;
   setPdfFilename: (v: string) => void;
   onExport: () => void;
@@ -38,7 +46,8 @@ const OptimizationPanel = ({
   priorityIds, setPriorityIds, filterActiveLabels, setFilterActiveLabels,
   gaPopSize, setGaPopSize, gaGens, setGaGens, isOptimizing, onOptimize,
   progress, globalProgress, layoutGroups, filteredLayoutGroups, chapas,
-  onConfirmPlan, pdfFilename, setPdfFilename, onExport,
+  onConfirmPlan, optimizationGroups, activeGroupIdx, onSelectGroup,
+  pdfFilename, setPdfFilename, onExport,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
   setStatus, onSelectLayout, onDeleteLayout, onPrintLayout,
 }: Props) => {
@@ -148,6 +157,52 @@ const OptimizationPanel = ({
             </div>
           );
         })()}
+
+        {/* Group selector */}
+        {optimizationGroups && optimizationGroups.length > 0 && (
+          <div className="mt-3 p-2" style={{ background: "hsl(222 47% 8%)", border: "1px solid #222" }}>
+            <div className="text-[9px] uppercase tracking-wider font-bold mb-2" style={{ color: "hsl(210 25% 62%)" }}>
+              Grupos de Otimização
+            </div>
+            <div className="flex flex-col gap-1">
+              {optimizationGroups.map((g, idx) => {
+                const isActive = idx === activeGroupIdx;
+                const util = g.chapas.length > 0
+                  ? ((g.chapas.reduce((s, c) => s + c.usedArea, 0) / (g.chapas.length * usableW * usableH)) * 100).toFixed(1)
+                  : "0.0";
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => onSelectGroup(idx)}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "5px 8px",
+                      fontSize: "10px",
+                      fontFamily: "monospace",
+                      border: isActive ? "1px solid hsl(211 60% 55%)" : "1px solid hsl(222 47% 22%)",
+                      borderRadius: "3px",
+                      background: isActive ? "hsl(211 60% 20%)" : "hsl(222 47% 12%)",
+                      color: isActive ? "hsl(211 80% 75%)" : "hsl(210 25% 58%)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ fontWeight: isActive ? "bold" : "normal" }}>
+                      {idx + 1}. {g.label}
+                      {idx === activeGroupIdx && <span style={{ marginLeft: 4, color: "hsl(120 60% 55%)", fontSize: "8px" }}>✓ ativo</span>}
+                    </span>
+                    <span style={{ display: "flex", gap: 6 }}>
+                      <span style={{ color: "hsl(210 25% 52%)" }}>{g.chapas.length} chp</span>
+                      <span style={{ color: isActive ? "hsl(120 60% 55%)" : "hsl(210 25% 52%)" }}>{util}%</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Confirm plan button */}
         {layoutGroups.length > 0 && chapas.some((c) => !c.manual) && (

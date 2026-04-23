@@ -492,7 +492,17 @@ export function runPlacement(
       }
     } else {
       // === SINGLE Y STRIP ===
-      const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
+      // If the Y residual (freeH - piece.h) cannot fit any remaining piece, extend
+      // the Y cut to absorb the residual, using the next coordinate (W) to bound
+      // the piece's actual height. This avoids orphaned waste strips.
+      const colCurrentFreeH = usableH - col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      const yResidual = colCurrentFreeH - bestFit.h;
+      const canFitInResidual = yResidual > 0 && remaining.slice(1).some(p =>
+        oris(p).some(o => o.w <= col.valor && o.h <= yResidual)
+      );
+      const effectiveYH = (yResidual > 0 && !canFitInResidual) ? colCurrentFreeH : bestFit.h;
+
+      const yId = insertNode(tree, col.id, "Y", effectiveYH, 1);
       const yNode = findNode(tree, yId)!;
 
       placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);

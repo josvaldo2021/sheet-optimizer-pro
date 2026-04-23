@@ -64,6 +64,8 @@ const Index = () => {
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
   const [pdfFilename, setPdfFilename] = useState("plano-de-corte");
+  const [optimizationGroups, setOptimizationGroups] = useState<Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> }> | null>(null);
+  const [activeGroupIdx, setActiveGroupIdx] = useState(0);
   const [pieceFilter, setPieceFilter] = useState("");
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -444,7 +446,7 @@ const Index = () => {
       [(a, b) => b.h - a.h, "altura desc"],
     ];
 
-    const candidates: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }[]> = [];
+    const candidateGroups: Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> }> = [];
     setGlobalProgress({ current: 0, total: sortVariants.length });
     for (let vi = 0; vi < sortVariants.length; vi++) {
       const [sortFn, label] = sortVariants[vi];
@@ -454,27 +456,34 @@ const Index = () => {
         total: sortVariants.length,
       });
       const result = await runAllSheets(sortFn ?? undefined, label);
-      if (result && result.length > 0) candidates.push(result);
+      if (result && result.length > 0) candidateGroups.push({ label, chapas: result });
       setGlobalProgress({ current: vi + 1, total: sortVariants.length });
     }
 
     const sheetArea = usableW * usableH;
     const treeFingerprint = (node: TreeNode): string =>
       `${node.tipo}:${node.valor}:${node.multi}[${node.filhos.map(treeFingerprint).join(',')}]`;
-    const uniqueLayouts = (plan: typeof candidates[0]) =>
-      new Set(plan.map(c => treeFingerprint(c.tree))).size;
-    // Criteria: 1) fewer sheets, 2) fewer unique layouts (more repetition), 3) lower utilization on last sheet
-    candidates.sort((a, b) => {
-      if (a.length !== b.length) return a.length - b.length;
-      const uA = uniqueLayouts(a);
-      const uB = uniqueLayouts(b);
-      if (uA !== uB) return uA - uB;
+    const uniqueLayoutCount = (chapas: typeof candidateGroups[0]['chapas']) =>
+      new Set(chapas.map(c => treeFingerprint(c.tree))).size;
+
+    // Find the best group index by criteria: 1) fewer sheets, 2) fewer unique layouts, 3) lower last-sheet utilization
+    let bestIdx = 0;
+    for (let i = 1; i < candidateGroups.length; i++) {
+      const a = candidateGroups[bestIdx].chapas;
+      const b = candidateGroups[i].chapas;
+      if (b.length < a.length) { bestIdx = i; continue; }
+      if (b.length > a.length) continue;
+      const uA = uniqueLayoutCount(a), uB = uniqueLayoutCount(b);
+      if (uB < uA) { bestIdx = i; continue; }
+      if (uB > uA) continue;
       const lastUtilA = a[a.length - 1].usedArea / sheetArea;
       const lastUtilB = b[b.length - 1].usedArea / sheetArea;
-      return lastUtilA - lastUtilB;
-    });
+      if (lastUtilB < lastUtilA) bestIdx = i;
+    }
 
-    const best = candidates[0] || [];
+    const best = candidateGroups[bestIdx]?.chapas || [];
+    setOptimizationGroups(candidateGroups);
+    setActiveGroupIdx(bestIdx);
     setChapas(best);
     setFilterActiveLabels(null);
     if (best.length > 0) {
@@ -485,7 +494,7 @@ const Index = () => {
     setProgress(null);
     setGlobalProgress(null);
     setIsOptimizing(false);
-    setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: "success" });
+    setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)! Grupo ${bestIdx + 1} selecionado automaticamente.`, type: "success" });
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -955,6 +964,20 @@ const Index = () => {
       type: "success",
     });
   }, [chapas, pieces, lots, chapaW, chapaH, extractUsedPiecesWithContext]);
+
+  const selectGroup = useCallback((idx: number) => {
+    if (!optimizationGroups || !optimizationGroups[idx]) return;
+    const group = optimizationGroups[idx];
+    setActiveGroupIdx(idx);
+    setChapas(group.chapas);
+    setFilterActiveLabels(null);
+    if (group.chapas.length > 0) {
+      setTree(group.chapas[0].tree);
+      setSelectedId("root");
+    }
+    setActiveChapa(0);
+    setStatus({ msg: `Grupo ${idx + 1} selecionado: ${group.label} (${group.chapas.length} chapa(s))`, type: "info" });
+  }, [optimizationGroups]);
 
   const saveLayout = useCallback(
     (reps?: number) => {
@@ -1426,6 +1449,9 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
           filteredLayoutGroups={filteredLayoutGroups}
           chapas={chapas}
           onConfirmPlan={confirmAutoPlan}
+          optimizationGroups={optimizationGroups}
+          activeGroupIdx={activeGroupIdx}
+          onSelectGroup={selectGroup}
           pdfFilename={pdfFilename}
           setPdfFilename={setPdfFilename}
           onExport={() => {
