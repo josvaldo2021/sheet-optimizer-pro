@@ -202,7 +202,7 @@ const Index = () => {
   );
 
   const extractUsedPiecesWithContext = useCallback(
-    (node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
+    (node: TreeNode, requireLabel = true): Array<{ w: number; h: number; label?: string }> => {
       const used: Array<{ w: number; h: number; label?: string }> = [];
       const traverse = (n: TreeNode, parents: TreeNode[], parentMultiplier: number) => {
         const xAncestor = parents.find((p) => p.tipo === "X");
@@ -239,7 +239,7 @@ const Index = () => {
           isLeaf = true;
         }
 
-        if (isLeaf && pieceW > 0 && pieceH > 0 && n.label) {
+        if (isLeaf && pieceW > 0 && pieceH > 0 && (!requireLabel || n.label)) {
           for (let m = 0; m < totalMulti; m++) {
             used.push({ w: pieceW, h: pieceH, label: n.label });
           }
@@ -821,7 +821,7 @@ const Index = () => {
   );
 
   const calcReplication = useCallback(() => {
-    const usedPieces = extractUsedPiecesWithContext(tree);
+    const usedPieces = extractUsedPiecesWithContext(tree, false);
     if (usedPieces.length === 0) {
       setStatus({ msg: "Desenhe um layout primeiro!", type: "error" });
       return;
@@ -1008,7 +1008,7 @@ const Index = () => {
 
   const saveLayout = useCallback(
     (reps?: number) => {
-      const usedPieces = extractUsedPiecesWithContext(tree);
+      const usedPieces = extractUsedPiecesWithContext(tree, false);
       if (usedPieces.length === 0) {
         setStatus({ msg: "Desenhe um layout primeiro!", type: "error" });
         return;
@@ -1118,28 +1118,32 @@ const Index = () => {
         xNode.filhos.forEach((yNode) => {
           for (let iy = 0; iy < yNode.multi; iy++) {
             const cy = yOff;
+            // Y leaf: no Z children → full-column piece
+            if (yNode.filhos.length === 0) {
+              pieces.push({ x: T ? cy : cx, y: T ? cx : cy, w: T ? yNode.valor : xNode.valor, h: T ? xNode.valor : yNode.valor, label: yNode.label, isWaste: false, dim: dLabel(xNode.valor, yNode.valor) });
+            }
             let zOff = 0;
             yNode.filhos.forEach((zNode) => {
               for (let iz = 0; iz < zNode.multi; iz++) {
                 if (zNode.filhos.length === 0) {
-                  pieces.push({ x: T ? cy : cx + zOff, y: T ? cx + zOff : cy, w: T ? yNode.valor : zNode.valor, h: T ? zNode.valor : yNode.valor, label: zNode.label, isWaste: !zNode.label, dim: dLabel(zNode.valor, yNode.valor) });
+                  pieces.push({ x: T ? cy : cx + zOff, y: T ? cx + zOff : cy, w: T ? yNode.valor : zNode.valor, h: T ? zNode.valor : yNode.valor, label: zNode.label, isWaste: false, dim: dLabel(zNode.valor, yNode.valor) });
                 } else {
                   let wOff = 0;
                   zNode.filhos.forEach((wNode) => {
                     for (let iw = 0; iw < wNode.multi; iw++) {
                       if (wNode.filhos.length === 0) {
-                        pieces.push({ x: T ? cy + wOff : cx + zOff, y: T ? cx + zOff : cy + wOff, w: T ? wNode.valor : zNode.valor, h: T ? zNode.valor : wNode.valor, label: wNode.label, isWaste: !wNode.label, dim: dLabel(zNode.valor, wNode.valor) });
+                        pieces.push({ x: T ? cy + wOff : cx + zOff, y: T ? cx + zOff : cy + wOff, w: T ? wNode.valor : zNode.valor, h: T ? zNode.valor : wNode.valor, label: wNode.label, isWaste: false, dim: dLabel(zNode.valor, wNode.valor) });
                       } else {
                         let qOff = 0;
                         wNode.filhos.forEach((qNode) => {
                           for (let iq = 0; iq < qNode.multi; iq++) {
                             if (qNode.filhos.length === 0) {
-                              pieces.push({ x: T ? cy + wOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff, w: T ? wNode.valor : qNode.valor, h: T ? qNode.valor : wNode.valor, label: qNode.label, isWaste: !qNode.label, dim: dLabel(qNode.valor, wNode.valor) });
+                              pieces.push({ x: T ? cy + wOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff, w: T ? wNode.valor : qNode.valor, h: T ? qNode.valor : wNode.valor, label: qNode.label, isWaste: false, dim: dLabel(qNode.valor, wNode.valor) });
                             } else {
                               let rOff = 0;
                               qNode.filhos.forEach((rNode) => {
                                 for (let ir = 0; ir < rNode.multi; ir++) {
-                                  pieces.push({ x: T ? cy + wOff + rOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff + rOff, w: T ? rNode.valor : qNode.valor, h: T ? qNode.valor : rNode.valor, label: rNode.label, isWaste: !rNode.label, dim: dLabel(qNode.valor, rNode.valor) });
+                                  pieces.push({ x: T ? cy + wOff + rOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff + rOff, w: T ? rNode.valor : qNode.valor, h: T ? qNode.valor : rNode.valor, label: rNode.label, isWaste: false, dim: dLabel(qNode.valor, rNode.valor) });
                                   rOff += rNode.valor;
                                 }
                               });
