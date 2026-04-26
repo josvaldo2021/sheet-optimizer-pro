@@ -205,6 +205,7 @@ const Index = () => {
     (node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
       const used: Array<{ w: number; h: number; label?: string }> = [];
       const traverse = (n: TreeNode, parents: TreeNode[], parentMultiplier: number) => {
+        const xAncestor = parents.find((p) => p.tipo === "X");
         const yAncestor = parents.find((p) => p.tipo === "Y");
         const zAncestor = parents.find((p) => p.tipo === "Z");
         const wAncestor = parents.find((p) => p.tipo === "W");
@@ -215,7 +216,11 @@ const Index = () => {
         // Cumulative multiplier: parent chain × this node's own multi
         const totalMulti = parentMultiplier * n.multi;
 
-        if (n.tipo === "Z" && n.filhos.length === 0) {
+        if (n.tipo === "Y" && n.filhos.length === 0) {
+          pieceW = xAncestor?.valor || 0;
+          pieceH = n.valor;
+          isLeaf = true;
+        } else if (n.tipo === "Z" && n.filhos.length === 0) {
           pieceW = n.valor;
           pieceH = yAncestor?.valor || 0;
           isLeaf = true;
@@ -317,10 +322,22 @@ const Index = () => {
 
       while (remaining.length > 0 && sheetCount < maxSheets) {
         sheetCount++;
+
+        // Build inv with a unique label per instance so every piece is trackable in the tree.
+        // uidToRef maps uid → the remaining item it came from (by reference, not index).
+        // uidToOrig maps uid → original user label, restored before display/export.
         const inv: { w: number; h: number; area: number; label?: string }[] = [];
+        const uidToRef = new Map<string, typeof remaining[0]>();
+        const uidToOrig = new Map<string, string | undefined>();
+        let uidSeq = 0;
         remaining.forEach((p) => {
           for (let i = 0; i < p.qty; i++) {
-            if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: p.label });
+            if (p.w > 0 && p.h > 0) {
+              const uid = `__${uidSeq++}`;
+              inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: uid });
+              uidToRef.set(uid, p);
+              uidToOrig.set(uid, p.label);
+            }
           }
         });
         if (inv.length === 0) break;
@@ -354,16 +371,24 @@ const Index = () => {
           gaGens,
         );
         const usedArea = calcPlacedArea(result);
+
+        // Extract before restoring labels so we still have uid labels for exact deduction.
+        const usedPieces = extractUsedPiecesWithContext(result);
+        if (usedPieces.length === 0) break;
+
+        // Restore original user labels in the tree (uid labels are internal only).
+        const restoreLabels = (n: TreeNode) => {
+          if (n.label && uidToOrig.has(n.label)) n.label = uidToOrig.get(n.label);
+          n.filhos.forEach(restoreLabels);
+        };
+        restoreLabels(result);
+
         chapaList.push({ tree: result, usedArea, manual: false });
 
-        const usedPieces = extractUsedPiecesWithContext(result);
-
         // --- Layout Replication Optimization ---
-        // Count how many times this exact layout can be replicated with remaining pieces
-        // Build a "bill of materials" for this layout: how many of each piece type it uses
+        // Build BOM by dimensions (replications don't need unique labels).
         const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
         usedPieces.forEach((used) => {
-          // Normalize key: smaller dimension first
           const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
           const existing = layoutBOM.get(key);
           if (existing) {
@@ -376,32 +401,30 @@ const Index = () => {
         // Calculate how many full replications are possible
         let maxReplications = Infinity;
         layoutBOM.forEach(({ w, h, count }) => {
-          // Find total available qty in remaining for this piece type
           let available = 0;
           remaining.forEach((p) => {
             if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
               available += p.qty;
             }
           });
-          // First sheet already uses 'count' pieces, so available includes those
-          // We want how many ADDITIONAL full copies we can make
-          const additionalAvailable = available - count; // subtract what the first sheet uses
+          const additionalAvailable = available - count;
           const possibleCopies = Math.floor(additionalAvailable / count);
           maxReplications = Math.min(maxReplications, possibleCopies);
         });
 
         if (!isFinite(maxReplications) || maxReplications < 0) maxReplications = 0;
-        // Cap to avoid runaway
         maxReplications = Math.min(maxReplications, maxSheets - chapaList.length);
 
-        // Deduct first sheet's pieces from remaining
+        // Deduct first sheet by exact reference via uid (no dimension ambiguity).
         usedPieces.forEach((used) => {
-          for (let i = 0; i < remaining.length; i++) {
-            const p = remaining[i];
-            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
-              p.qty--;
-              if (p.qty <= 0) remaining.splice(i, 1);
-              break;
+          if (used.label) {
+            const item = uidToRef.get(used.label);
+            if (item) {
+              item.qty--;
+              if (item.qty <= 0) {
+                const idx = remaining.indexOf(item);
+                if (idx >= 0) remaining.splice(idx, 1);
+              }
             }
           }
         });
