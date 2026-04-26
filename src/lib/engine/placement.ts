@@ -292,7 +292,14 @@ export function runPlacement(
 
     let col: TreeNode;
     if (bestFit.type === "NEW") {
-      insertNode(tree, "root", "X", bestFit.w, 1);
+      const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+      const freeW = usableW - usedW;
+      const xResidual = freeW - bestFit.w;
+      const canFitInXResidual = xResidual > 0 && remaining.slice(1).some(p =>
+        oris(p).some(o => o.w <= xResidual && o.h <= usableH)
+      );
+      const effectiveXW = (xResidual > 0 && !canFitInXResidual) ? freeW : bestFit.w;
+      insertNode(tree, "root", "X", effectiveXW, 1);
       col = tree.filhos[tree.filhos.length - 1];
     } else {
       col = bestFit.col!;

@@ -391,5 +391,17 @@ export function normalizeTree(tree: TreeNode, usableW: number, usableH: number, 
   compressMulti(canonical);
   canonical.transposed = false;
 
+  // Extend the last X column to absorb any residual horizontal space.
+  // buildCanonicalTree creates a cut at the rightmost piece edge, leaving an
+  // empty trailing segment [lastPieceRight..usableW] that gets discarded.
+  if (canonical.filhos.length > 0) {
+    const usedW = canonical.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+    const residual = Math.round(usableW) - Math.round(usedW);
+    if (residual > 0) {
+      const lastX = canonical.filhos[canonical.filhos.length - 1];
+      if (lastX.multi === 1) lastX.valor += residual;
+    }
+  }
+
   return canonical;
 }

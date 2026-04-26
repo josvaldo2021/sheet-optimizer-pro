@@ -449,19 +449,34 @@ export async function optimizeGeneticAsync(
     return finalTree;
   }
 
+  const totalEvals = generations * populationSize;
+
   for (let g = 0; g < generations; g++) {
     const currentLookahead = estimatedSheets;
     // High mutation early (exploration), low mutation late (refinement)
     const adaptiveMutationRate = 0.25 - (g / Math.max(1, generations - 1)) * 0.20;
 
-    const evaluated = population.map((ind) => {
+    const evaluated: Array<{ ind: GAIndividual; tree: TreeNode; fitness: number }> = [];
+    for (let i = 0; i < population.length; i++) {
+      const ind = population[i];
       const work = buildPieces(ind);
       const eW = ind.transposed ? usableH : usableW;
       const eH = ind.transposed ? usableW : usableH;
       const horizontalHint = getHorizontalStripHint(ind, work, eW, eH);
       const res = simulateSheets(work, eW, eH, minBreak, currentLookahead, horizontalHint);
-      return { ind, tree: res.firstTree, fitness: res.fitness };
-    });
+      evaluated.push({ ind, tree: res.firstTree, fitness: res.fitness });
+
+      if (onProgress) {
+        onProgress({
+          phase: `Evolução Gen ${g + 1}/${generations} · Pop ${i + 1}/${populationSize}`,
+          current: g * populationSize + i + 1,
+          total: totalEvals,
+          bestUtil: bestFitness * 100,
+        });
+      }
+
+      if ((g * populationSize + i) % 20 === 0) await new Promise((r) => setTimeout(r, 0));
+    }
 
     evaluated.sort((a, b) => b.fitness - a.fitness);
 
@@ -470,17 +485,6 @@ export async function optimizeGeneticAsync(
       bestTree = JSON.parse(JSON.stringify(evaluated[0].tree));
       bestTransposed = evaluated[0].ind.transposed;
     }
-
-    if (onProgress) {
-      onProgress({
-        phase: "Otimização Evolutiva Global",
-        current: g + 1,
-        total: generations,
-        bestUtil: bestFitness * 100,
-      });
-    }
-
-    if (g % 5 === 0) await new Promise((r) => setTimeout(r, 0));
 
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
     const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + i.groupingMode + i.stripMode + (i.transposed ? "T" : "N")));
