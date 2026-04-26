@@ -116,7 +116,7 @@ function simulateSheets(
     if (freeW > 50) continuityScore += freeW / usableW;
 
     const piecesPlaced = countBefore - res.remaining.length;
-    if (piecesPlaced === 0) rejectedCount++;
+    if (piecesPlaced === 0) { rejectedCount++; break; }
 
     currentRemaining = res.remaining;
     sheetsActuallySimulated++;
@@ -160,7 +160,6 @@ export async function optimizeGeneticAsync(
   const populationSize = Math.max(10, gaPopulationSize);
   const generations = Math.max(0, gaGenerations);
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
-  const mutationRate = 0.05;
 
   const numPieces = pieces.length;
 
@@ -315,10 +314,14 @@ export async function optimizeGeneticAsync(
     return c;
   }
 
+  // Estimate total sheets needed (used as full lookahead for fitness evaluation)
+  const totalPieceArea = pieces.reduce((s, p) => s + (p.area || p.w * p.h) * (p.count || 1), 0);
+  const estimatedSheets = Math.min(60, Math.max(5, Math.ceil(totalPieceArea / (usableW * usableH * 0.65))));
+
   // --- Seeding ---
   const initialPop: GAIndividual[] = [];
   const strategies = getSortStrategies();
-  strategies.forEach((sortFn) => {
+  strategies.forEach((sortFn, stratIdx) => {
     const sortedIndices = Array.from({ length: numPieces }, (_, i) => i).sort((a, b) => {
       const pA = pieces[a];
       const pB = pieces[b];
@@ -341,7 +344,9 @@ export async function optimizeGeneticAsync(
       sortedIndices.unshift(tmp);
     }
 
-    // Seed with both strip modes (V and H) for each strategy
+    // Rotating groupingMode ensures non-zero modes appear in the initial population
+    const rotatingMode = GROUPING_MODES[1 + (stratIdx % (GROUPING_MODES.length - 1))] as GAIndividual['groupingMode'];
+
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
@@ -359,16 +364,16 @@ export async function optimizeGeneticAsync(
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
-      groupingMode: 0,
-      transposed: true,
+      groupingMode: rotatingMode,
+      transposed: false,
       stripMode: 'V',
     });
     initialPop.push({
       genome: [...sortedIndices],
       rotations: Array.from({ length: numPieces }, () => false),
-      groupingMode: 0,
+      groupingMode: rotatingMode,
       transposed: true,
-      stripMode: 'H',
+      stripMode: 'V',
     });
   });
 
@@ -445,7 +450,9 @@ export async function optimizeGeneticAsync(
   }
 
   for (let g = 0; g < generations; g++) {
-    const currentLookahead = Math.min(8, 3 + Math.floor(g / 20));
+    const currentLookahead = estimatedSheets;
+    // High mutation early (exploration), low mutation late (refinement)
+    const adaptiveMutationRate = 0.25 - (g / Math.max(1, generations - 1)) * 0.20;
 
     const evaluated = population.map((ind) => {
       const work = buildPieces(ind);
@@ -476,15 +483,15 @@ export async function optimizeGeneticAsync(
     if (g % 5 === 0) await new Promise((r) => setTimeout(r, 0));
 
     const nextPop: GAIndividual[] = evaluated.slice(0, eliteCount).map((e) => e.ind);
-    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + i.stripMode + (i.transposed ? "T" : "N")));
+    const seenGenomes = new Set(nextPop.map((i) => i.genome.join(",") + i.groupingMode + i.stripMode + (i.transposed ? "T" : "N")));
 
     while (nextPop.length < populationSize) {
       const pA = tournament(evaluated);
       const pB = tournament(evaluated);
       let child = crossover(pA, pB);
-      if (Math.random() < mutationRate) child = mutate(child);
+      if (Math.random() < adaptiveMutationRate) child = mutate(child);
 
-      const key = child.genome.join(",") + child.stripMode + (child.transposed ? "T" : "N");
+      const key = child.genome.join(",") + child.groupingMode + child.stripMode + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
