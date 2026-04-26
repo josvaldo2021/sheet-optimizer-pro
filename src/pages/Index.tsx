@@ -950,10 +950,10 @@ const Index = () => {
       });
     });
 
-    // Aggregate pieces used into lot summary
+    // Aggregate pieces used into lot summary (keyed by label+dimensions to keep IDs separate)
     const pieceMap = new Map<string, LotPieceEntry>();
     allUsedPieces.forEach((u) => {
-      const key = `${Math.min(u.w, u.h)}x${Math.max(u.w, u.h)}`;
+      const key = `${u.label || ""}|${u.w}x${u.h}`;
       const existing = pieceMap.get(key);
       if (existing) {
         existing.qty++;
@@ -962,13 +962,17 @@ const Index = () => {
       }
     });
 
+    const sortedPieces = Array.from(pieceMap.values()).sort((a, b) =>
+      (a.label || "").localeCompare(b.label || "", undefined, { numeric: true, sensitivity: "base" })
+    );
+
     // Create lot
     const newLot: Lot = {
       id: `lot_${Date.now()}`,
       number: lots.length + 1,
       date: new Date().toISOString(),
       chapas: autoChapas.map((c) => ({ tree: c.tree, usedArea: c.usedArea })),
-      piecesUsed: Array.from(pieceMap.values()),
+      piecesUsed: sortedPieces,
       sheetW: chapaW,
       sheetH: chapaH,
       totalSheets: autoChapas.length,
@@ -1273,7 +1277,8 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
   const printLot = useCallback((lot: Lot) => {
     const totalPieces = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
     const dateStr = new Date(lot.date).toLocaleString("pt-BR");
-    const rows = lot.piecesUsed
+    const rows = [...lot.piecesUsed]
+      .sort((a, b) => (a.label || "").localeCompare(b.label || "", undefined, { numeric: true, sensitivity: "base" }))
       .map(
         (p, i) =>
           `<tr style="border-top:1px solid #e5e7eb;${i % 2 === 0 ? "background:#f9fafb;" : ""}">

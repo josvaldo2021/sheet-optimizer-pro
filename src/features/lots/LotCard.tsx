@@ -60,7 +60,9 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
               </tr>
             </thead>
             <tbody>
-              {lot.piecesUsed.map((p, i) => (
+              {[...lot.piecesUsed]
+                .sort((a, b) => (a.label || "").localeCompare(b.label || "", undefined, { numeric: true, sensitivity: "base" }))
+                .map((p, i) => (
                 <tr
                   key={i}
                   style={{ color: "hsl(210 25% 75%)", borderTop: "1px solid hsl(222 47% 19%)", fontSize: "10px" }}
