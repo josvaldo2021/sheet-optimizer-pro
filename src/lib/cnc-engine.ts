@@ -19,4 +19,4 @@ export {
 } from './engine/tree-utils';
 
 export { normalizeTree } from './engine/normalization';
-export { optimizeV6, optimizeGeneticAsync, optimizeGeneticV1 } from './engine/engine-adapter';
+export { optimizeV6, optimizeGeneticAsync, optimizeGeneticV1, getUseWasmEngine, setUseWasmEngine, isWasmReady } from './engine/engine-adapter';

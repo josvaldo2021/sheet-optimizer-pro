@@ -1,4 +1,5 @@
-import { TreeNode, OptimizationProgress } from "@/lib/cnc-engine";
+import { useState } from "react";
+import { TreeNode, OptimizationProgress, getUseWasmEngine, setUseWasmEngine, isWasmReady } from "@/lib/cnc-engine";
 import { LayoutGroup } from "@/lib/export/layout-utils";
 import SidebarSection from "@/components/SidebarSection";
 import LayoutSummary from "./LayoutSummary";
@@ -52,6 +53,13 @@ const OptimizationPanel = ({
   setStatus, onSelectLayout, onDeleteLayout, onPrintLayout,
 }: Props) => {
   const SEGMENTS = 12;
+  const [useWasm, setUseWasm] = useState(() => getUseWasmEngine());
+  const wasmAvailable = isWasmReady();
+
+  function handleToggleWasm(val: boolean) {
+    setUseWasmEngine(val);
+    setUseWasm(val);
+  }
 
   return (
     <SidebarSection title="Execução" icon="🚀" defaultOpen={true}>
@@ -95,6 +103,38 @@ const OptimizationPanel = ({
           <div style={{ fontSize: "8px", color: "hsl(210 25% 58%)", marginTop: "3px" }}>
             Separe por vírgula. Peças priorizadas ficam nas primeiras chapas. Filtro visual — não remove layouts.
           </div>
+        </div>
+
+        {/* Engine toggle */}
+        <div className="flex items-center justify-between mb-3 px-2 py-2 rounded" style={{ background: "hsl(222 47% 10%)" }}>
+          <div>
+            <div className="text-[10px] font-bold" style={{ color: useWasm && wasmAvailable ? "hsl(142 70% 55%)" : "hsl(210 25% 62%)" }}>
+              {useWasm && wasmAvailable ? "⚡ Rust/WASM" : useWasm && !wasmAvailable ? "⏳ WASM carregando…" : "🔷 TypeScript"}
+            </div>
+            <div className="text-[9px]" style={{ color: "hsl(210 25% 50%)" }}>
+              Motor de otimização
+            </div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer" title={useWasm ? "Desativar Rust/WASM" : "Ativar Rust/WASM"}>
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={useWasm}
+              onChange={(e) => handleToggleWasm(e.target.checked)}
+            />
+            <div
+              className="w-9 h-5 rounded-full transition-colors duration-200 relative"
+              style={{ background: useWasm && wasmAvailable ? "hsl(142 70% 40%)" : "hsl(222 47% 25%)" }}
+            >
+              <div
+                className="absolute top-0.5 w-4 h-4 rounded-full transition-transform duration-200"
+                style={{
+                  background: "white",
+                  transform: useWasm ? "translateX(18px)" : "translateX(2px)",
+                }}
+              />
+            </div>
+          </label>
         </div>
 
         {/* GA params */}

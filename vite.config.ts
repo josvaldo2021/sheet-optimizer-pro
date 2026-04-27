@@ -17,6 +17,13 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@wasm": path.resolve(__dirname, "./wasm-engine/pkg"),
     },
+  },
+  optimizeDeps: {
+    exclude: ["wasm-engine"],
+  },
+  build: {
+    target: "esnext",
   },
 }));

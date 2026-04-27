@@ -1,22 +1,37 @@
-// Engine adapter: set USE_WASM_ENGINE = true to use the Rust/WASM engine.
-// Set to false to revert to the pure TypeScript implementation at any time.
-export const USE_WASM_ENGINE = true;
-
 import { TreeNode, Piece, OptimizationProgress } from './types';
 import { optimizeGeneticAsync as _optimizeGeneticTS, optimizeGeneticV1 as _optimizeGeneticV1TS } from './genetic';
 import { optimizeV6 as _optimizeV6TS } from './optimizer';
-import { tryInitWasm, getWasm } from './wasm-bridge';
+import { tryInitWasm, getWasm, isWasmReady } from './wasm-bridge';
+
+const STORAGE_KEY = 'useWasmEngine';
+
+let _useWasm: boolean = localStorage.getItem(STORAGE_KEY) !== 'false';
+
+export function getUseWasmEngine(): boolean { return _useWasm; }
+export function setUseWasmEngine(val: boolean): void {
+  _useWasm = val;
+  localStorage.setItem(STORAGE_KEY, val ? 'true' : 'false');
+}
+export { isWasmReady };
 
 let _wasmInitDone = false;
+let _wasmInitPromise: Promise<boolean> | null = null;
 
 async function ensureWasm(): Promise<boolean> {
-  if (!USE_WASM_ENGINE) return false;
+  if (!_useWasm) return false;
   if (!_wasmInitDone) {
     _wasmInitDone = true;
-    await tryInitWasm();
+    _wasmInitPromise = tryInitWasm();
+    await _wasmInitPromise;
+    _wasmInitPromise = null;
+  } else if (_wasmInitPromise) {
+    await _wasmInitPromise;
   }
   return getWasm() !== null;
 }
+
+// Eagerly kick off WASM init so it's ready when optimizeV6 (sync) is called
+ensureWasm();
 
 export async function optimizeGeneticAsync(
   pieces: Piece[],
@@ -57,7 +72,7 @@ export function optimizeV6(
   minBreak = 0,
   useGrouping?: boolean,
 ): { tree: TreeNode; remaining: Piece[] } {
-  if (USE_WASM_ENGINE && getWasm()) {
+  if (_useWasm && getWasm()) {
     const wasm = getWasm()!;
     try {
       const resultJson = wasm.wasm_optimize_v6(JSON.stringify(pieces), usableW, usableH, minBreak);

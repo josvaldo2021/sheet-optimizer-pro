@@ -20,9 +20,9 @@ export async function tryInitWasm(): Promise<boolean> {
   console.log('[WASM] tentando carregar engine Rust...');
   try {
     // Run `npm run build:wasm` first to generate wasm-engine/pkg/.
-    // Vite processes this import and handles the .wasm binary reference automatically.
+    // @wasm alias resolves to wasm-engine/pkg/ (configured in vite.config.ts).
     // @ts-ignore — generated file, types resolved at runtime
-    const mod = await import('../../../wasm-engine/pkg/optimizer_wasm.js');
+    const mod = await import('@wasm/optimizer_wasm.js');
     if (typeof mod.default === 'function') {
       await mod.default();
     }
