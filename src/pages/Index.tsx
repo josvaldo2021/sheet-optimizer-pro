@@ -935,9 +935,25 @@ const Index = () => {
     const allUsedPieces: Array<{ w: number; h: number; label?: string }> = [];
     const updatedPieces = pieces.map((p) => ({ ...p }));
     autoChapas.forEach((chapa) => {
-      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+      // requireLabel=false: inclui peças sem label (sem ID definido pelo usuário)
+      const usedPieces = extractUsedPiecesWithContext(chapa.tree, false);
       allUsedPieces.push(...usedPieces);
       usedPieces.forEach((used) => {
+        // 1. Tenta match por label+dimensão (mais preciso quando há IDs)
+        if (used.label) {
+          for (let j = 0; j < updatedPieces.length; j++) {
+            const p = updatedPieces[j];
+            if (
+              p.label === used.label &&
+              ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) &&
+              p.qty > 0
+            ) {
+              p.qty--;
+              return;
+            }
+          }
+        }
+        // 2. Fallback: match só por dimensão
         for (let j = 0; j < updatedPieces.length; j++) {
           const p = updatedPieces[j];
           if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
