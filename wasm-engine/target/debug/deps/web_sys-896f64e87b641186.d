@@ -1,0 +1,8 @@
+C:\Users\José Osvaldo\Documents\GitHub\sheet-optimizer-pro\wasm-engine\target\debug\deps\web_sys-896f64e87b641186.d: C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\lib.rs C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\mod.rs C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\gen_EventTarget.rs C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\gen_Window.rs
+
+C:\Users\José Osvaldo\Documents\GitHub\sheet-optimizer-pro\wasm-engine\target\debug\deps\libweb_sys-896f64e87b641186.rmeta: C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\lib.rs C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\mod.rs C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\gen_EventTarget.rs C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\gen_Window.rs
+
+C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\lib.rs:
+C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\mod.rs:
+C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\gen_EventTarget.rs:
+C:\Users\José\ Osvaldo\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\web-sys-0.3.95\src\features\gen_Window.rs:
