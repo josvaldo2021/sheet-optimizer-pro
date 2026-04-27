@@ -19,5 +19,4 @@ export {
 } from './engine/tree-utils';
 
 export { normalizeTree } from './engine/normalization';
-export { optimizeV6 } from './engine/optimizer';
-export { optimizeGeneticAsync, optimizeGeneticV1 } from './engine/genetic';
+export { optimizeV6, optimizeGeneticAsync, optimizeGeneticV1 } from './engine/engine-adapter';
