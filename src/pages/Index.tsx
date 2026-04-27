@@ -50,7 +50,7 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState("root");
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: "Pronto", type: "info" });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [globalProgress, setGlobalProgress] = useState<{ current: number; total: number } | null>(null);
@@ -64,7 +64,7 @@ const Index = () => {
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
   const [pdfFilename, setPdfFilename] = useState("plano-de-corte");
-  const [optimizationGroups, setOptimizationGroups] = useState<Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> }> | null>(null);
+  const [optimizationGroups, setOptimizationGroups] = useState<Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }> }> | null>(null);
   const [activeGroupIdx, setActiveGroupIdx] = useState(0);
   const [pieceFilter, setPieceFilter] = useState("");
   const [cmdInput, setCmdInput] = useState("");
@@ -376,6 +376,16 @@ const Index = () => {
         const usedPieces = extractUsedPiecesWithContext(result);
         if (usedPieces.length === 0) break;
 
+        // Build per-item deduction map keyed by PieceItem.id (not UID) for confirmAutoPlan.
+        const firstSheetDeductMap = new Map<string, number>();
+        usedPieces.forEach((used) => {
+          if (used.label) {
+            const item = uidToRef.get(used.label);
+            if (item) firstSheetDeductMap.set(item.id, (firstSheetDeductMap.get(item.id) || 0) + 1);
+          }
+        });
+        const firstDeductions = Array.from(firstSheetDeductMap.entries()).map(([id, qty]) => ({ id, qty }));
+
         // Restore original user labels in the tree (uid labels are internal only).
         const restoreLabels = (n: TreeNode) => {
           if (n.label && uidToOrig.has(n.label)) n.label = uidToOrig.get(n.label);
@@ -383,7 +393,7 @@ const Index = () => {
         };
         restoreLabels(result);
 
-        chapaList.push({ tree: result, usedArea, manual: false });
+        chapaList.push({ tree: result, usedArea, manual: false, deductions: firstDeductions });
 
         // --- Layout Replication Optimization ---
         // Build BOM by dimensions (replications don't need unique labels).
@@ -432,8 +442,7 @@ const Index = () => {
         // Replicate the layout for additional copies
         if (maxReplications > 0) {
           for (let rep = 0; rep < maxReplications; rep++) {
-            chapaList.push({ tree: cloneTree(result), usedArea, manual: false });
-            // Deduct pieces for this replicated sheet
+            const repDeductMap = new Map<string, number>();
             layoutBOM.forEach(({ w, h, count }) => {
               let toDeduct = count;
               for (let i = 0; i < remaining.length && toDeduct > 0; i++) {
@@ -442,13 +451,13 @@ const Index = () => {
                   const deducted = Math.min(toDeduct, p.qty);
                   p.qty -= deducted;
                   toDeduct -= deducted;
-                  if (p.qty <= 0) {
-                    remaining.splice(i, 1);
-                    i--;
-                  }
+                  if (deducted > 0) repDeductMap.set(p.id, (repDeductMap.get(p.id) || 0) + deducted);
+                  if (p.qty <= 0) { remaining.splice(i, 1); i--; }
                 }
               }
             });
+            const repDeductions = Array.from(repDeductMap.entries()).map(([id, qty]) => ({ id, qty }));
+            chapaList.push({ tree: cloneTree(result), usedArea, manual: false, deductions: repDeductions });
           }
           sheetCount += maxReplications;
         }
@@ -935,35 +944,41 @@ const Index = () => {
     const allUsedPieces: Array<{ w: number; h: number; label?: string }> = [];
     const updatedPieces = pieces.map((p) => ({ ...p }));
     autoChapas.forEach((chapa) => {
-      // requireLabel=false: inclui peças sem label (sem ID definido pelo usuário)
+      // Always extract for lot summary (uses restored labels for display).
       const usedPieces = extractUsedPiecesWithContext(chapa.tree, false);
       allUsedPieces.push(...usedPieces);
-      usedPieces.forEach((used) => {
-        // 1. Tenta match por label+dimensão (mais preciso quando há IDs)
-        if (used.label) {
+
+      if (chapa.deductions && chapa.deductions.length > 0) {
+        // Use pre-computed PieceItem.id deductions recorded during runAllSheets.
+        // This is exact and immune to label/dimension ambiguity.
+        chapa.deductions.forEach(({ id, qty }) => {
+          const p = updatedPieces.find((x) => x.id === id);
+          if (p) p.qty -= qty;
+        });
+      } else {
+        // Fallback for manual chapas: label+dim match, then dim-only.
+        usedPieces.forEach((used) => {
+          if (used.label) {
+            for (let j = 0; j < updatedPieces.length; j++) {
+              const p = updatedPieces[j];
+              if (
+                p.label === used.label &&
+                ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) &&
+                p.qty > 0
+              ) {
+                p.qty--;
+                return;
+              }
+            }
+          }
           for (let j = 0; j < updatedPieces.length; j++) {
             const p = updatedPieces[j];
-            if (
-              p.label === used.label &&
-              ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) &&
-              p.qty > 0
-            ) {
-              p.qty--;
-              return;
+            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+              if (p.qty > 0) { p.qty--; break; }
             }
           }
-        }
-        // 2. Fallback: match só por dimensão
-        for (let j = 0; j < updatedPieces.length; j++) {
-          const p = updatedPieces[j];
-          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
-            if (p.qty > 0) {
-              p.qty--;
-              break;
-            }
-          }
-        }
-      });
+        });
+      }
     });
 
     // Aggregate pieces used into lot summary (keyed by label+dimensions to keep IDs separate)

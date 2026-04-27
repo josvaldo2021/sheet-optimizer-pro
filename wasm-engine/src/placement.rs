@@ -24,18 +24,26 @@ pub fn create_piece_nodes(
         let original_axis = piece.grouped_axis.as_deref().unwrap_or("w");
         let count = piece.effective_count() as usize;
 
-        let split_axis = if original_axis == "w" && !rotated {
+        // After considering rotation, pieces grouped along the "spread" axis need Z split
+        // (side-by-side in the placement's X direction), while pieces grouped along the
+        // "stack" axis need W split (stacked in the placement's Y direction).
+        //
+        // "w"+!rotated → spread horizontally → Z
+        // "h"+rotated  → originally stacked vertically, after 90° rotation now spread → Z
+        // "h"+!rotated → stacked vertically → W
+        // "w"+rotated  → originally spread horizontally, after 90° rotation now stacked → W
+        let split_axis = if (original_axis == "w" && !rotated) || (original_axis == "h" && rotated) {
             "Z"
-        } else if (original_axis == "h" && !rotated) || (original_axis == "w" && rotated) {
-            "W"
-        } else if original_axis == "w" && rotated {
-            "Q"
         } else {
-            "R"
+            "W"
         };
 
-        // If we have an existing Z node, we can't do a Z split
-        let split_axis = if z_node_to_use.is_some() && split_axis == "Z" { "W" } else { split_axis };
+        // If we have an existing Z node, we can't do a Z split.
+        // For "w"-axis grouping (original_axis=="w" && !rotated), split_axis=="Z" means pieces are
+        // side-by-side horizontally with individual_dims = individual widths. Forcing to "W" would
+        // store those widths as W.valor (height field), producing wrong dimensions.
+        // "Q" is correct: Z→W(placed_h)→Q(individual_w)×N keeps width in Q.valor and height in W.valor.
+        let split_axis = if z_node_to_use.is_some() && split_axis == "Z" { "Q" } else { split_axis };
 
         match split_axis {
             "Z" => {
