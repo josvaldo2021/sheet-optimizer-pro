@@ -312,7 +312,10 @@ fn fill_area_z(
                 if !can_fit_more { effective_h = free_h; }
             }
 
-            let w_id = arena.add_child(z_id, NodeType::W, effective_h, 1);
+            // Use oh (actual piece height), not effective_h (slot height), so that
+            // extractUsedPiecesWithContext reads the correct piece dimensions from W.valor.
+            // effective_h is only used for free_h accounting (claiming the remaining slot space).
+            let w_id = arena.add_child(z_id, NodeType::W, oh, 1);
             if let Some(l) = &pc.label { arena.get_mut(w_id).label = Some(l.clone()); }
             if ow < area_w - 0.5 {
                 let q_id = arena.add_child(w_id, NodeType::Q, ow, 1);
