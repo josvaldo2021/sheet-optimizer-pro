@@ -1460,7 +1460,7 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
       {/* SIDEBAR */}
       <div
         className="w-[420px] min-w-[420px] flex flex-col h-screen overflow-y-auto cnc-scroll"
-        style={{ background: "hsl(222 47% 13%)", borderRight: "2px solid hsl(222 47% 22%)" }}
+        style={{ background: "white", borderRight: "2px solid hsl(222 47% 22%)" }}
       >
         {/* ─── BRAND HEADER ─── */}
         <div className="cnc-brand-header">

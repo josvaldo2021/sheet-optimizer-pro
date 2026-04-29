@@ -34,7 +34,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
       style={{
         all: "unset",
         cursor: "pointer",
-        color: sort?.key === key ? "hsl(210 80% 72%)" : "hsl(210 25% 58%)",
+        color: sort?.key === key ? "hsl(206 82% 62%)" : "hsl(220 18% 52%)",
         fontWeight: "bold",
         fontSize: "9px",
         textTransform: "uppercase",
@@ -78,14 +78,15 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
 
   return (
     <SidebarSection title={`Lista de Peças (${totalPieces})`} icon="📦" defaultOpen={true}>
-      <div className="flex flex-col" style={{ background: "hsl(222 47% 11%)" }}>
+      <div className="flex flex-col" style={{ background: "hsl(240 60% 8%)" }}>
         <div
           className="p-2.5 flex-shrink-0 space-y-2"
-          style={{ background: "hsl(222 47% 14%)", borderBottom: "1px solid hsl(222 47% 22%)" }}
+          style={{ background: "hsl(237 50% 12%)", borderBottom: "1px solid hsl(237 40% 18%)" }}
         >
           <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" className="hidden" onChange={onImportExcel} />
-          <button className="cnc-btn-excel w-full" onClick={() => document.getElementById("excelInput")?.click()}>
-            📂 IMPORTAR EXCEL
+          <button className="cnc-btn-excel w-full" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }} onClick={() => document.getElementById("excelInput")?.click()}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style={{ flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zm-4.5 5.5 1.8 2.7L8.5 18H10l1-1.8 1 1.8h1.5l-1.8-2.8 1.7-2.7H12l-.9 1.7-.9-1.7H8.5z"/></svg>
+            IMPORTAR EXCEL
           </button>
 
           <div className="flex flex-col gap-1 mt-2">
@@ -99,7 +100,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
             <div className="flex gap-1">
               <button
                 className="text-[9px] uppercase font-bold py-1 px-2 rounded transition-colors flex-1"
-                style={{ background: "hsl(222 47% 22%)", color: "hsl(210 25% 68%)", border: "1px solid hsl(222 47% 30%)" }}
+                style={{ background: "hsl(237 50% 17%)", color: "hsl(220 18% 65%)", border: "1px solid hsl(237 45% 25%)" }}
                 onClick={() => {
                   const lower = pieceFilter.toLowerCase();
                   setPieces((ps) =>
@@ -117,7 +118,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
               </button>
               <button
                 className="text-[9px] uppercase font-bold py-1 px-2 rounded transition-colors flex-1"
-                style={{ background: "hsl(222 47% 22%)", color: "hsl(210 25% 68%)", border: "1px solid hsl(222 47% 30%)" }}
+                style={{ background: "hsl(237 50% 17%)", color: "hsl(220 18% 65%)", border: "1px solid hsl(237 45% 25%)" }}
                 onClick={() => setPieces((ps) => ps.map((p) => ({ ...p, priority: false })))}
               >
                 Desmarcar Todos
@@ -136,7 +137,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
               <button
                 onClick={() => { setPieces([]); setPieceFilter(""); }}
                 className="cnc-btn-secondary flex-1"
-                style={{ background: "hsl(0 45% 25%)" }}
+                style={{ background: "hsl(237 50% 12%)", border: "1px solid hsl(237 40% 20%)" }}
               >
                 LIMPAR LISTA
               </button>
@@ -156,7 +157,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
                 style={{
                   all: "unset",
                   cursor: "pointer",
-                  color: sort?.key === "priority" ? "hsl(210 80% 72%)" : "hsl(210 25% 58%)",
+                  color: sort?.key === "priority" ? "hsl(206 82% 62%)" : "hsl(220 18% 52%)",
                   fontSize: "12px",
                   textAlign: "center",
                   display: "block",
@@ -183,7 +184,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
                     setPieces((ps) => ps.map((x) => (x.id === p.id ? { ...x, priority: e.target.checked } : x)))
                   }
                   title="Processar somente este pedido"
-                  style={{ accentColor: "hsl(45 100% 50%)", cursor: "pointer", width: "12px", height: "12px" }}
+                  style={{ accentColor: "hsl(28 90% 52%)", cursor: "pointer", width: "12px", height: "12px" }}
                 />
               </div>
               <input
@@ -198,7 +199,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
                 onChange={(e) => setPieces((ps) => ps.map((x) => (x.id === p.id ? { ...x, w: +e.target.value } : x)))}
                 className="cnc-input"
               />
-              <span className="text-center text-[8px]" style={{ color: "hsl(210 25% 60%)" }}>×</span>
+              <span className="text-center text-[8px]" style={{ color: "hsl(220 18% 35%)" }}>×</span>
               <input
                 type="number"
                 value={p.h}
@@ -226,7 +227,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
             </div>
           ))}
           {pieces.length === 0 && (
-            <div className="text-center text-[11px] py-6" style={{ color: "hsl(210 25% 52%)" }}>
+            <div className="text-center text-[11px] py-6" style={{ color: "hsl(220 18% 44%)" }}>
               Nenhuma peça adicionada
             </div>
           )}

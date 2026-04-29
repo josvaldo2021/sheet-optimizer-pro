@@ -16,25 +16,25 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
     <div
       className="rounded overflow-hidden"
       style={{
-        border: `1px solid ${isExpanded ? "hsl(211 60% 38%)" : "hsl(222 47% 28%)"}`,
-        background: "hsl(222 47% 11%)",
+        border: `1px solid ${isExpanded ? "hsl(206 72% 42%)" : "hsl(237 50% 22%)"}`,
+        background: "hsl(237 50% 9%)",
       }}
     >
       <button
         className="w-full flex items-center justify-between px-2.5 py-2 text-left"
-        style={{ background: isExpanded ? "hsl(211 60% 17%)" : "hsl(222 47% 14%)", cursor: "pointer", border: "none" }}
+        style={{ background: isExpanded ? "hsl(206 50% 12%)" : "hsl(237 50% 12%)", cursor: "pointer", border: "none" }}
         onClick={onToggle}
       >
         <div className="flex items-center gap-2">
-          <span className="text-[12px] font-bold" style={{ color: "hsl(120 70% 55%)" }}>
+          <span className="text-[12px] font-bold" style={{ color: "hsl(206 82% 58%)" }}>
             Lote #{lot.number}
           </span>
-          <span className="text-[9px]" style={{ color: "hsl(210 25% 55%)" }}>
+          <span className="text-[9px]" style={{ color: "hsl(220 18% 48%)" }}>
             {lot.totalSheets} chapa(s) • {totalPiecesInLot} peça(s)
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[9px]" style={{ color: "hsl(210 25% 48%)" }}>
+          <span className="text-[9px]" style={{ color: "hsl(220 18% 42%)" }}>
             {new Date(lot.date).toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "2-digit",
@@ -42,18 +42,18 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
               minute: "2-digit",
             })}
           </span>
-          <span style={{ color: "hsl(210 25% 55%)", fontSize: "8px" }}>{isExpanded ? "▲" : "▼"}</span>
+          <span style={{ color: "hsl(220 18% 48%)", fontSize: "8px" }}>{isExpanded ? "▲" : "▼"}</span>
         </div>
       </button>
 
       {isExpanded && (
-        <div className="px-2.5 pb-2 pt-1.5" style={{ borderTop: "1px solid hsl(222 47% 22%)" }}>
-          <div className="text-[9px] mb-2" style={{ color: "hsl(210 25% 50%)" }}>
+        <div className="px-2.5 pb-2 pt-1.5" style={{ borderTop: "1px solid hsl(237 50% 18%)" }}>
+          <div className="text-[9px] mb-2" style={{ color: "hsl(220 18% 44%)" }}>
             Chapa: {lot.sheetW}×{lot.sheetH} mm &nbsp;|&nbsp; {new Date(lot.date).toLocaleString("pt-BR")}
           </div>
           <table className="w-full mb-2" style={{ borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ color: "hsl(210 25% 50%)", fontSize: "8px" }}>
+              <tr style={{ color: "hsl(220 18% 44%)", fontSize: "8px" }}>
                 <th className="text-left py-0.5 font-semibold">Dimensão</th>
                 <th className="text-center py-0.5 font-semibold">Qtd</th>
                 <th className="text-left py-0.5 font-semibold">ID</th>
@@ -65,11 +65,11 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
                 .map((p, i) => (
                 <tr
                   key={i}
-                  style={{ color: "hsl(210 25% 75%)", borderTop: "1px solid hsl(222 47% 19%)", fontSize: "10px" }}
+                  style={{ color: "hsl(220 18% 70%)", borderTop: "1px solid hsl(237 50% 16%)", fontSize: "10px" }}
                 >
                   <td className="py-0.5 font-mono">{p.w}×{p.h}</td>
-                  <td className="text-center py-0.5 font-bold" style={{ color: "hsl(120 70% 55%)" }}>{p.qty}</td>
-                  <td className="py-0.5" style={{ color: "hsl(210 25% 55%)" }}>{p.label || "—"}</td>
+                  <td className="text-center py-0.5 font-bold" style={{ color: "hsl(206 82% 62%)" }}>{p.qty}</td>
+                  <td className="py-0.5" style={{ color: "hsl(220 18% 48%)" }}>{p.label || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -77,7 +77,7 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
           <div className="flex gap-1.5 mt-1">
             <button
               className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
-              style={{ background: "hsl(211 60% 28%)", color: "hsl(210 80% 85%)", border: "1px solid hsl(211 60% 40%)", cursor: "pointer" }}
+              style={{ background: "hsl(206 82% 20%)", color: "hsl(206 82% 82%)", border: "1px solid hsl(206 82% 36%)", cursor: "pointer" }}
               onClick={() => onPrint(lot)}
               title="Imprimir relatório deste lote"
             >
@@ -85,7 +85,7 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
             </button>
             <button
               className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
-              style={{ background: "hsl(38 70% 28%)", color: "hsl(38 90% 85%)", border: "1px solid hsl(38 70% 40%)", cursor: "pointer" }}
+              style={{ background: "hsl(120 55% 16%)", color: "hsl(120 60% 78%)", border: "1px solid hsl(120 55% 30%)", cursor: "pointer" }}
               onClick={() => onReturn(lot)}
               title="Devolver todas as peças deste lote ao inventário"
             >
@@ -93,7 +93,7 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
             </button>
             <button
               className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
-              style={{ background: "hsl(0 50% 22%)", color: "hsl(0 70% 75%)", border: "1px solid hsl(0 50% 32%)", cursor: "pointer" }}
+              style={{ background: "hsl(0 55% 18%)", color: "hsl(0 60% 78%)", border: "1px solid hsl(0 55% 30%)", cursor: "pointer" }}
               onClick={() => onRemove(lot.id)}
               title="Remover lote permanentemente (sem devolver ao inventário)"
             >

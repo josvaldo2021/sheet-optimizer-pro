@@ -15,8 +15,8 @@ export default function SidebarSection({ title, children, defaultOpen = true, ic
     <div
       className="flex flex-col"
       style={{
-        borderBottom: '1px solid hsl(222 47% 22%)',
-        borderLeft: open ? '3px solid hsl(211 100% 50%)' : '3px solid transparent',
+        borderBottom: '1px solid hsl(237 50% 17%)',
+        borderLeft: open ? '3px solid hsl(206 82% 51%)' : '3px solid transparent',
         transition: 'border-left-color 0.2s',
       }}
     >
@@ -24,9 +24,9 @@ export default function SidebarSection({ title, children, defaultOpen = true, ic
         onClick={() => setOpen(!open)}
         className="flex items-center justify-between p-3 text-xs uppercase tracking-widest font-semibold cursor-pointer transition-all"
         style={{
-          background: open ? 'hsl(222 47% 20%)' : 'hsl(222 47% 17%)',
-          borderBottom: open ? '1px solid hsl(222 47% 26%)' : '1px solid transparent',
-          color: open ? 'hsl(210 35% 92%)' : 'hsl(210 25% 72%)',
+          background: open ? 'hsl(237 50% 14%)' : 'hsl(237 50% 11%)',
+          borderBottom: open ? '1px solid hsl(237 45% 19%)' : '1px solid transparent',
+          color: open ? 'hsl(220 20% 90%)' : 'hsl(220 18% 64%)',
           fontFamily: 'var(--font-ui)',
           letterSpacing: '0.07em',
           transition: 'background 0.15s, color 0.15s',
@@ -40,7 +40,7 @@ export default function SidebarSection({ title, children, defaultOpen = true, ic
           className="h-3.5 w-3.5 transition-transform duration-200"
           style={{
             transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
-            color: open ? 'hsl(211 80% 62%)' : 'hsl(210 20% 52%)',
+            color: open ? 'hsl(206 80% 62%)' : 'hsl(220 18% 40%)',
           }}
         />
       </button>

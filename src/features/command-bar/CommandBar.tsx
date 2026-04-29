@@ -46,14 +46,14 @@ const CommandBar = ({
   onSaveLayout, onClear, onCalcReplication, cmdInputRef,
 }: Props) => {
   const statusColor =
-    status.type === "error" ? "hsl(0 70% 50%)" :
-    status.type === "success" ? "hsl(142 55% 32%)" :
-    "hsl(38 90% 40%)";
+    status.type === "error" ? "hsl(220 10% 52%)" :
+    status.type === "success" ? "hsl(206 82% 52%)" :
+    "hsl(206 70% 44%)";
 
   return (
     <div
       className="flex flex-col p-2 px-4"
-      style={{ height: "auto", minHeight: 80, background: "white", borderTop: "3px solid hsl(211 100% 50%)" }}
+      style={{ height: "auto", minHeight: 80, background: "white", borderTop: "3px solid hsl(206 82% 51%)" }}
     >
       <div
         className="text-xs font-semibold h-5 mb-1 flex items-center gap-1.5"
@@ -118,7 +118,7 @@ const CommandBar = ({
         <button
           onClick={() => onSaveLayout(replicationInfo?.count || 1)}
           className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
-          style={{ background: "hsl(120 60% 25%)", fontWeight: "bold" }}
+          style={{ background: "hsl(240 100% 44%)", color: "white", border: "1px solid hsl(240 100% 58%)", fontWeight: "bold" }}
           title="Salvar layout atual na lista de chapas e deduzir peças do inventário"
         >
           💾 SALVAR LAYOUT
@@ -126,7 +126,7 @@ const CommandBar = ({
         <button
           onClick={onClear}
           className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
-          style={{ background: "hsl(0 50% 30%)", fontWeight: "bold" }}
+          style={{ fontWeight: "bold" }}
           title="Limpar a chapa atual e começar um novo layout do zero"
         >
           🧹 LIMPAR
@@ -134,7 +134,7 @@ const CommandBar = ({
         <button
           onClick={onCalcReplication}
           className="cnc-btn-secondary text-[10px] px-3 whitespace-nowrap"
-          style={{ background: "hsl(270 60% 35%)", fontWeight: "bold" }}
+          style={{ fontWeight: "bold" }}
           title="Calcular quantas vezes o layout atual pode ser repetido com o inventário disponível"
         >
           🔄 REPETIÇÕES
