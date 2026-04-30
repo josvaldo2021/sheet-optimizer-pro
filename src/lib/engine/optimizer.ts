@@ -21,6 +21,7 @@ import {
   groupStripPackingDP,
   groupStripPackingDPTransposed,
   groupCommonDimensionDP,
+  groupIdenticalPieces2D,
 } from './grouping';
 
 export function getSortStrategies(): ((a: Piece, b: Piece) => number)[] {
@@ -116,6 +117,8 @@ export function optimizeV6(
           groupCommonDimensionDP(rotatedPieces, usableW, usableH),
           groupCommonDimensionDP(pieces, usableW, usableH, 0.2),
           groupCommonDimensionDP(rotatedPieces, usableW, usableH, 0.2),
+          groupIdenticalPieces2D(pieces, usableW, usableH),
+          groupIdenticalPieces2D(rotatedPieces, usableW, usableH),
         ];
 
   let bestTree: TreeNode | null = null;

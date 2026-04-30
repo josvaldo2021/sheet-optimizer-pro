@@ -9,6 +9,7 @@ use crate::grouping::{
     group_by_common_dimension, group_by_common_dimension_transposed,
     group_strip_packing_dp, group_strip_packing_dp_transposed,
     group_common_dimension_dp,
+    group_identical_pieces_2d,
 };
 
 pub const NUM_SORT_STRATEGIES: usize = 12;
@@ -133,6 +134,8 @@ pub fn optimize_v6_arena(
             group_common_dimension_dp(&rotated, usable_w, usable_h, 0.3),
             group_common_dimension_dp(pieces, usable_w, usable_h, 0.2),
             group_common_dimension_dp(&rotated, usable_w, usable_h, 0.2),
+            group_identical_pieces_2d(pieces, usable_w, usable_h),
+            group_identical_pieces_2d(&rotated, usable_w, usable_h),
         ]
     };
 

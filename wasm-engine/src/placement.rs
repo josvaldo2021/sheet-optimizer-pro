@@ -20,6 +20,33 @@ pub fn create_piece_nodes(
     rotated: bool,
     z_node_to_use: Option<u32>,
 ) -> f64 {
+    // 2D block: cols × rows grid of identical pieces
+    if piece.is_grouped() && piece.grouped_axis.as_deref() == Some("2d") {
+        let dims = piece.individual_dims.as_deref().unwrap_or(&[1.0, 1.0]);
+        let (cols, rows) = if rotated {
+            (dims.get(1).copied().unwrap_or(1.0).round() as usize,
+             dims.get(0).copied().unwrap_or(1.0).round() as usize)
+        } else {
+            (dims.get(0).copied().unwrap_or(1.0).round() as usize,
+             dims.get(1).copied().unwrap_or(1.0).round() as usize)
+        };
+        let piece_w = if cols > 0 { placed_w / cols as f64 } else { placed_w };
+        let piece_h = if rows > 0 { placed_h / rows as f64 } else { placed_h };
+        let mut label_idx = 0usize;
+        for _c in 0..cols {
+            let z_id = insert_node(arena, y_id, NodeType::Z, piece_w, 1);
+            for r in 0..rows {
+                let w_id = arena.add_child(z_id, NodeType::W, piece_h, 1);
+                if let Some(lbl) = piece.labels.as_ref().and_then(|ls| ls.get(label_idx)) {
+                    arena.get_mut(w_id).label = Some(lbl.clone());
+                    if r == 0 { arena.get_mut(z_id).label = Some(lbl.clone()); }
+                }
+                label_idx += 1;
+            }
+        }
+        return placed_w * placed_h;
+    }
+
     if piece.is_grouped() {
         let original_axis = piece.grouped_axis.as_deref().unwrap_or("w");
         let count = piece.effective_count() as usize;

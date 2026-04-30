@@ -640,6 +640,79 @@ pub fn group_common_dimension_dp(pieces: &[Piece], usable_w: f64, _usable_h: f64
     result
 }
 
+pub fn group_identical_pieces_2d(pieces: &[Piece], usable_w: f64, usable_h: f64) -> Vec<Piece> {
+    if pieces.len() < 2 { return pieces.to_vec(); }
+
+    let normalized: Vec<(f64, f64, Option<String>)> = pieces.iter().map(|p| {
+        (p.w.max(p.h), p.w.min(p.h), p.label.clone())
+    }).collect();
+
+    let mut groups: std::collections::HashMap<(i64, i64), Vec<(f64, f64, Option<String>)>> =
+        std::collections::HashMap::new();
+    for (nw, nh, ref lbl) in &normalized {
+        groups.entry(((*nw * 1000.0) as i64, (*nh * 1000.0) as i64))
+              .or_default()
+              .push((*nw, *nh, lbl.clone()));
+    }
+
+    let mut result: Vec<Piece> = Vec::new();
+
+    for (_, group) in &groups {
+        let pw = group[0].0;
+        let ph = group[0].1;
+        let mut remaining = group.clone();
+
+        while remaining.len() >= 2 {
+            let max_cols = (usable_w / pw).floor() as usize;
+            let max_rows = (usable_h / ph).floor() as usize;
+            let mut best_cols = 1usize;
+            let mut best_rows = 1usize;
+            let mut best_used = 1usize;
+            let mut best_squareness = f64::INFINITY;
+
+            for cols in 1..=max_cols {
+                for rows in 1..=max_rows {
+                    let used = cols * rows;
+                    if used < 2 || used > remaining.len() { continue; }
+                    let block_w = cols as f64 * pw;
+                    let block_h = rows as f64 * ph;
+                    let squareness = f64::max(block_w, block_h) / f64::min(block_w, block_h).max(0.001);
+                    if used > best_used || (used == best_used && squareness < best_squareness) {
+                        best_cols = cols;
+                        best_rows = rows;
+                        best_used = used;
+                        best_squareness = squareness;
+                    }
+                }
+            }
+
+            if best_used < 2 {
+                for p in &remaining { result.push(single_piece(pw, ph, p.2.clone())); }
+                remaining.clear();
+                break;
+            }
+
+            let taken: Vec<_> = remaining.drain(..best_used).collect();
+            let labels: Vec<String> = taken.iter().filter_map(|p| p.2.clone()).collect();
+            result.push(Piece {
+                w: best_cols as f64 * pw,
+                h: best_rows as f64 * ph,
+                area: pw * ph,
+                count: Some(best_used as u32),
+                label: None,
+                labels: if labels.is_empty() { None } else { Some(labels) },
+                grouped_axis: Some("2d".to_string()),
+                individual_dims: Some(vec![best_cols as f64, best_rows as f64]),
+            });
+        }
+
+        for p in &remaining { result.push(single_piece(pw, ph, p.2.clone())); }
+    }
+
+    result.sort_by(|a, b| (b.w * b.h).partial_cmp(&(a.w * a.h)).unwrap_or(std::cmp::Ordering::Equal));
+    result
+}
+
 pub fn apply_grouping(work: &[Piece], mode: u8, usable_w: f64, usable_h: f64) -> Vec<Piece> {
     match mode {
         1 => group_pieces_by_height(work),

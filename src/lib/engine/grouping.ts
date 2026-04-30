@@ -809,6 +809,86 @@ export function groupStripPackingDPTransposed(
   return result;
 }
 
+// ========== 2D BLOCK GROUPING (identical pieces → compact grid) ==========
+
+/**
+ * Groups identical pieces (same w×h) into the most compact rectangular grid
+ * that fits within usableW × usableH. Produces a Piece with groupedAxis="2d"
+ * and individualDims=[cols, rows], so the placement can generate a proper
+ * X→Y→Z(col)→W(row) tree without fragmenting the leftover area.
+ */
+export function groupIdenticalPieces2D(pieces: Piece[], usableW: number, usableH: number): Piece[] {
+  if (pieces.length < 2) return pieces;
+
+  const normalized = pieces.map(p => ({
+    ...p,
+    nw: Math.max(p.w, p.h),
+    nh: Math.min(p.w, p.h),
+  }));
+
+  const groups = new Map<string, typeof normalized>();
+  for (const p of normalized) {
+    const k = `${p.nw}_${p.nh}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(p);
+  }
+
+  const result: Piece[] = [];
+
+  for (const group of groups.values()) {
+    const pw = group[0].nw;
+    const ph = group[0].nh;
+    let remaining = [...group];
+
+    while (remaining.length >= 2) {
+      const maxCols = Math.floor(usableW / pw);
+      const maxRows = Math.floor(usableH / ph);
+
+      // Find best (cols, rows): maximize pieces used, tiebreak by squareness
+      let bestCols = 1, bestRows = 1, bestUsed = 1;
+      let bestSquareness = Infinity;
+
+      for (let cols = 1; cols <= maxCols; cols++) {
+        for (let rows = 1; rows <= maxRows; rows++) {
+          const used = cols * rows;
+          if (used < 2 || used > remaining.length) continue;
+          const blockW = cols * pw;
+          const blockH = rows * ph;
+          const squareness = Math.max(blockW, blockH) / Math.min(blockW, blockH);
+          if (used > bestUsed || (used === bestUsed && squareness < bestSquareness)) {
+            bestCols = cols; bestRows = rows; bestUsed = used; bestSquareness = squareness;
+          }
+        }
+      }
+
+      if (bestUsed < 2) {
+        for (const p of remaining) result.push({ w: pw, h: ph, area: pw * ph, count: 1, label: p.label });
+        remaining = [];
+        break;
+      }
+
+      const taken = remaining.splice(0, bestUsed);
+      const labels = taken.filter(p => p.label).map(p => p.label!);
+      result.push({
+        w: bestCols * pw,
+        h: bestRows * ph,
+        area: pw * ph,
+        count: bestUsed,
+        labels: labels.length > 0 ? labels : undefined,
+        groupedAxis: "2d",
+        individualDims: [bestCols, bestRows],
+      });
+    }
+
+    for (const p of remaining) {
+      result.push({ w: pw, h: ph, area: pw * ph, count: 1, label: p.label });
+    }
+  }
+
+  result.sort((a, b) => (b.w * b.h) - (a.w * a.h));
+  return result;
+}
+
 export function groupCommonDimensionDP(
   pieces: Piece[],
   usableW: number,

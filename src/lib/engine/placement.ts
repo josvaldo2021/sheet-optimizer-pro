@@ -21,6 +21,31 @@ export function createPieceNodes(
   const isGrouped = piece.count && piece.count > 1;
   let addedArea = 0;
 
+  if (isGrouped && piece.groupedAxis === "2d") {
+    const dims = piece.individualDims || [1, 1];
+    // When rotated, cols and rows swap because the block is transposed
+    const cols = Math.round(rotated ? dims[1] : dims[0]);
+    const rows = Math.round(rotated ? dims[0] : dims[1]);
+    const pieceW = cols > 0 ? placedW / cols : placedW;
+    const pieceH = rows > 0 ? placedH / rows : placedH;
+    let labelIdx = 0;
+    for (let c = 0; c < cols; c++) {
+      const zId = insertNode(tree, yNode.id, "Z", pieceW, 1);
+      const zNode = findNode(tree, zId)!;
+      for (let r = 0; r < rows; r++) {
+        const wId = insertNode(tree, zNode.id, "W", pieceH, 1);
+        const wNode = findNode(tree, wId)!;
+        if (piece.labels?.[labelIdx]) {
+          wNode.label = piece.labels[labelIdx];
+          if (r === 0) zNode.label = piece.labels[labelIdx];
+        }
+        labelIdx++;
+      }
+    }
+    addedArea = placedW * placedH;
+    return addedArea;
+  }
+
   if (isGrouped) {
     const originalAxis = piece.groupedAxis || "w";
     let splitAxis: "Z" | "W" | "Q" | "R";
