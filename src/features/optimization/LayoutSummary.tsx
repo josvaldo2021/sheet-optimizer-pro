@@ -12,7 +12,7 @@ function countAllocatedPieces(node: TreeNode, mult = 1): number {
 }
 
 interface Props {
-  chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>;
+  chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; selected?: boolean }>;
   layoutGroups: LayoutGroup[];
   filteredLayoutGroups: LayoutGroup[];
   filterActiveLabels: string[] | null;
@@ -24,6 +24,7 @@ interface Props {
   onSelectLayout: (idx: number, tree: TreeNode) => void;
   onDeleteLayout: (origIdx: number) => void;
   onPrintLayout: (chapaIdx: number, layoutNum: number, count: number) => void;
+  onSetGroupSelectedCount: (indices: number[], n: number) => void;
 }
 
 const utilColor = (pct: number) =>
@@ -32,7 +33,7 @@ const utilColor = (pct: number) =>
 const LayoutSummary = ({
   chapas, layoutGroups, filteredLayoutGroups, filterActiveLabels,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
-  onSelectLayout, onDeleteLayout, onPrintLayout,
+  onSelectLayout, onDeleteLayout, onPrintLayout, onSetGroupSelectedCount,
 }: Props) => {
   const [popupIdx, setPopupIdx] = useState<number | null>(null);
 
@@ -92,11 +93,40 @@ const LayoutSummary = ({
         const util = usableW > 0 && usableH > 0 ? (group.usedArea / (usableW * usableH)) * 100 : 0;
         const pieceCount = countAllocatedPieces(chapas[group.indices[0]].tree);
         const showPopup = popupIdx === gIdx;
+        // Seleção para o lote (feature 003): quantas chapas deste grupo estão marcadas.
+        const selectedInGroup = group.indices.filter((i) => chapas[i]?.selected === true).length;
+        const allConfirmed = group.indices.every((i) => chapas[i]?.manual);
 
         return (
-          <div key={gIdx} className="relative mb-1">
+          <div key={gIdx} className="relative mb-1 flex items-center gap-1.5">
+            {!allConfirmed && (
+              <div className="flex items-center gap-1" title="Incluir esta(s) chapa(s) no lote ao confirmar">
+                <input
+                  type="checkbox"
+                  checked={selectedInGroup > 0}
+                  ref={(el) => { if (el) el.indeterminate = selectedInGroup > 0 && selectedInGroup < group.count; }}
+                  onChange={(e) => onSetGroupSelectedCount(group.indices, e.target.checked ? group.count : 0)}
+                  style={{ width: 14, height: 14, accentColor: "hsl(120 55% 40%)", cursor: "pointer" }}
+                />
+                {group.count > 1 && (
+                  <input
+                    type="number"
+                    value={selectedInGroup}
+                    min={0}
+                    max={group.count}
+                    onChange={(e) => {
+                      const n = Math.max(0, Math.min(group.count, parseInt(e.target.value) || 0));
+                      onSetGroupSelectedCount(group.indices, n);
+                    }}
+                    title={`Quantas das ×${group.count} chapas incluir`}
+                    className="cnc-input"
+                    style={{ width: 34, fontSize: "9px", padding: "1px 3px", textAlign: "center" }}
+                  />
+                )}
+              </div>
+            )}
             <button
-              className="w-full flex items-center justify-between p-2 rounded cursor-pointer transition-all text-left"
+              className="flex-1 flex items-center justify-between p-2 rounded cursor-pointer transition-all text-left"
               style={{
                 background: group.indices.includes(activeChapa) ? "hsl(206 50% 13%)" : "hsl(237 50% 13%)",
                 border: `1px solid ${group.indices.includes(activeChapa) ? "hsl(206 75% 42%)" : "hsl(237 40% 22%)"}`,

@@ -24,8 +24,11 @@ interface Props {
   globalProgress: { current: number; total: number } | null;
   layoutGroups: LayoutGroup[];
   filteredLayoutGroups: LayoutGroup[];
-  chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>;
+  chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; selected?: boolean }>;
   onConfirmPlan: () => void;
+  onSetGroupSelectedCount: (indices: number[], n: number) => void;
+  selectedChapaCount: number;
+  autoChapaCount: number;
   optimizationGroups: OptimizationGroup[] | null;
   activeGroupIdx: number;
   onSelectGroup: (idx: number) => void;
@@ -48,7 +51,8 @@ const OptimizationPanel = ({
   priorityIds, setPriorityIds, filterActiveLabels, setFilterActiveLabels,
   gaPopSize, setGaPopSize, gaGens, setGaGens, isOptimizing, onOptimize,
   progress, globalProgress, layoutGroups, filteredLayoutGroups, chapas,
-  onConfirmPlan, optimizationGroups, activeGroupIdx, onSelectGroup,
+  onConfirmPlan, onSetGroupSelectedCount, selectedChapaCount, autoChapaCount,
+  optimizationGroups, activeGroupIdx, onSelectGroup,
   pdfFilename, setPdfFilename, onExport,
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
   setStatus, onSelectLayout, onDeleteLayout, onPrintLayout,
@@ -260,10 +264,12 @@ const OptimizationPanel = ({
         {layoutGroups.length > 0 && chapas.some((c) => !c.manual) && (
           <button
             className="cnc-btn-success w-full mt-2"
-            style={{ padding: "10px", fontSize: "12px", fontWeight: "bold" }}
+            style={{ padding: "10px", fontSize: "12px", fontWeight: "bold", opacity: selectedChapaCount === 0 ? 0.5 : 1 }}
             onClick={onConfirmPlan}
+            disabled={selectedChapaCount === 0}
+            title={selectedChapaCount === 0 ? "Selecione ao menos uma chapa" : `Confirmar ${selectedChapaCount} de ${autoChapaCount} chapa(s)`}
           >
-            ✅ CONFIRMAR PLANO (ATUALIZAR INVENTÁRIO)
+            ✅ CONFIRMAR PLANO — {selectedChapaCount}/{autoChapaCount} CHAPA(S)
           </button>
         )}
 
@@ -305,6 +311,7 @@ const OptimizationPanel = ({
             onSelectLayout={onSelectLayout}
             onDeleteLayout={onDeleteLayout}
             onPrintLayout={onPrintLayout}
+            onSetGroupSelectedCount={onSetGroupSelectedCount}
           />
         )}
       </div>

@@ -21,6 +21,7 @@ import {
 } from "@/lib/cnc-engine";
 import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
+import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
 import { exportPdf } from "@/lib/export/pdf-export";
 import { printLayout } from "@/lib/export/print-layout";
 import SheetViewer from "@/components/SheetViewer";
@@ -51,7 +52,7 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState("root");
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: "Pronto", type: "info" });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean; selected?: boolean; deductions?: Array<{ id: string; qty: number }> }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [globalProgress, setGlobalProgress] = useState<{ current: number; total: number } | null>(null);
@@ -981,29 +982,27 @@ const Index = () => {
 
   // Confirm auto plan: deduct pieces from inventory, mark chapas as confirmed, and create a lot
   const confirmAutoPlan = useCallback(() => {
-    const autoChapas = chapas.filter((c) => !c.manual);
-    if (autoChapas.length === 0) {
+    const autoChapas = selectedAutoChapas(chapas);
+    if (countAuto(chapas) === 0) {
       setStatus({ msg: "Nenhuma chapa automática para confirmar.", type: "error" });
+      return;
+    }
+    if (autoChapas.length === 0) {
+      setStatus({ msg: "Selecione ao menos uma chapa para gerar o lote.", type: "error" });
       return;
     }
 
     // Collect all used pieces for this lot
     const allUsedPieces: Array<{ w: number; h: number; label?: string }> = [];
-    const updatedPieces = pieces.map((p) => ({ ...p }));
+    // Dedução exata pelas deductions registradas (caminho preciso).
+    const updatedPieces = applyDeductions(pieces, autoChapas);
     autoChapas.forEach((chapa) => {
       // Always extract for lot summary (uses restored labels for display).
       const usedPieces = extractUsedPiecesWithContext(chapa.tree, false);
       allUsedPieces.push(...usedPieces);
 
-      if (chapa.deductions && chapa.deductions.length > 0) {
-        // Use pre-computed PieceItem.id deductions recorded during runAllSheets.
-        // This is exact and immune to label/dimension ambiguity.
-        chapa.deductions.forEach(({ id, qty }) => {
-          const p = updatedPieces.find((x) => x.id === id);
-          if (p) p.qty -= qty;
-        });
-      } else {
-        // Fallback for manual chapas: label+dim match, then dim-only.
+      if (!chapa.deductions || chapa.deductions.length === 0) {
+        // Fallback para chapas sem deductions (ex.: chapa única manual): label+dim, depois dim.
         usedPieces.forEach((used) => {
           if (used.label) {
             for (let j = 0; j < updatedPieces.length; j++) {
@@ -1060,8 +1059,8 @@ const Index = () => {
     const filteredPieces = updatedPieces.filter((p) => p.qty > 0);
     setPieces(filteredPieces);
 
-    // Mark all auto chapas as confirmed (manual) so they won't be confirmed again
-    setChapas((prev) => prev.map((c) => (c.manual ? c : { ...c, manual: true })));
+    // Mark only the selected auto chapas as confirmed; unselected stay available (FR-005).
+    setChapas((prev) => prev.map((c) => (isSelectedAuto(c) ? { ...c, manual: true } : c)));
 
     const remaining = filteredPieces.reduce((s, p) => s + p.qty, 0);
     setStatus({
@@ -1069,6 +1068,21 @@ const Index = () => {
       type: "success",
     });
   }, [chapas, pieces, lots, chapaW, chapaH, extractUsedPiecesWithContext]);
+
+  // Seleção de chapas para o lote (feature 003): marca as N primeiras chapas de um
+  // grupo de layout idêntico como selecionadas; as demais do grupo ficam desmarcadas.
+  const setGroupSelectedCount = useCallback((indices: number[], n: number) => {
+    setChapas((prev) =>
+      prev.map((c, i) => {
+        const pos = indices.indexOf(i);
+        if (pos === -1) return c;
+        return { ...c, selected: pos < n };
+      }),
+    );
+  }, []);
+
+  const selectedChapaCount = useMemo(() => countSelectedAuto(chapas), [chapas]);
+  const autoChapaCount = useMemo(() => countAuto(chapas), [chapas]);
 
   const selectGroup = useCallback((idx: number) => {
     if (!optimizationGroups || !optimizationGroups[idx]) return;
@@ -1559,6 +1573,9 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
           filteredLayoutGroups={filteredLayoutGroups}
           chapas={chapas}
           onConfirmPlan={confirmAutoPlan}
+          onSetGroupSelectedCount={setGroupSelectedCount}
+          selectedChapaCount={selectedChapaCount}
+          autoChapaCount={autoChapaCount}
           optimizationGroups={optimizationGroups}
           activeGroupIdx={activeGroupIdx}
           onSelectGroup={selectGroup}
