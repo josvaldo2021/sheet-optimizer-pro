@@ -125,6 +125,8 @@ function fillRectZ(
             if (zResidualViolatesMinBreak(maxW, o.w, minBreak)) continue;
             const residualW = maxW - o.w;
             if (residualW > 0 && residualW < minBreak) continue;
+            const residualH = maxH - o.h;
+            if (residualH > 0 && residualH < minBreak) continue;
           }
           const pieceArea = o.w * o.h;
           if (pieceArea > bestArea) {

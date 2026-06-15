@@ -1,0 +1,2 @@
+# Linker configured via vcvarsall.bat environment (MSVC Build Tools)
+# Run: npm run build:wasm  (which invokes wasm-pack inside the VS Developer shell)

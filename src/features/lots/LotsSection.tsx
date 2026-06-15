@@ -13,11 +13,11 @@ interface Props {
 
 const LotsSection = ({ lots, setLots, expandedLotId, setExpandedLotId, onPrint, onReturn }: Props) => (
   <SidebarSection title={`Lotes${lots.length > 0 ? ` (${lots.length})` : ""}`} icon="📋" defaultOpen={true}>
-    <div className="p-2.5" style={{ background: "hsl(222 47% 14%)" }}>
+    <div className="p-2.5" style={{ background: "hsl(237 50% 12%)" }}>
       {lots.length === 0 ? (
-        <div className="text-center text-[11px] py-4" style={{ color: "hsl(210 25% 48%)" }}>
+        <div className="text-center text-[11px] py-4" style={{ color: "hsl(220 18% 44%)" }}>
           Nenhum lote gerado ainda.
-          <div className="text-[10px] mt-1" style={{ color: "hsl(210 25% 40%)" }}>
+          <div className="text-[10px] mt-1" style={{ color: "hsl(220 18% 36%)" }}>
             Confirme um plano para criar o primeiro lote.
           </div>
         </div>

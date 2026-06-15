@@ -430,3 +430,14 @@ export function calculateNodeArea(node: TreeNode): number {
   }
   return area;
 }
+/** Recursively count labeled pieces in a subtree, accounting for multipliers */
+export function countAllocatedPieces(node: TreeNode): number {
+  if (node.filhos.length === 0) {
+    return node.label ? node.multi : 0;
+  }
+  let count = 0;
+  for (const child of node.filhos) {
+    count += countAllocatedPieces(child);
+  }
+  return count * node.multi;
+}

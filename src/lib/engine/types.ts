@@ -21,8 +21,8 @@ export interface Piece {
   label?: string;
   /** Individual labels when grouping multiple pieces */
   labels?: string[];
-  /** Axis along which pieces were grouped */
-  groupedAxis?: "w" | "h";
+  /** Axis along which pieces were grouped ("2d" = rectangular grid of identical pieces) */
+  groupedAxis?: "w" | "h" | "2d";
   /** Individual dimensions of each piece in the group */
   individualDims?: number[];
 }

@@ -50,7 +50,7 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState("root");
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: "Pronto", type: "info" });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [globalProgress, setGlobalProgress] = useState<{ current: number; total: number } | null>(null);
@@ -64,6 +64,8 @@ const Index = () => {
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
   const [pdfFilename, setPdfFilename] = useState("plano-de-corte");
+  const [optimizationGroups, setOptimizationGroups] = useState<Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }> }> | null>(null);
+  const [activeGroupIdx, setActiveGroupIdx] = useState(0);
   const [pieceFilter, setPieceFilter] = useState("");
   const [cmdInput, setCmdInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -200,9 +202,10 @@ const Index = () => {
   );
 
   const extractUsedPiecesWithContext = useCallback(
-    (node: TreeNode): Array<{ w: number; h: number; label?: string }> => {
+    (node: TreeNode, requireLabel = true): Array<{ w: number; h: number; label?: string }> => {
       const used: Array<{ w: number; h: number; label?: string }> = [];
       const traverse = (n: TreeNode, parents: TreeNode[], parentMultiplier: number) => {
+        const xAncestor = parents.find((p) => p.tipo === "X");
         const yAncestor = parents.find((p) => p.tipo === "Y");
         const zAncestor = parents.find((p) => p.tipo === "Z");
         const wAncestor = parents.find((p) => p.tipo === "W");
@@ -213,7 +216,11 @@ const Index = () => {
         // Cumulative multiplier: parent chain × this node's own multi
         const totalMulti = parentMultiplier * n.multi;
 
-        if (n.tipo === "Z" && n.filhos.length === 0) {
+        if (n.tipo === "Y" && n.filhos.length === 0) {
+          pieceW = xAncestor?.valor || 0;
+          pieceH = n.valor;
+          isLeaf = true;
+        } else if (n.tipo === "Z" && n.filhos.length === 0) {
           pieceW = n.valor;
           pieceH = yAncestor?.valor || 0;
           isLeaf = true;
@@ -232,7 +239,7 @@ const Index = () => {
           isLeaf = true;
         }
 
-        if (isLeaf && pieceW > 0 && pieceH > 0 && n.label) {
+        if (isLeaf && pieceW > 0 && pieceH > 0 && (!requireLabel || n.label)) {
           for (let m = 0; m < totalMulti; m++) {
             used.push({ w: pieceW, h: pieceH, label: n.label });
           }
@@ -331,15 +338,22 @@ const Index = () => {
       while (remaining.length > 0 && sheetCount < maxSheets) {
         sheetCount++;
 
-        // Build deduplicated inventory: one Piece per unique (w,h), then
-        // expand only as many copies as actually exist. The engine still
-        // sees individual pieces (it requires per-instance objects), but
-        // we share label strings and compute area only once per type.
+        // Build inv with a unique label per instance so every piece is trackable in the tree.
+        // uidToRef maps uid → the remaining item it came from (by reference, not index).
+        // uidToOrig maps uid → original user label, restored before display/export.
         const inv: { w: number; h: number; area: number; label?: string }[] = [];
+        const uidToRef = new Map<string, typeof remaining[0]>();
+        const uidToOrig = new Map<string, string | undefined>();
+        let uidSeq = 0;
         remaining.forEach((p) => {
           const area = p.w * p.h;
           for (let i = 0; i < p.qty; i++) {
-            if (p.w > 0 && p.h > 0) inv.push({ w: p.w, h: p.h, area, label: p.label });
+            if (p.w > 0 && p.h > 0) {
+              const uid = `__${uidSeq++}`;
+              inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: uid });
+              uidToRef.set(uid, p);
+              uidToOrig.set(uid, p.label);
+            }
           }
         });
         if (inv.length === 0) break;
@@ -383,16 +397,34 @@ const Index = () => {
           layoutCache.set(invKey, cloneTree(result));
         }
         const usedArea = calcPlacedArea(result);
-        chapaList.push({ tree: result, usedArea, manual: false });
 
+        // Extract before restoring labels so we still have uid labels for exact deduction.
         const usedPieces = extractUsedPiecesWithContext(result);
+        if (usedPieces.length === 0) break;
+
+        // Build per-item deduction map keyed by PieceItem.id (not UID) for confirmAutoPlan.
+        const firstSheetDeductMap = new Map<string, number>();
+        usedPieces.forEach((used) => {
+          if (used.label) {
+            const item = uidToRef.get(used.label);
+            if (item) firstSheetDeductMap.set(item.id, (firstSheetDeductMap.get(item.id) || 0) + 1);
+          }
+        });
+        const firstDeductions = Array.from(firstSheetDeductMap.entries()).map(([id, qty]) => ({ id, qty }));
+
+        // Restore original user labels in the tree (uid labels are internal only).
+        const restoreLabels = (n: TreeNode) => {
+          if (n.label && uidToOrig.has(n.label)) n.label = uidToOrig.get(n.label);
+          n.filhos.forEach(restoreLabels);
+        };
+        restoreLabels(result);
+
+        chapaList.push({ tree: result, usedArea, manual: false, deductions: firstDeductions });
 
         // --- Layout Replication Optimization ---
-        // Count how many times this exact layout can be replicated with remaining pieces
-        // Build a "bill of materials" for this layout: how many of each piece type it uses
+        // Build BOM by dimensions (replications don't need unique labels).
         const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
         usedPieces.forEach((used) => {
-          // Normalize key: smaller dimension first
           const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
           const existing = layoutBOM.get(key);
           if (existing) {
@@ -405,32 +437,30 @@ const Index = () => {
         // Calculate how many full replications are possible
         let maxReplications = Infinity;
         layoutBOM.forEach(({ w, h, count }) => {
-          // Find total available qty in remaining for this piece type
           let available = 0;
           remaining.forEach((p) => {
             if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
               available += p.qty;
             }
           });
-          // First sheet already uses 'count' pieces, so available includes those
-          // We want how many ADDITIONAL full copies we can make
-          const additionalAvailable = available - count; // subtract what the first sheet uses
+          const additionalAvailable = available - count;
           const possibleCopies = Math.floor(additionalAvailable / count);
           maxReplications = Math.min(maxReplications, possibleCopies);
         });
 
         if (!isFinite(maxReplications) || maxReplications < 0) maxReplications = 0;
-        // Cap to avoid runaway
         maxReplications = Math.min(maxReplications, maxSheets - chapaList.length);
 
-        // Deduct first sheet's pieces from remaining
+        // Deduct first sheet by exact reference via uid (no dimension ambiguity).
         usedPieces.forEach((used) => {
-          for (let i = 0; i < remaining.length; i++) {
-            const p = remaining[i];
-            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
-              p.qty--;
-              if (p.qty <= 0) remaining.splice(i, 1);
-              break;
+          if (used.label) {
+            const item = uidToRef.get(used.label);
+            if (item) {
+              item.qty--;
+              if (item.qty <= 0) {
+                const idx = remaining.indexOf(item);
+                if (idx >= 0) remaining.splice(idx, 1);
+              }
             }
           }
         });
@@ -438,8 +468,7 @@ const Index = () => {
         // Replicate the layout for additional copies
         if (maxReplications > 0) {
           for (let rep = 0; rep < maxReplications; rep++) {
-            chapaList.push({ tree: cloneTree(result), usedArea, manual: false });
-            // Deduct pieces for this replicated sheet
+            const repDeductMap = new Map<string, number>();
             layoutBOM.forEach(({ w, h, count }) => {
               let toDeduct = count;
               for (let i = 0; i < remaining.length && toDeduct > 0; i++) {
@@ -448,13 +477,13 @@ const Index = () => {
                   const deducted = Math.min(toDeduct, p.qty);
                   p.qty -= deducted;
                   toDeduct -= deducted;
-                  if (p.qty <= 0) {
-                    remaining.splice(i, 1);
-                    i--;
-                  }
+                  if (deducted > 0) repDeductMap.set(p.id, (repDeductMap.get(p.id) || 0) + deducted);
+                  if (p.qty <= 0) { remaining.splice(i, 1); i--; }
                 }
               }
             });
+            const repDeductions = Array.from(repDeductMap.entries()).map(([id, qty]) => ({ id, qty }));
+            chapaList.push({ tree: cloneTree(result), usedArea, manual: false, deductions: repDeductions });
           }
           sheetCount += maxReplications;
         }
@@ -479,7 +508,7 @@ const Index = () => {
         sortVariants.push([(a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h), "maior lado"]);
       }
 
-    const candidates: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }[]> = [];
+    const candidateGroups: Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> }> = [];
     setGlobalProgress({ current: 0, total: sortVariants.length });
     for (let vi = 0; vi < sortVariants.length; vi++) {
       const [sortFn, label] = sortVariants[vi];
@@ -489,27 +518,34 @@ const Index = () => {
         total: sortVariants.length,
       });
       const result = await runAllSheets(sortFn ?? undefined, label);
-      if (result && result.length > 0) candidates.push(result);
+      if (result && result.length > 0) candidateGroups.push({ label, chapas: result });
       setGlobalProgress({ current: vi + 1, total: sortVariants.length });
     }
 
     const sheetArea = usableW * usableH;
     const treeFingerprint = (node: TreeNode): string =>
       `${node.tipo}:${node.valor}:${node.multi}[${node.filhos.map(treeFingerprint).join(',')}]`;
-    const uniqueLayouts = (plan: typeof candidates[0]) =>
-      new Set(plan.map(c => treeFingerprint(c.tree))).size;
-    // Criteria: 1) fewer sheets, 2) fewer unique layouts (more repetition), 3) lower utilization on last sheet
-    candidates.sort((a, b) => {
-      if (a.length !== b.length) return a.length - b.length;
-      const uA = uniqueLayouts(a);
-      const uB = uniqueLayouts(b);
-      if (uA !== uB) return uA - uB;
+    const uniqueLayoutCount = (chapas: typeof candidateGroups[0]['chapas']) =>
+      new Set(chapas.map(c => treeFingerprint(c.tree))).size;
+
+    // Find the best group index by criteria: 1) fewer sheets, 2) fewer unique layouts, 3) lower last-sheet utilization
+    let bestIdx = 0;
+    for (let i = 1; i < candidateGroups.length; i++) {
+      const a = candidateGroups[bestIdx].chapas;
+      const b = candidateGroups[i].chapas;
+      if (b.length < a.length) { bestIdx = i; continue; }
+      if (b.length > a.length) continue;
+      const uA = uniqueLayoutCount(a), uB = uniqueLayoutCount(b);
+      if (uB < uA) { bestIdx = i; continue; }
+      if (uB > uA) continue;
       const lastUtilA = a[a.length - 1].usedArea / sheetArea;
       const lastUtilB = b[b.length - 1].usedArea / sheetArea;
-      return lastUtilA - lastUtilB;
-    });
+      if (lastUtilB < lastUtilA) bestIdx = i;
+    }
 
-    const best = candidates[0] || [];
+    const best = candidateGroups[bestIdx]?.chapas || [];
+    setOptimizationGroups(candidateGroups);
+    setActiveGroupIdx(bestIdx);
     setChapas(best);
     setFilterActiveLabels(null);
     if (best.length > 0) {
@@ -520,7 +556,7 @@ const Index = () => {
     setProgress(null);
     setGlobalProgress(null);
     setIsOptimizing(false);
-    setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)!`, type: "success" });
+    setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)! Grupo ${bestIdx + 1} selecionado automaticamente.`, type: "success" });
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -824,7 +860,7 @@ const Index = () => {
   );
 
   const calcReplication = useCallback(() => {
-    const usedPieces = extractUsedPiecesWithContext(tree);
+    const usedPieces = extractUsedPiecesWithContext(tree, false);
     if (usedPieces.length === 0) {
       setStatus({ msg: "Desenhe um layout primeiro!", type: "error" });
       return;
@@ -938,25 +974,47 @@ const Index = () => {
     const allUsedPieces: Array<{ w: number; h: number; label?: string }> = [];
     const updatedPieces = pieces.map((p) => ({ ...p }));
     autoChapas.forEach((chapa) => {
-      const usedPieces = extractUsedPiecesWithContext(chapa.tree);
+      // Always extract for lot summary (uses restored labels for display).
+      const usedPieces = extractUsedPiecesWithContext(chapa.tree, false);
       allUsedPieces.push(...usedPieces);
-      usedPieces.forEach((used) => {
-        for (let j = 0; j < updatedPieces.length; j++) {
-          const p = updatedPieces[j];
-          if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
-            if (p.qty > 0) {
-              p.qty--;
-              break;
+
+      if (chapa.deductions && chapa.deductions.length > 0) {
+        // Use pre-computed PieceItem.id deductions recorded during runAllSheets.
+        // This is exact and immune to label/dimension ambiguity.
+        chapa.deductions.forEach(({ id, qty }) => {
+          const p = updatedPieces.find((x) => x.id === id);
+          if (p) p.qty -= qty;
+        });
+      } else {
+        // Fallback for manual chapas: label+dim match, then dim-only.
+        usedPieces.forEach((used) => {
+          if (used.label) {
+            for (let j = 0; j < updatedPieces.length; j++) {
+              const p = updatedPieces[j];
+              if (
+                p.label === used.label &&
+                ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) &&
+                p.qty > 0
+              ) {
+                p.qty--;
+                return;
+              }
             }
           }
-        }
-      });
+          for (let j = 0; j < updatedPieces.length; j++) {
+            const p = updatedPieces[j];
+            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
+              if (p.qty > 0) { p.qty--; break; }
+            }
+          }
+        });
+      }
     });
 
-    // Aggregate pieces used into lot summary
+    // Aggregate pieces used into lot summary (keyed by label+dimensions to keep IDs separate)
     const pieceMap = new Map<string, LotPieceEntry>();
     allUsedPieces.forEach((u) => {
-      const key = `${Math.min(u.w, u.h)}x${Math.max(u.w, u.h)}`;
+      const key = `${u.label || ""}|${u.w}x${u.h}`;
       const existing = pieceMap.get(key);
       if (existing) {
         existing.qty++;
@@ -965,13 +1023,17 @@ const Index = () => {
       }
     });
 
+    const sortedPieces = Array.from(pieceMap.values()).sort((a, b) =>
+      (a.label || "").localeCompare(b.label || "", undefined, { numeric: true, sensitivity: "base" })
+    );
+
     // Create lot
     const newLot: Lot = {
       id: `lot_${Date.now()}`,
       number: lots.length + 1,
       date: new Date().toISOString(),
       chapas: autoChapas.map((c) => ({ tree: c.tree, usedArea: c.usedArea })),
-      piecesUsed: Array.from(pieceMap.values()),
+      piecesUsed: sortedPieces,
       sheetW: chapaW,
       sheetH: chapaH,
       totalSheets: autoChapas.length,
@@ -991,9 +1053,23 @@ const Index = () => {
     });
   }, [chapas, pieces, lots, chapaW, chapaH, extractUsedPiecesWithContext]);
 
+  const selectGroup = useCallback((idx: number) => {
+    if (!optimizationGroups || !optimizationGroups[idx]) return;
+    const group = optimizationGroups[idx];
+    setActiveGroupIdx(idx);
+    setChapas(group.chapas);
+    setFilterActiveLabels(null);
+    if (group.chapas.length > 0) {
+      setTree(group.chapas[0].tree);
+      setSelectedId("root");
+    }
+    setActiveChapa(0);
+    setStatus({ msg: `Grupo ${idx + 1} selecionado: ${group.label} (${group.chapas.length} chapa(s))`, type: "info" });
+  }, [optimizationGroups]);
+
   const saveLayout = useCallback(
     (reps?: number) => {
-      const usedPieces = extractUsedPiecesWithContext(tree);
+      const usedPieces = extractUsedPiecesWithContext(tree, false);
       if (usedPieces.length === 0) {
         setStatus({ msg: "Desenhe um layout primeiro!", type: "error" });
         return;
@@ -1084,10 +1160,190 @@ const Index = () => {
     [expandedLotId],
   );
 
+  const printLayout = useCallback((chapaIdx: number, layoutNum: number, count: number) => {
+    const chapa = chapas[chapaIdx];
+    if (!chapa) return;
+
+    const T = chapa.tree.transposed || false;
+    type PP = { x: number; y: number; w: number; h: number; label?: string; isWaste: boolean; dim: string };
+    const pieces: PP[] = [];
+
+    const dLabel = (d1: number, d2: number) =>
+      T ? `${Math.round(d2)}×${Math.round(d1)}` : `${Math.round(d1)}×${Math.round(d2)}`;
+
+    let xOff = 0;
+    chapa.tree.filhos.forEach((xNode) => {
+      for (let ix = 0; ix < xNode.multi; ix++) {
+        const cx = xOff;
+        let yOff = 0;
+        xNode.filhos.forEach((yNode) => {
+          for (let iy = 0; iy < yNode.multi; iy++) {
+            const cy = yOff;
+            // Y leaf: no Z children → full-column piece
+            if (yNode.filhos.length === 0) {
+              pieces.push({ x: T ? cy : cx, y: T ? cx : cy, w: T ? yNode.valor : xNode.valor, h: T ? xNode.valor : yNode.valor, label: yNode.label, isWaste: false, dim: dLabel(xNode.valor, yNode.valor) });
+            }
+            let zOff = 0;
+            yNode.filhos.forEach((zNode) => {
+              for (let iz = 0; iz < zNode.multi; iz++) {
+                if (zNode.filhos.length === 0) {
+                  pieces.push({ x: T ? cy : cx + zOff, y: T ? cx + zOff : cy, w: T ? yNode.valor : zNode.valor, h: T ? zNode.valor : yNode.valor, label: zNode.label, isWaste: false, dim: dLabel(zNode.valor, yNode.valor) });
+                } else {
+                  let wOff = 0;
+                  zNode.filhos.forEach((wNode) => {
+                    for (let iw = 0; iw < wNode.multi; iw++) {
+                      if (wNode.filhos.length === 0) {
+                        pieces.push({ x: T ? cy + wOff : cx + zOff, y: T ? cx + zOff : cy + wOff, w: T ? wNode.valor : zNode.valor, h: T ? zNode.valor : wNode.valor, label: wNode.label, isWaste: false, dim: dLabel(zNode.valor, wNode.valor) });
+                      } else {
+                        let qOff = 0;
+                        wNode.filhos.forEach((qNode) => {
+                          for (let iq = 0; iq < qNode.multi; iq++) {
+                            if (qNode.filhos.length === 0) {
+                              pieces.push({ x: T ? cy + wOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff, w: T ? wNode.valor : qNode.valor, h: T ? qNode.valor : wNode.valor, label: qNode.label, isWaste: false, dim: dLabel(qNode.valor, wNode.valor) });
+                            } else {
+                              let rOff = 0;
+                              qNode.filhos.forEach((rNode) => {
+                                for (let ir = 0; ir < rNode.multi; ir++) {
+                                  pieces.push({ x: T ? cy + wOff + rOff : cx + zOff + qOff, y: T ? cx + zOff + qOff : cy + wOff + rOff, w: T ? rNode.valor : qNode.valor, h: T ? qNode.valor : rNode.valor, label: rNode.label, isWaste: false, dim: dLabel(qNode.valor, rNode.valor) });
+                                  rOff += rNode.valor;
+                                }
+                              });
+                            }
+                            qOff += qNode.valor;
+                          }
+                        });
+                      }
+                      wOff += wNode.valor;
+                    }
+                  });
+                }
+                zOff += zNode.valor;
+              }
+            });
+            yOff += yNode.valor;
+          }
+        });
+        xOff += xNode.valor;
+      }
+    });
+
+    const SVG_W = 760;
+    const sc = SVG_W / chapaW;
+    const SVG_H = Math.round(chapaH * sc);
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const piecesSvg = pieces.map((p) => {
+      const px = (ml + p.x) * sc;
+      const py = (chapaH - mb - p.y - p.h) * sc;
+      const pw = p.w * sc;
+      const ph = p.h * sc;
+      if (p.isWaste) {
+        const fs = Math.max(7, Math.min(11, Math.min(pw, ph) * 0.12));
+        return `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="#e0e0e0" stroke="#bbb" stroke-width="0.5"/>
+<text x="${(px+pw/2).toFixed(1)}" y="${(py+ph/2).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="#aaa" font-size="${fs}" font-family="Arial">SOBRA</text>`;
+      }
+      const fs = Math.max(9, Math.min(28, Math.min(pw, ph) * 0.22));
+      const idFs = Math.max(8, fs * 0.78);
+      const hasId = !!p.label;
+      const textCX = (px + pw / 2).toFixed(1);
+      const midY = py + ph / 2;
+      const dimY = hasId ? (midY + idFs * 0.6).toFixed(1) : midY.toFixed(1);
+      const idY = hasId ? (midY - fs * 0.6).toFixed(1) : "";
+      return `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="white" stroke="#2a2a2a" stroke-width="1.5"/>
+${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline="middle" fill="#0f2d6e" font-size="${idFs.toFixed(1)}" font-weight="bold" font-family="Arial,sans-serif">${esc(p.label!)}</text>` : ""}
+<text x="${textCX}" y="${dimY}" text-anchor="middle" dominant-baseline="middle" fill="#1a1a1a" font-size="${fs.toFixed(1)}" font-family="Arial,monospace">${p.dim}</text>`;
+    }).join("\n");
+
+    const usableLeft = ml * sc;
+    const usableTop = mt * sc;
+    const usableW_px = usableW * sc;
+    const usableH_px = usableH * sc;
+    const pieceCount = pieces.filter((p) => !p.isWaste).length;
+    const util = usableW > 0 && usableH > 0 ? ((chapa.usedArea / (usableW * usableH)) * 100).toFixed(1) : "0";
+    const utilColor = parseFloat(util) > 80 ? "#16a34a" : parseFloat(util) > 60 ? "#d97706" : "#dc2626";
+    const dateStr = new Date().toLocaleString("pt-BR");
+
+    const legendRows = pieces
+      .filter((p) => !p.isWaste)
+      .reduce<Array<{ id: string; dim: string; qty: number }>>((acc, p) => {
+        const key = `${p.label || ""}||${p.dim}`;
+        const existing = acc.find((r) => `${r.id}||${r.dim}` === key);
+        if (existing) existing.qty++;
+        else acc.push({ id: p.label || "—", dim: p.dim, qty: 1 });
+        return acc;
+      }, []);
+
+    const legendHtml = legendRows.map((r, i) =>
+      `<tr style="background:${i % 2 === 0 ? "#f9fafb" : "#fff"}">
+        <td style="padding:5px 10px;font-weight:bold;color:#0f2d6e">${r.id}</td>
+        <td style="padding:5px 10px;font-family:monospace">${r.dim} mm</td>
+        <td style="padding:5px 10px;text-align:center;font-weight:bold">${r.qty}</td>
+      </tr>`
+    ).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Layout ${layoutNum} — Sheet Optimizer</title>
+  <style>
+    @media print { .no-print { display:none; } body { margin:0; padding:12px; } }
+    body { font-family:Arial,sans-serif; color:#111; padding:24px; max-width:900px; margin:0 auto; }
+    h1 { font-size:24px; margin:0 0 4px; color:#0f2d6e; letter-spacing:-0.02em; }
+    .sub { color:#555; font-size:13px; margin-bottom:16px; }
+    .meta { display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px; padding:12px 16px; background:#f0f4ff; border-radius:8px; border:1px solid #c8d4f0; }
+    .meta-item { display:flex; flex-direction:column; }
+    .meta-label { font-size:9px; text-transform:uppercase; color:#888; letter-spacing:.06em; margin-bottom:2px; }
+    .meta-value { font-size:18px; font-weight:bold; color:#0f2d6e; }
+    .sheet-wrap { text-align:center; margin:20px 0; }
+    svg { border:2px solid #888; border-radius:4px; background:#ccc; max-width:100%; }
+    .sheet-caption { font-size:11px; color:#888; margin-top:6px; }
+    h2 { font-size:14px; color:#333; margin:24px 0 8px; border-bottom:1px solid #e5e7eb; padding-bottom:4px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    thead tr { background:#1e3a6e; color:#fff; }
+    thead th { padding:7px 10px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+    .footer { margin-top:28px; border-top:1px solid #e5e7eb; padding-top:10px; font-size:10px; color:#aaa; }
+    .print-btn { background:#1e3a6e; color:white; border:none; padding:10px 24px; font-size:14px; border-radius:6px; cursor:pointer; margin-bottom:16px; }
+    .print-btn:hover { background:#2a4e8e; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  <h1>Layout ${layoutNum}${count > 1 ? ` <span style="font-size:16px;color:#e67e00;font-weight:600">(×${count} chapas idênticas)</span>` : ""}</h1>
+  <div class="sub">Sheet Optimizer Pro — Plano de Corte</div>
+  <div class="meta">
+    <div class="meta-item"><span class="meta-label">Data / Hora</span><span class="meta-value">${dateStr}</span></div>
+    <div class="meta-item"><span class="meta-label">Chapa</span><span class="meta-value">${chapaW} × ${chapaH} mm</span></div>
+    <div class="meta-item"><span class="meta-label">Área útil</span><span class="meta-value">${usableW} × ${usableH} mm</span></div>
+    <div class="meta-item"><span class="meta-label">Aproveitamento</span><span class="meta-value" style="color:${utilColor}">${util}%</span></div>
+    <div class="meta-item"><span class="meta-label">Peças alocadas</span><span class="meta-value">${pieceCount}</span></div>
+  </div>
+  <div class="sheet-wrap">
+    <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}">
+      <rect x="0" y="0" width="${SVG_W}" height="${SVG_H}" fill="#cccccc" stroke="#555" stroke-width="2"/>
+      <rect x="${usableLeft.toFixed(1)}" y="${usableTop.toFixed(1)}" width="${usableW_px.toFixed(1)}" height="${usableH_px.toFixed(1)}" fill="#f0f0f0" stroke="#999" stroke-width="1" stroke-dasharray="5,3"/>
+      ${piecesSvg}
+    </svg>
+    <div class="sheet-caption">Chapa ${chapaW}×${chapaH} mm · Margem L${ml} R${mr} T${mt} B${mb} mm · Área útil ${usableW}×${usableH} mm</div>
+  </div>
+  <h2>Peças neste layout (${pieceCount} no total)</h2>
+  <table>
+    <thead><tr><th>ID / Referência</th><th>Dimensão</th><th style="text-align:center">Qtd</th></tr></thead>
+    <tbody>${legendHtml}</tbody>
+  </table>
+  <div class="footer">Gerado em ${dateStr} · Sheet Optimizer Pro</div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=960,height=800");
+    if (win) { win.document.write(html); win.document.close(); }
+  }, [chapas, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb]);
+
   const printLot = useCallback((lot: Lot) => {
     const totalPieces = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
     const dateStr = new Date(lot.date).toLocaleString("pt-BR");
-    const rows = lot.piecesUsed
+    const rows = [...lot.piecesUsed]
+      .sort((a, b) => (a.label || "").localeCompare(b.label || "", undefined, { numeric: true, sensitivity: "base" }))
       .map(
         (p, i) =>
           `<tr style="border-top:1px solid #e5e7eb;${i % 2 === 0 ? "background:#f9fafb;" : ""}">
@@ -1234,7 +1490,7 @@ const Index = () => {
       {/* SIDEBAR */}
       <div
         className="w-[420px] min-w-[420px] flex flex-col h-screen overflow-y-auto cnc-scroll"
-        style={{ background: "hsl(222 47% 13%)", borderRight: "2px solid hsl(222 47% 22%)" }}
+        style={{ background: "white", borderRight: "2px solid hsl(222 47% 22%)" }}
       >
         {/* ─── BRAND HEADER ─── */}
         <div className="cnc-brand-header">
@@ -1286,6 +1542,9 @@ const Index = () => {
           filteredLayoutGroups={filteredLayoutGroups}
           chapas={chapas}
           onConfirmPlan={confirmAutoPlan}
+          optimizationGroups={optimizationGroups}
+          activeGroupIdx={activeGroupIdx}
+          onSelectGroup={selectGroup}
           pdfFilename={pdfFilename}
           setPdfFilename={setPdfFilename}
           onExport={() => {
@@ -1303,6 +1562,7 @@ const Index = () => {
           setStatus={setStatus}
           onSelectLayout={(idx, t) => { setActiveChapa(idx); setTree(t); setSelectedId("root"); }}
           onDeleteLayout={deleteLayout}
+          onPrintLayout={printLayout}
         />
 
                 {/* ─── SECTION 4: Estrutura de Corte (advanced) ─── */}

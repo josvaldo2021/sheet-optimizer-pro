@@ -15,8 +15,8 @@ export {
   getLastLeftover,
   calcPlanUtilization,
   annotateTreeLabels,
+  countAllocatedPieces,
 } from './engine/tree-utils';
 
 export { normalizeTree } from './engine/normalization';
-export { optimizeV6 } from './engine/optimizer';
-export { optimizeGeneticAsync, optimizeGeneticV1 } from './engine/genetic';
+export { optimizeV6, optimizeGeneticAsync, optimizeGeneticV1, getUseWasmEngine, setUseWasmEngine, isWasmReady } from './engine/engine-adapter';

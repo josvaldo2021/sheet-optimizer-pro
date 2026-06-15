@@ -162,8 +162,7 @@ export default function SheetViewer({
                 const wEls: JSX.Element[] = [];
 
                 if (zNode.filhos.length === 0) {
-                  const isWasteZ = !zNode.label;
-                  if (!isWasteZ) colorIdx++;
+                  colorIdx++;
                   const realW = T ? yNode.valor : zNode.valor;
                   const realH = T ? zNode.valor : yNode.valor;
                   const isVertical = realH > realW;
@@ -172,7 +171,7 @@ export default function SheetViewer({
                   const dim = dimLabel(zNode.valor, yNode.valor);
                   const fs = dynamicFontSize(pxW, pxH, dim, zNode.label, isVertical);
                   wEls.push(
-                    <div key="final" className={isWasteZ ? 'sv-waste' : 'sv-piece'} style={isWasteZ ? {} : { background: PIECE_BG, borderColor: PIECE_BORDER }}>
+                    <div key="final" className="sv-piece" style={{ background: PIECE_BG, borderColor: PIECE_BORDER }}>
                       <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
                         {zNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{zNode.label}</span>}
                         {dim}
@@ -184,8 +183,7 @@ export default function SheetViewer({
                   zNode.filhos.forEach(wNode => {
                     for (let iw = 0; iw < wNode.multi; iw++) {
                       if (wNode.filhos.length === 0) {
-                        const isWasteW = !wNode.label;
-                        if (!isWasteW) colorIdx++;
+                        colorIdx++;
                         const realW = T ? wNode.valor : zNode.valor;
                         const realH = T ? zNode.valor : wNode.valor;
                         const pxW = realW * scale;
@@ -196,14 +194,14 @@ export default function SheetViewer({
                         wEls.push(
                           <div
                             key={`w-${wNode.id}-${iw}`}
-                            className={`${isWasteW ? 'sv-waste' : ''} ${!isWasteW && selectedId === wNode.id ? 'sv-selected' : ''}`}
+                            className={`sv-piece ${selectedId === wNode.id ? 'sv-selected' : ''}`}
                             style={{
                               ...(T
-                                ? { width: wNode.valor * scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: isWasteW ? 'default' : 'pointer', ...(isWasteW ? {} : { background: PIECE_BG }) }
-                                : { width: '100%', height: wNode.valor * scale, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: isWasteW ? 'default' : 'pointer', ...(isWasteW ? {} : { background: PIECE_BG }) }
+                                ? { width: wNode.valor * scale, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
+                                : { width: '100%', height: wNode.valor * scale, display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '0.5px solid hsl(0 0% 40%)', boxSizing: 'border-box' as const, cursor: 'pointer', background: PIECE_BG }
                               ),
                             }}
-                            onClick={isWasteW ? undefined : (e => { e.stopPropagation(); onSelectNode(wNode.id); })}
+                            onClick={e => { e.stopPropagation(); onSelectNode(wNode.id); }}
                           >
                             <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
                               {wNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{wNode.label}</span>}
@@ -218,9 +216,7 @@ export default function SheetViewer({
                         wNode.filhos.forEach(qNode => {
                           for (let iq = 0; iq < qNode.multi; iq++) {
                             if (qNode.filhos.length === 0) {
-                              // Q is a leaf piece (or waste if no label)
-                              const isWasteQ = !qNode.label;
-                              if (!isWasteQ) colorIdx++;
+                              colorIdx++;
                               const realW = T ? wNode.valor : qNode.valor;
                               const realH = T ? qNode.valor : wNode.valor;
                               const pxW = realW * scale;
@@ -231,20 +227,20 @@ export default function SheetViewer({
                               qEls.push(
                                 <div
                                   key={`q-${qNode.id}-${iq}`}
-                                  className={`${isWasteQ ? 'sv-waste' : ''} ${!isWasteQ && selectedId === qNode.id ? 'sv-selected' : ''}`}
+                                  className={`sv-piece ${selectedId === qNode.id ? 'sv-selected' : ''}`}
                                   style={{
                                     position: 'absolute',
                                     ...(T
                                       ? { left: 0, bottom: qOff * scale, width: wNode.valor * scale, height: qNode.valor * scale }
                                       : { left: qOff * scale, bottom: 0, width: qNode.valor * scale, height: wNode.valor * scale }
                                     ),
-                                    ...(isWasteQ ? {} : { background: PIECE_BG }),
+                                    background: PIECE_BG,
                                     border: '0.5px solid hsl(0 0% 40%)',
                                     boxSizing: 'border-box' as const,
-                                    cursor: isWasteQ ? 'default' : 'pointer',
+                                    cursor: 'pointer',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   }}
-                                  onClick={isWasteQ ? undefined : (e => { e.stopPropagation(); onSelectNode(qNode.id); })}
+                                  onClick={e => { e.stopPropagation(); onSelectNode(qNode.id); }}
                                 >
                                   <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
                                     {qNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{qNode.label}</span>}
@@ -258,8 +254,7 @@ export default function SheetViewer({
                               const rEls: JSX.Element[] = [];
                               qNode.filhos.forEach(rNode => {
                                 for (let ir = 0; ir < rNode.multi; ir++) {
-                                  const isWasteR = !rNode.label;
-                                  if (!isWasteR) colorIdx++;
+                                  colorIdx++;
                                   const realW = T ? rNode.valor : qNode.valor;
                                   const realH = T ? qNode.valor : rNode.valor;
                                   const pxW = realW * scale;
@@ -270,20 +265,20 @@ export default function SheetViewer({
                                   rEls.push(
                                     <div
                                       key={`r-${rNode.id}-${ir}`}
-                                      className={`${isWasteR ? 'sv-waste' : ''} ${!isWasteR && selectedId === rNode.id ? 'sv-selected' : ''}`}
+                                      className={`sv-piece ${selectedId === rNode.id ? 'sv-selected' : ''}`}
                                       style={{
                                         position: 'absolute',
                                         ...(T
                                           ? { left: rOff * scale, bottom: 0, width: rNode.valor * scale, height: qNode.valor * scale }
                                           : { left: 0, bottom: rOff * scale, width: qNode.valor * scale, height: rNode.valor * scale }
                                         ),
-                                        ...(isWasteR ? {} : { background: PIECE_BG }),
+                                        background: PIECE_BG,
                                         border: '0.5px solid hsl(0 0% 40%)',
                                         boxSizing: 'border-box' as const,
-                                        cursor: isWasteR ? 'default' : 'pointer',
+                                        cursor: 'pointer',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                       }}
-                                      onClick={isWasteR ? undefined : (e => { e.stopPropagation(); onSelectNode(rNode.id); })}
+                                      onClick={e => { e.stopPropagation(); onSelectNode(rNode.id); }}
                                     >
                                       <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
                                         {rNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{rNode.label}</span>}
@@ -413,6 +408,39 @@ export default function SheetViewer({
                 zOff += zNode.valor;
               }
             });
+
+            // Y leaf: no Z children → render Y as a full-width piece
+            // Per CLAUDE.md invariant: waste is never a leaf, all leaf nodes are pieces.
+            if (yNode.filhos.length === 0) {
+              colorIdx++;
+              const realW = T ? yNode.valor : xNode.valor;
+              const realH = T ? xNode.valor : yNode.valor;
+              const pxW = realW * scale;
+              const pxH = realH * scale;
+              const isVertical = realH > realW;
+              const dim = dimLabel(xNode.valor, yNode.valor);
+              const fs = dynamicFontSize(pxW, pxH, dim, yNode.label, isVertical);
+              zEls.push(
+                <div
+                  key="y-leaf"
+                  className={`sv-piece ${selectedId === yNode.id ? 'sv-selected' : ''}`}
+                  style={{
+                    width: '100%', height: '100%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxSizing: 'border-box' as const,
+                    background: PIECE_BG, borderColor: PIECE_BORDER,
+                    cursor: 'pointer',
+                  }}
+                  onClick={e => { e.stopPropagation(); onSelectNode(yNode.id); }}
+                >
+                  <span className={`sv-piece-label ${isVertical ? 'sv-label-vertical' : ''}`} style={{ fontSize: fs, lineHeight: 1.15 }}>
+                    {yNode.label && <span className="sv-piece-id" style={{ fontSize: fs * 0.75 }}>{yNode.label}</span>}
+                    {dim}
+                  </span>
+                </div>
+              );
+              zOff = xNode.valor;
+            }
 
             // Z waste (remaining dimension in strip)
             const zWaste = xNode.valor - zOff;

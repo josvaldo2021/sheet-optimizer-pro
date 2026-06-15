@@ -21,6 +21,31 @@ export function createPieceNodes(
   const isGrouped = piece.count && piece.count > 1;
   let addedArea = 0;
 
+  if (isGrouped && piece.groupedAxis === "2d") {
+    const dims = piece.individualDims || [1, 1];
+    // When rotated, cols and rows swap because the block is transposed
+    const cols = Math.round(rotated ? dims[1] : dims[0]);
+    const rows = Math.round(rotated ? dims[0] : dims[1]);
+    const pieceW = cols > 0 ? placedW / cols : placedW;
+    const pieceH = rows > 0 ? placedH / rows : placedH;
+    let labelIdx = 0;
+    for (let c = 0; c < cols; c++) {
+      const zId = insertNode(tree, yNode.id, "Z", pieceW, 1);
+      const zNode = findNode(tree, zId)!;
+      for (let r = 0; r < rows; r++) {
+        const wId = insertNode(tree, zNode.id, "W", pieceH, 1);
+        const wNode = findNode(tree, wId)!;
+        if (piece.labels?.[labelIdx]) {
+          wNode.label = piece.labels[labelIdx];
+          if (r === 0) zNode.label = piece.labels[labelIdx];
+        }
+        labelIdx++;
+      }
+    }
+    addedArea = placedW * placedH;
+    return addedArea;
+  }
+
   if (isGrouped) {
     const originalAxis = piece.groupedAxis || "w";
     let splitAxis: "Z" | "W" | "Q" | "R";
@@ -434,7 +459,14 @@ export function runPlacement(
 
     let col: TreeNode;
     if (bestFit.type === "NEW") {
-      insertNode(tree, "root", "X", bestFit.w, 1);
+      const usedW = tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
+      const freeW = usableW - usedW;
+      const xResidual = freeW - bestFit.w;
+      const canFitInXResidual = xResidual > 0 && remaining.slice(1).some(p =>
+        oris(p).some(o => o.w <= xResidual && o.h <= usableH)
+      );
+      const effectiveXW = (xResidual > 0 && !canFitInXResidual) ? freeW : bestFit.w;
+      insertNode(tree, "root", "X", effectiveXW, 1);
       col = tree.filhos[tree.filhos.length - 1];
     } else {
       col = bestFit.col!;
@@ -616,6 +648,14 @@ export function runPlacement(
             let stackOri: { w: number; h: number } | null = null;
             for (const o of oris(lpc)) {
               if (o.w <= lateralOri.w && o.h <= combinedH - latUsedH) {
+                if (minBreak > 0) {
+                  const existingWValues = latZNode.filhos.map(w => w.valor);
+                  if (siblingViolatesMinBreak(existingWValues, o.h, minBreak)) continue;
+                  const heightResidual = combinedH - latUsedH - o.h;
+                  if (heightResidual > 0 && heightResidual < minBreak) continue;
+                  const lateralResidual = lateralOri.w - o.w;
+                  if (lateralResidual > 0 && lateralResidual < minBreak) continue;
+                }
                 if (!stackOri || o.w * o.h > stackOri.w * stackOri.h) stackOri = o;
               }
             }
@@ -635,7 +675,17 @@ export function runPlacement(
       }
     } else {
       // === SINGLE Y STRIP ===
-      const yId = insertNode(tree, col.id, "Y", bestFit.h, 1);
+      // If the Y residual (freeH - piece.h) cannot fit any remaining piece, extend
+      // the Y cut to absorb the residual, using the next coordinate (W) to bound
+      // the piece's actual height. This avoids orphaned waste strips.
+      const colCurrentFreeH = usableH - col.filhos.reduce((a, y) => a + y.valor * y.multi, 0);
+      const yResidual = colCurrentFreeH - bestFit.h;
+      const canFitInResidual = yResidual > 0 && remaining.slice(1).some(p =>
+        oris(p).some(o => o.w <= col.valor && o.h <= yResidual)
+      );
+      const effectiveYH = (yResidual > 0 && !canFitInResidual) ? colCurrentFreeH : bestFit.h;
+
+      const yId = insertNode(tree, col.id, "Y", effectiveYH, 1);
       const yNode = findNode(tree, yId)!;
 
       placedArea += createPieceNodes(tree, yNode, piece, bestFit.pieceW, bestFit.pieceH, bestFit.rotated);
@@ -690,6 +740,8 @@ export function runPlacement(
             const newCutPos = currentOffset + o.w;
             if (violatesZMinBreak([newCutPos], allZPositions, minBreak, yIndex)) continue;
             if (zResidualViolatesMinBreak(freeZW, o.w, minBreak)) continue;
+            const wHeightResidual = bestFit.h - o.h;
+            if (wHeightResidual > 0 && wHeightResidual < minBreak) continue;
           }
           if (o.w <= freeZW && o.h <= bestFit.h) {
             const score = (bestFit.h - o.h) * 2 + (freeZW - o.w);
