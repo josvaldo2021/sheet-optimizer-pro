@@ -20,6 +20,7 @@ import {
   optimizeGeneticAsync,
 } from "@/lib/cnc-engine";
 import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
+import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { exportPdf } from "@/lib/export/pdf-export";
 import { printLayout } from "@/lib/export/print-layout";
 import SheetViewer from "@/components/SheetViewer";
@@ -579,6 +580,22 @@ const Index = () => {
           setStatus({ msg: "Arquivo Excel vazio", type: "error" });
           return;
         }
+
+        // Relatório OF (.rpt): layout de posição fixa, detectado automaticamente.
+        if (isOfReport(wb)) {
+          const { items, imported, skipped } = parseOfReport(wb);
+          if (imported === 0) {
+            setStatus({ msg: "Relatório OF reconhecido, mas nenhuma peça válida encontrada.", type: "error" });
+            return;
+          }
+          setPieces(items);
+          setStatus({
+            msg: `${imported} peças importadas do relatório OF${skipped ? ` (${skipped} linha(s) ignorada(s))` : ""}!`,
+            type: "success",
+          });
+          return;
+        }
+
         const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as any[];
         if (!Array.isArray(json) || json.length === 0) {
           setStatus({ msg: "Nenhuma linha encontrada", type: "error" });

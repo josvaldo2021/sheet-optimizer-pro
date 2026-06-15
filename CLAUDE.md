@@ -41,8 +41,8 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Plano de implementação ativo: `specs/001-otimizacao-plano-corte/plan.md`
-(motor de otimização — spec retroativo). Para arquitetura, estrutura e
-contrato do motor, leia esse plano e os artefatos da mesma pasta
-(`spec.md`, `data-model.md`, `contracts/engine-api.md`).
+Plano de implementação ativo: `specs/002-importar-relatorio-of/plan.md`
+(importar relatório OF .rpt). Spec retroativo do motor em
+`specs/001-otimizacao-plano-corte/` (spec, plan, data-model,
+contracts/engine-api) para arquitetura/contrato do otimizador.
 <!-- SPECKIT END -->
