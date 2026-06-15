@@ -39,3 +39,10 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 2. **`useGrouping=false`** — remove 50+ estratégias do `optimizeV6`, causando queda drástica de qualidade (~9 peças/chapa vs 30+). Nunca use isso.
 3. **`v6Result.remaining`** — pode conter peças agrupadas (`count>1`, `individualDims`). Não use set-difference com o inventário original; extraia da árvore.
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
+
+<!-- SPECKIT START -->
+Plano de implementação ativo: `specs/001-otimizacao-plano-corte/plan.md`
+(motor de otimização — spec retroativo). Para arquitetura, estrutura e
+contrato do motor, leia esse plano e os artefatos da mesma pasta
+(`spec.md`, `data-model.md`, `contracts/engine-api.md`).
+<!-- SPECKIT END -->
