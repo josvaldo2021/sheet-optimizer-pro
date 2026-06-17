@@ -1,4 +1,5 @@
-use crate::types::{Arena, Piece, OptimizationProgress, ROOT_ID};
+use crate::types::{Arena, Piece, OptimizationProgress, ROOT_ID, NodeType};
+use std::collections::HashMap;
 use crate::tree_utils::calc_placed_area;
 use crate::placement::run_placement;
 use crate::normalization::normalize_tree;
@@ -245,6 +246,140 @@ fn genome_key(ind: &GAIndividual) -> String {
     format!("{},{},{},{}", g.join(","), ind.grouping_mode, ind.strip_mode as u8, ind.transposed as u8)
 }
 
+/// Causa 2 (inflação de dimensão fantasma): espelha capPhantomLeaves de
+/// src/lib/engine/genetic.ts. Usa o mapa label→(w,h) real das peças de entrada e
+/// insere o nó de corte que falta (W sob Z, Q sob W, R sob Q) — ou encolhe Q.valor
+/// para folhas R — quando a dimensão herdada do contêiner excede a real da peça.
+/// Coleta as correções numa passada só-leitura e aplica em seguida (borrow checker).
+fn cap_phantom_leaves(arena: &mut Arena, label_dims: &HashMap<String, (f64, f64)>) {
+    const TOL: f64 = 1.0;
+
+    fn real_other(label_dims: &HashMap<String, (f64, f64)>, label: &str, known: f64) -> Option<f64> {
+        let d = label_dims.get(label)?;
+        if (d.0 - known).abs() <= TOL {
+            Some(d.1)
+        } else if (d.1 - known).abs() <= TOL {
+            Some(d.0)
+        } else {
+            None
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn walk(
+        arena: &Arena,
+        id: u32,
+        y_v: f64,
+        z_v: f64,
+        w_v: f64,
+        q_id: Option<u32>,
+        label_dims: &HashMap<String, (f64, f64)>,
+        adds: &mut Vec<(u32, NodeType, f64, Option<String>)>,
+        q_reductions: &mut Vec<(u32, f64)>,
+    ) {
+        let node = arena.get(id);
+        let tipo = node.tipo.clone();
+        let valor = node.valor;
+        let multi = node.multi;
+        let label_opt = node.label.clone();
+        let children = node.children.clone();
+
+        if children.is_empty() {
+            if let Some(label) = label_opt {
+                if multi == 1 {
+                    match tipo {
+                        NodeType::Z => {
+                            if let Some(real_h) = real_other(label_dims, &label, valor) {
+                                if y_v - real_h > TOL { adds.push((id, NodeType::W, real_h, Some(label))); }
+                            }
+                        }
+                        NodeType::W => {
+                            if let Some(real_w) = real_other(label_dims, &label, valor) {
+                                if z_v - real_w > TOL { adds.push((id, NodeType::Q, real_w, Some(label))); }
+                            }
+                        }
+                        NodeType::Q => {
+                            if let Some(real_h) = real_other(label_dims, &label, valor) {
+                                if w_v - real_h > TOL { adds.push((id, NodeType::R, real_h, Some(label))); }
+                            }
+                        }
+                        NodeType::R => {
+                            if let Some(qid) = q_id {
+                                let qnode = arena.get(qid);
+                                if qnode.children.len() == 1 {
+                                    if let Some(real_w) = real_other(label_dims, &label, valor) {
+                                        if qnode.valor - real_w > TOL { q_reductions.push((qid, real_w)); }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return;
+        }
+
+        // Q com vários filhos R uniformes: encolher Q.valor para a largura real comum.
+        if tipo == NodeType::Q {
+            let all_r_leaves = children.iter().all(|&c| {
+                let cn = arena.get(c);
+                cn.tipo == NodeType::R && cn.children.is_empty() && cn.label.is_some() && cn.multi == 1
+            });
+            if all_r_leaves {
+                let mut w0: Option<f64> = None;
+                let mut uniform = true;
+                for &c in &children {
+                    let cn = arena.get(c);
+                    let lbl = cn.label.as_ref().unwrap();
+                    match real_other(label_dims, lbl, cn.valor) {
+                        Some(rw) => match w0 {
+                            None => w0 = Some(rw),
+                            Some(prev) => if (prev - rw).abs() > TOL { uniform = false; break; },
+                        },
+                        None => { uniform = false; break; }
+                    }
+                }
+                if uniform {
+                    if let Some(rw) = w0 {
+                        if valor - rw > TOL { q_reductions.push((id, rw)); }
+                    }
+                }
+            }
+        }
+
+        for &c in &children {
+            walk(
+                arena,
+                c,
+                if tipo == NodeType::Y { valor } else { y_v },
+                if tipo == NodeType::Z { valor } else { z_v },
+                if tipo == NodeType::W { valor } else { w_v },
+                if tipo == NodeType::Q { Some(id) } else { q_id },
+                label_dims,
+                adds,
+                q_reductions,
+            );
+        }
+    }
+
+    let mut adds: Vec<(u32, NodeType, f64, Option<String>)> = Vec::new();
+    let mut q_reductions: Vec<(u32, f64)> = Vec::new();
+
+    let root_children = arena.get(ROOT_ID).children.clone();
+    for c in root_children {
+        walk(arena, c, 0.0, 0.0, 0.0, None, label_dims, &mut adds, &mut q_reductions);
+    }
+
+    for (parent, tipo, valor, label) in adds {
+        let id = arena.add_child(parent, tipo, valor, 1);
+        arena.get_mut(id).label = label;
+    }
+    for (qid, new_valor) in q_reductions {
+        arena.get_mut(qid).valor = new_valor;
+    }
+}
+
 pub fn optimize_genetic(
     pieces: &[Piece],
     usable_w: f64,
@@ -258,6 +393,14 @@ pub fn optimize_genetic(
     let generations = generations as usize;
     let elite_count = ((population_size as f64 * 0.1) as usize).max(2);
     let num_pieces = pieces.len();
+
+    // Mapa label→(w,h) real das peças de entrada, para corrigir folhas fantasma
+    // (ver cap_phantom_leaves). Espelha src/lib/engine/genetic.ts.
+    let mut label_dims: HashMap<String, (f64, f64)> = HashMap::new();
+    for p in pieces {
+        if let Some(l) = &p.label { label_dims.insert(l.clone(), (p.w, p.h)); }
+        if let Some(ls) = &p.labels { for l in ls { label_dims.insert(l.clone(), (p.w, p.h)); } }
+    }
 
     if pieces.is_empty() {
         return Arena::new_root(usable_w);
@@ -338,8 +481,11 @@ pub fn optimize_genetic(
                 let util = post_area / (usable_w * usable_h) * 100.0;
                 cb(OptimizationProgress { phase: "Pós-análise: layout melhorado!".into(), current: 1, total: 1, best_util: Some(util) });
             }
+            let mut post_arena = post_arena;
+            cap_phantom_leaves(&mut post_arena, &label_dims);
             return post_arena;
         }
+        cap_phantom_leaves(&mut best_arena, &label_dims);
         return best_arena;
     }
 
@@ -403,6 +549,9 @@ pub fn optimize_genetic(
         population = next_pop;
     }
 
+    // Cap fantasma na árvore CRUA antes da normalização (que "assa" a inflação).
+    cap_phantom_leaves(&mut best_arena, &label_dims);
+
     if best_transposed {
         best_arena.get_mut(ROOT_ID).transposed = true;
         best_arena = normalize_tree(best_arena, usable_w, usable_h, min_break);
@@ -419,8 +568,11 @@ pub fn optimize_genetic(
             let util = post_area / (usable_w * usable_h) * 100.0;
             cb(OptimizationProgress { phase: "Pós-análise: layout melhorado!".into(), current: generations as u32, total: generations as u32, best_util: Some(util) });
         }
+        let mut post_arena = post_arena;
+        cap_phantom_leaves(&mut post_arena, &label_dims);
         return post_arena;
     }
 
+    cap_phantom_leaves(&mut best_arena, &label_dims);
     best_arena
 }

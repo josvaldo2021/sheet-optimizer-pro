@@ -128,15 +128,20 @@ async function totalSheets(
 
     // Extrai folhas com label (uid) e dimensão.
     const used: { w: number; h: number; label?: string }[] = [];
+    // Extração espelha extractAbsoluteRects: uma folha é nó SEM filhos.
     const traverse = (n: any, parents: any[], mult: number) => {
       const totalMult = mult * n.multi;
       const yA = parents.find((p) => p.tipo === "Y");
       const zA = parents.find((p) => p.tipo === "Z");
       const wA = parents.find((p) => p.tipo === "W");
+      const qA = parents.find((p) => p.tipo === "Q");
       let pw = 0, ph = 0, leaf = false;
-      if (n.tipo === "Z" && n.filhos.length === 0) { pw = n.valor; ph = yA?.valor || 0; leaf = true; }
-      else if (n.tipo === "W" && n.filhos.length === 0) { pw = zA?.valor || 0; ph = n.valor; leaf = true; }
-      else if (n.tipo === "Q") { pw = n.valor; ph = wA?.valor || 0; leaf = true; }
+      if (n.filhos.length === 0) {
+        if (n.tipo === "Z") { pw = n.valor; ph = yA?.valor || 0; leaf = true; }
+        else if (n.tipo === "W") { pw = zA?.valor || 0; ph = n.valor; leaf = true; }
+        else if (n.tipo === "Q") { pw = n.valor; ph = wA?.valor || 0; leaf = true; }
+        else if (n.tipo === "R") { pw = qA?.valor || 0; ph = n.valor; leaf = true; }
+      }
       if (leaf && pw > 0 && ph > 0) {
         for (let m = 0; m < totalMult; m++) used.push({ w: pw, h: ph, label: n.label });
       }
