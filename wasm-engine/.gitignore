@@ -1,0 +1,2 @@
+# Cache de build do Cargo (gerado por `npm run build:wasm`) — não versionar.
+/target
