@@ -66,13 +66,11 @@ function simulateSheets(
 ): {
   fitness: number;
   firstTree: TreeNode;
-  stat_rejectedByMinBreak: number;
-  stat_fragmentCount: number;
-  stat_continuity: number;
 } {
   let currentRemaining = [...workPieces];
   let totalUtil = 0;
   let firstTree: TreeNode | null = null;
+  let firstSheetUtil = 0;
   let sheetsActuallySimulated = 0;
   const sheetArea = usableW * usableH;
 
@@ -81,14 +79,8 @@ function simulateSheets(
     .filter(p => (p.w * p.h) > (sheetArea * 0.2))
     .reduce((a, b) => a + b.w * b.h, 0);
 
-  const initialSmallArea = workPieces
-    .reduce((a, b) => a + b.area * (b.count || 1), 0) - initialLargeArea;
-
   let largeAreaPlaced = 0;
-  let smallAreaPlaced = 0;
   let rejectedCount = 0;
-  let continuityScore = 0;
-  let fragmentCount = 0;
 
   for (let s = 0; s < maxSheets; s++) {
     if (currentRemaining.length === 0) break;
@@ -97,9 +89,19 @@ function simulateSheets(
     // Only apply horizontal strip hint on the first sheet
     const stripHint = s === 0 ? horizontalStrip : undefined;
     const res = runPlacement(currentRemaining, usableW, usableH, minBreak, stripHint);
-    if (s === 0) firstTree = res.tree;
 
-    const placedArea = res.area;
+    // IMPORTANTE: res.area do runPlacement é uma medida incremental NÃO confiável
+    // (pode vir negativa ou inflada — os passos de pós-processamento somam deltas que
+    // não batem com as folhas reais da árvore). Usamos calcPlacedArea, a área
+    // geométrica verdadeira da árvore — a mesma fonte de verdade que runAllSheets usa
+    // (Index.tsx:401). Sem isso, o GA otimiza um sinal quebrado e seleciona layouts
+    // com área espúria (ver benchmark seed 144: res.area=97.72 vs real=63.57).
+    const placedArea = calcPlacedArea(res.tree);
+    if (s === 0) {
+      firstTree = res.tree;
+      firstSheetUtil = placedArea / sheetArea;
+    }
+
     totalUtil += placedArea / sheetArea;
 
     const largeRemaining = res.remaining
@@ -109,11 +111,6 @@ function simulateSheets(
 
     const currentLargePlaced = Math.max(0, (initialLargeArea - largeAreaPlaced) - largeRemaining);
     largeAreaPlaced += currentLargePlaced;
-    smallAreaPlaced += Math.max(0, placedArea - currentLargePlaced);
-
-    const usedW = res.tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    const freeW = usableW - usedW;
-    if (freeW > 50) continuityScore += freeW / usableW;
 
     const piecesPlaced = countBefore - res.remaining.length;
     if (piecesPlaced === 0) { rejectedCount++; break; }
@@ -122,28 +119,30 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
-  let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+  // O objetivo REAL do loop multi-chapa é MINIMIZAR o total de chapas, o que equivale
+  // a MAXIMIZAR o aproveitamento médio sobre as chapas necessárias. Por isso a média
+  // multi-chapa (avgUtil, com lookahead = estimatedSheets) é o termo PRIMÁRIO — otimizar
+  // só a 1ª chapa de forma gananciosa fragmenta o restante e usa MAIS chapas.
+  // Crucial: avgUtil agora deriva de calcPlacedArea (área honesta), não de res.area.
+  const avgUtil = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+  let fitness = avgUtil;
 
+  // Desempate: leve incentivo a alocar peças grandes cedo (reduz fragmentação).
   if (initialLargeArea > 0) {
-    const largePlacementRatio = largeAreaPlaced / initialLargeArea;
-    const smallPlacementRatio = initialSmallArea > 0 ? smallAreaPlaced / initialSmallArea : 1;
-
-    if (smallPlacementRatio > largePlacementRatio * 1.5) {
-      fitness *= 0.8;
-    } else {
-      fitness += largePlacementRatio * 0.1;
-    }
+    fitness += 0.001 * (largeAreaPlaced / initialLargeArea);
   }
 
-  fitness -= rejectedCount * 0.05;
-  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1);
+  // Desempate fraco a favor de 1ª chapas mais cheias (entre médias equivalentes).
+  fitness += 0.0001 * firstSheetUtil;
+
+  // Penalidade real: ordenação degenerada que não coloca nenhuma peça numa chapa.
+  fitness -= 0.01 * rejectedCount;
+  // Removido o bônus de continuityScore: ele somava fitness por LARGURA SOBRANDO na
+  // chapa, ou seja, premiava NÃO preencher — anti-objetivo direto.
 
   return {
     fitness: Math.max(0, fitness),
     firstTree: firstTree || createRoot(usableW, usableH),
-    stat_rejectedByMinBreak: rejectedCount,
-    stat_fragmentCount: fragmentCount,
-    stat_continuity: continuityScore,
   };
 }
 

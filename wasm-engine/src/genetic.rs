@@ -36,6 +36,7 @@ fn simulate_sheets(
     let mut current_remaining: Vec<Piece> = work_pieces.to_vec();
     let mut total_util = 0.0f64;
     let mut first_arena: Option<Arena> = None;
+    let mut first_sheet_util = 0.0f64;
     let mut sheets_simulated = 0usize;
     let sheet_area = usable_w * usable_h;
 
@@ -45,14 +46,8 @@ fn simulate_sheets(
         .map(|p| p.w * p.h)
         .sum();
 
-    let initial_small_area: f64 = work_pieces.iter()
-        .map(|p| p.area * p.count.unwrap_or(1) as f64)
-        .sum::<f64>() - initial_large_area;
-
     let mut large_area_placed = 0.0f64;
-    let mut small_area_placed = 0.0f64;
     let mut rejected_count = 0usize;
-    let mut continuity_score = 0.0f64;
 
     for s in 0..max_sheets {
         if current_remaining.is_empty() { break; }
@@ -61,9 +56,16 @@ fn simulate_sheets(
         let strip_hint = if s == 0 { horizontal_strip } else { None };
         let res = run_placement(&current_remaining, usable_w, usable_h, min_break, strip_hint);
 
-        if s == 0 { first_arena = Some(res.arena.clone()); }
-
-        let placed_area = res.area;
+        // IMPORTANTE: res.area do run_placement é uma medida incremental NÃO confiável
+        // (pode vir negativa ou inflada — os passos de pós-processamento somam deltas que
+        // não batem com as folhas reais da árvore). Usamos calc_placed_area, a área
+        // geométrica verdadeira — a mesma fonte de verdade que runAllSheets usa (Index.tsx:401).
+        // Espelha a correção de src/lib/engine/genetic.ts (Causa 1 do benchmark GA).
+        let placed_area = calc_placed_area(&res.arena);
+        if s == 0 {
+            first_arena = Some(res.arena.clone());
+            first_sheet_util = placed_area / sheet_area;
+        }
         total_util += placed_area / sheet_area;
 
         let large_remaining: f64 = res.remaining.iter()
@@ -74,17 +76,6 @@ fn simulate_sheets(
 
         let current_large_placed = (initial_large_area - large_area_placed - large_remaining).max(0.0);
         large_area_placed += current_large_placed;
-        small_area_placed += (placed_area - current_large_placed).max(0.0);
-
-        let root_children = res.arena.nodes[ROOT_ID as usize].children.clone();
-        let used_w: f64 = root_children.iter()
-            .map(|&id| {
-                let n = res.arena.get(id);
-                n.valor * n.multi as f64
-            })
-            .sum();
-        let free_w = usable_w - used_w;
-        if free_w > 50.0 { continuity_score += free_w / usable_w; }
 
         let pieces_placed = count_before - res.remaining.len();
         if pieces_placed == 0 { rejected_count += 1; break; }
@@ -93,20 +84,25 @@ fn simulate_sheets(
         sheets_simulated += 1;
     }
 
-    let mut fitness = if sheets_simulated > 0 { total_util / sheets_simulated as f64 } else { 0.0 };
+    // O objetivo REAL do loop multi-chapa é MINIMIZAR o total de chapas, o que equivale
+    // a MAXIMIZAR o aproveitamento médio sobre as chapas necessárias. avg_util (com
+    // lookahead = estimated_sheets) é o termo PRIMÁRIO; os demais são desempates fracos.
+    // Crucial: avg_util agora deriva de calc_placed_area (área honesta), não de res.area.
+    // Espelha src/lib/engine/genetic.ts.
+    let avg_util = if sheets_simulated > 0 { total_util / sheets_simulated as f64 } else { 0.0 };
+    let mut fitness = avg_util;
 
+    // Desempate: leve incentivo a alocar peças grandes cedo (reduz fragmentação).
     if initial_large_area > 0.0 {
-        let large_ratio = large_area_placed / initial_large_area;
-        let small_ratio = if initial_small_area > 0.0 { small_area_placed / initial_small_area } else { 1.0 };
-        if small_ratio > large_ratio * 1.5 {
-            fitness *= 0.8;
-        } else {
-            fitness += large_ratio * 0.1;
-        }
+        fitness += 0.001 * (large_area_placed / initial_large_area);
     }
 
-    fitness -= rejected_count as f64 * 0.05;
-    fitness += (continuity_score * 0.01) / (sheets_simulated as f64).max(1.0);
+    // Desempate fraco a favor de 1ª chapas mais cheias (entre médias equivalentes).
+    fitness += 0.0001 * first_sheet_util;
+
+    // Penalidade real: ordenação degenerada que não coloca nenhuma peça numa chapa.
+    fitness -= 0.01 * rejected_count as f64;
+    // Removido o bônus de continuity_score: premiava largura SOBRANDO (anti-objetivo).
 
     SimResult {
         fitness: fitness.max(0.0),
