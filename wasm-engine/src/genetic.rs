@@ -1,4 +1,5 @@
-use crate::types::{Arena, Piece, OptimizationProgress, ROOT_ID};
+use crate::types::{Arena, Piece, OptimizationProgress, ROOT_ID, NodeType};
+use std::collections::HashMap;
 use crate::tree_utils::calc_placed_area;
 use crate::placement::run_placement;
 use crate::normalization::normalize_tree;
@@ -36,6 +37,7 @@ fn simulate_sheets(
     let mut current_remaining: Vec<Piece> = work_pieces.to_vec();
     let mut total_util = 0.0f64;
     let mut first_arena: Option<Arena> = None;
+    let mut first_sheet_util = 0.0f64;
     let mut sheets_simulated = 0usize;
     let sheet_area = usable_w * usable_h;
 
@@ -45,14 +47,8 @@ fn simulate_sheets(
         .map(|p| p.w * p.h)
         .sum();
 
-    let initial_small_area: f64 = work_pieces.iter()
-        .map(|p| p.area * p.count.unwrap_or(1) as f64)
-        .sum::<f64>() - initial_large_area;
-
     let mut large_area_placed = 0.0f64;
-    let mut small_area_placed = 0.0f64;
     let mut rejected_count = 0usize;
-    let mut continuity_score = 0.0f64;
 
     for s in 0..max_sheets {
         if current_remaining.is_empty() { break; }
@@ -61,9 +57,16 @@ fn simulate_sheets(
         let strip_hint = if s == 0 { horizontal_strip } else { None };
         let res = run_placement(&current_remaining, usable_w, usable_h, min_break, strip_hint);
 
-        if s == 0 { first_arena = Some(res.arena.clone()); }
-
-        let placed_area = res.area;
+        // IMPORTANTE: res.area do run_placement é uma medida incremental NÃO confiável
+        // (pode vir negativa ou inflada — os passos de pós-processamento somam deltas que
+        // não batem com as folhas reais da árvore). Usamos calc_placed_area, a área
+        // geométrica verdadeira — a mesma fonte de verdade que runAllSheets usa (Index.tsx:401).
+        // Espelha a correção de src/lib/engine/genetic.ts (Causa 1 do benchmark GA).
+        let placed_area = calc_placed_area(&res.arena);
+        if s == 0 {
+            first_arena = Some(res.arena.clone());
+            first_sheet_util = placed_area / sheet_area;
+        }
         total_util += placed_area / sheet_area;
 
         let large_remaining: f64 = res.remaining.iter()
@@ -74,17 +77,6 @@ fn simulate_sheets(
 
         let current_large_placed = (initial_large_area - large_area_placed - large_remaining).max(0.0);
         large_area_placed += current_large_placed;
-        small_area_placed += (placed_area - current_large_placed).max(0.0);
-
-        let root_children = res.arena.nodes[ROOT_ID as usize].children.clone();
-        let used_w: f64 = root_children.iter()
-            .map(|&id| {
-                let n = res.arena.get(id);
-                n.valor * n.multi as f64
-            })
-            .sum();
-        let free_w = usable_w - used_w;
-        if free_w > 50.0 { continuity_score += free_w / usable_w; }
 
         let pieces_placed = count_before - res.remaining.len();
         if pieces_placed == 0 { rejected_count += 1; break; }
@@ -93,20 +85,25 @@ fn simulate_sheets(
         sheets_simulated += 1;
     }
 
-    let mut fitness = if sheets_simulated > 0 { total_util / sheets_simulated as f64 } else { 0.0 };
+    // O objetivo REAL do loop multi-chapa é MINIMIZAR o total de chapas, o que equivale
+    // a MAXIMIZAR o aproveitamento médio sobre as chapas necessárias. avg_util (com
+    // lookahead = estimated_sheets) é o termo PRIMÁRIO; os demais são desempates fracos.
+    // Crucial: avg_util agora deriva de calc_placed_area (área honesta), não de res.area.
+    // Espelha src/lib/engine/genetic.ts.
+    let avg_util = if sheets_simulated > 0 { total_util / sheets_simulated as f64 } else { 0.0 };
+    let mut fitness = avg_util;
 
+    // Desempate: leve incentivo a alocar peças grandes cedo (reduz fragmentação).
     if initial_large_area > 0.0 {
-        let large_ratio = large_area_placed / initial_large_area;
-        let small_ratio = if initial_small_area > 0.0 { small_area_placed / initial_small_area } else { 1.0 };
-        if small_ratio > large_ratio * 1.5 {
-            fitness *= 0.8;
-        } else {
-            fitness += large_ratio * 0.1;
-        }
+        fitness += 0.001 * (large_area_placed / initial_large_area);
     }
 
-    fitness -= rejected_count as f64 * 0.05;
-    fitness += (continuity_score * 0.01) / (sheets_simulated as f64).max(1.0);
+    // Desempate fraco a favor de 1ª chapas mais cheias (entre médias equivalentes).
+    fitness += 0.0001 * first_sheet_util;
+
+    // Penalidade real: ordenação degenerada que não coloca nenhuma peça numa chapa.
+    fitness -= 0.01 * rejected_count as f64;
+    // Removido o bônus de continuity_score: premiava largura SOBRANDO (anti-objetivo).
 
     SimResult {
         fitness: fitness.max(0.0),
@@ -249,6 +246,140 @@ fn genome_key(ind: &GAIndividual) -> String {
     format!("{},{},{},{}", g.join(","), ind.grouping_mode, ind.strip_mode as u8, ind.transposed as u8)
 }
 
+/// Causa 2 (inflação de dimensão fantasma): espelha capPhantomLeaves de
+/// src/lib/engine/genetic.ts. Usa o mapa label→(w,h) real das peças de entrada e
+/// insere o nó de corte que falta (W sob Z, Q sob W, R sob Q) — ou encolhe Q.valor
+/// para folhas R — quando a dimensão herdada do contêiner excede a real da peça.
+/// Coleta as correções numa passada só-leitura e aplica em seguida (borrow checker).
+fn cap_phantom_leaves(arena: &mut Arena, label_dims: &HashMap<String, (f64, f64)>) {
+    const TOL: f64 = 1.0;
+
+    fn real_other(label_dims: &HashMap<String, (f64, f64)>, label: &str, known: f64) -> Option<f64> {
+        let d = label_dims.get(label)?;
+        if (d.0 - known).abs() <= TOL {
+            Some(d.1)
+        } else if (d.1 - known).abs() <= TOL {
+            Some(d.0)
+        } else {
+            None
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn walk(
+        arena: &Arena,
+        id: u32,
+        y_v: f64,
+        z_v: f64,
+        w_v: f64,
+        q_id: Option<u32>,
+        label_dims: &HashMap<String, (f64, f64)>,
+        adds: &mut Vec<(u32, NodeType, f64, Option<String>)>,
+        q_reductions: &mut Vec<(u32, f64)>,
+    ) {
+        let node = arena.get(id);
+        let tipo = node.tipo.clone();
+        let valor = node.valor;
+        let multi = node.multi;
+        let label_opt = node.label.clone();
+        let children = node.children.clone();
+
+        if children.is_empty() {
+            if let Some(label) = label_opt {
+                if multi == 1 {
+                    match tipo {
+                        NodeType::Z => {
+                            if let Some(real_h) = real_other(label_dims, &label, valor) {
+                                if y_v - real_h > TOL { adds.push((id, NodeType::W, real_h, Some(label))); }
+                            }
+                        }
+                        NodeType::W => {
+                            if let Some(real_w) = real_other(label_dims, &label, valor) {
+                                if z_v - real_w > TOL { adds.push((id, NodeType::Q, real_w, Some(label))); }
+                            }
+                        }
+                        NodeType::Q => {
+                            if let Some(real_h) = real_other(label_dims, &label, valor) {
+                                if w_v - real_h > TOL { adds.push((id, NodeType::R, real_h, Some(label))); }
+                            }
+                        }
+                        NodeType::R => {
+                            if let Some(qid) = q_id {
+                                let qnode = arena.get(qid);
+                                if qnode.children.len() == 1 {
+                                    if let Some(real_w) = real_other(label_dims, &label, valor) {
+                                        if qnode.valor - real_w > TOL { q_reductions.push((qid, real_w)); }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return;
+        }
+
+        // Q com vários filhos R uniformes: encolher Q.valor para a largura real comum.
+        if tipo == NodeType::Q {
+            let all_r_leaves = children.iter().all(|&c| {
+                let cn = arena.get(c);
+                cn.tipo == NodeType::R && cn.children.is_empty() && cn.label.is_some() && cn.multi == 1
+            });
+            if all_r_leaves {
+                let mut w0: Option<f64> = None;
+                let mut uniform = true;
+                for &c in &children {
+                    let cn = arena.get(c);
+                    let lbl = cn.label.as_ref().unwrap();
+                    match real_other(label_dims, lbl, cn.valor) {
+                        Some(rw) => match w0 {
+                            None => w0 = Some(rw),
+                            Some(prev) => if (prev - rw).abs() > TOL { uniform = false; break; },
+                        },
+                        None => { uniform = false; break; }
+                    }
+                }
+                if uniform {
+                    if let Some(rw) = w0 {
+                        if valor - rw > TOL { q_reductions.push((id, rw)); }
+                    }
+                }
+            }
+        }
+
+        for &c in &children {
+            walk(
+                arena,
+                c,
+                if tipo == NodeType::Y { valor } else { y_v },
+                if tipo == NodeType::Z { valor } else { z_v },
+                if tipo == NodeType::W { valor } else { w_v },
+                if tipo == NodeType::Q { Some(id) } else { q_id },
+                label_dims,
+                adds,
+                q_reductions,
+            );
+        }
+    }
+
+    let mut adds: Vec<(u32, NodeType, f64, Option<String>)> = Vec::new();
+    let mut q_reductions: Vec<(u32, f64)> = Vec::new();
+
+    let root_children = arena.get(ROOT_ID).children.clone();
+    for c in root_children {
+        walk(arena, c, 0.0, 0.0, 0.0, None, label_dims, &mut adds, &mut q_reductions);
+    }
+
+    for (parent, tipo, valor, label) in adds {
+        let id = arena.add_child(parent, tipo, valor, 1);
+        arena.get_mut(id).label = label;
+    }
+    for (qid, new_valor) in q_reductions {
+        arena.get_mut(qid).valor = new_valor;
+    }
+}
+
 pub fn optimize_genetic(
     pieces: &[Piece],
     usable_w: f64,
@@ -262,6 +393,14 @@ pub fn optimize_genetic(
     let generations = generations as usize;
     let elite_count = ((population_size as f64 * 0.1) as usize).max(2);
     let num_pieces = pieces.len();
+
+    // Mapa label→(w,h) real das peças de entrada, para corrigir folhas fantasma
+    // (ver cap_phantom_leaves). Espelha src/lib/engine/genetic.ts.
+    let mut label_dims: HashMap<String, (f64, f64)> = HashMap::new();
+    for p in pieces {
+        if let Some(l) = &p.label { label_dims.insert(l.clone(), (p.w, p.h)); }
+        if let Some(ls) = &p.labels { for l in ls { label_dims.insert(l.clone(), (p.w, p.h)); } }
+    }
 
     if pieces.is_empty() {
         return Arena::new_root(usable_w);
@@ -342,8 +481,11 @@ pub fn optimize_genetic(
                 let util = post_area / (usable_w * usable_h) * 100.0;
                 cb(OptimizationProgress { phase: "Pós-análise: layout melhorado!".into(), current: 1, total: 1, best_util: Some(util) });
             }
+            let mut post_arena = post_arena;
+            cap_phantom_leaves(&mut post_arena, &label_dims);
             return post_arena;
         }
+        cap_phantom_leaves(&mut best_arena, &label_dims);
         return best_arena;
     }
 
@@ -407,6 +549,9 @@ pub fn optimize_genetic(
         population = next_pop;
     }
 
+    // Cap fantasma na árvore CRUA antes da normalização (que "assa" a inflação).
+    cap_phantom_leaves(&mut best_arena, &label_dims);
+
     if best_transposed {
         best_arena.get_mut(ROOT_ID).transposed = true;
         best_arena = normalize_tree(best_arena, usable_w, usable_h, min_break);
@@ -423,8 +568,11 @@ pub fn optimize_genetic(
             let util = post_area / (usable_w * usable_h) * 100.0;
             cb(OptimizationProgress { phase: "Pós-análise: layout melhorado!".into(), current: generations as u32, total: generations as u32, best_util: Some(util) });
         }
+        let mut post_arena = post_arena;
+        cap_phantom_leaves(&mut post_arena, &label_dims);
         return post_arena;
     }
 
+    cap_phantom_leaves(&mut best_arena, &label_dims);
     best_arena
 }

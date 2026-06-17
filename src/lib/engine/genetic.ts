@@ -1,7 +1,7 @@
 // CNC Cut Plan Engine — Genetic Algorithm
 
 import { TreeNode, Piece, OptimizationProgress } from './types';
-import { createRoot, calcPlacedArea } from './tree-utils';
+import { createRoot, calcPlacedArea, insertNode, findNode } from './tree-utils';
 import { normalizeTree } from './normalization';
 import { runPlacement } from './placement';
 import { postOptimizeRegroup } from './post-processing';
@@ -56,6 +56,91 @@ function applyGrouping(work: Piece[], mode: number, usableW: number, usableH: nu
   }
 }
 
+/**
+ * Causa 2 (inflação de dimensão fantasma): algumas folhas de peça acabam com a
+ * dimensão do CONTÊINER em vez da real — ex.: uma peça 400×380 numa coluna Z de
+ * 1600 é renderizada como 1600×380 porque falta o nó de corte (Q) que limita a
+ * largura. A inflação tem múltiplas fontes no placement/pós-processamento e cresce
+ * com a busca. Em vez de corrigir cada sítio, esta passada FINAL é source-agnostic:
+ * usa o mapa label→(w,h) real das peças de entrada e, para cada folha cuja dimensão
+ * herdada do contêiner excede a real da peça, insere o nó de corte que falta
+ * (W sob Z, Q sob W, R sob Q), deixando o excedente como sobra legítima.
+ *
+ * Segura: só age quando a dimensão renderizada > real e quando a outra dimensão
+ * da folha casa com uma das dimensões reais da peça (rotação-agnóstico). Idempotente.
+ */
+function capPhantomLeaves(tree: TreeNode, labelDims: Map<string, [number, number]>): void {
+  const TOL = 1;
+  const realOther = (label: string, known: number): number | null => {
+    const d = labelDims.get(label);
+    if (!d) return null;
+    if (Math.abs(d[0] - known) <= TOL) return d[1];
+    if (Math.abs(d[1] - known) <= TOL) return d[0];
+    return null;
+  };
+
+  const walk = (n: TreeNode, yV: number, zV: number, wV: number, qN: TreeNode | null): void => {
+    // Só corrige folhas de peça única (multi===1). Nós com multi>1 representam
+    // várias peças idênticas — inserir um único filho bagunçaria contagem/labels.
+    if (n.filhos.length === 0 && n.label && n.multi === 1) {
+      if (n.tipo === "Z") {
+        // renderizada (w=Z.valor, h=Y.valor): limita altura com W
+        const realH = realOther(n.label, n.valor);
+        if (realH !== null && yV - realH > TOL) {
+          const id = insertNode(tree, n.id, "W", realH, 1);
+          findNode(tree, id)!.label = n.label;
+        }
+      } else if (n.tipo === "W") {
+        // renderizada (w=Z.valor, h=W.valor): limita largura com Q
+        const realW = realOther(n.label, n.valor);
+        if (realW !== null && zV - realW > TOL) {
+          const id = insertNode(tree, n.id, "Q", realW, 1);
+          findNode(tree, id)!.label = n.label;
+        }
+      } else if (n.tipo === "Q") {
+        // renderizada (w=Q.valor, h=W.valor): limita altura com R
+        const realH = realOther(n.label, n.valor);
+        if (realH !== null && wV - realH > TOL) {
+          const id = insertNode(tree, n.id, "R", realH, 1);
+          findNode(tree, id)!.label = n.label;
+        }
+      } else if (n.tipo === "R" && qN) {
+        // renderizada (w=Q.valor, h=R.valor): nível mais profundo, não há filho
+        // para limitar. Se o Q pai tem um único filho (esta peça), encolher
+        // Q.valor para a largura real é seguro (não desloca irmãos) e o excedente
+        // vira sobra.
+        const realW = realOther(n.label, n.valor);
+        if (realW !== null && qN.filhos.length === 1 && qN.valor - realW > TOL) {
+          qN.valor = realW;
+        }
+      }
+      return;
+    }
+    // Q com vários filhos R (peças empilhadas que compartilham a largura do Q):
+    // se todas resolvem para a MESMA largura real menor que Q.valor, encolher é
+    // seguro (uniforme, não desloca nada lateralmente).
+    if (n.tipo === "Q" && n.filhos.length > 0 &&
+        n.filhos.every((c) => c.tipo === "R" && c.filhos.length === 0 && c.label && c.multi === 1)) {
+      const widths = n.filhos.map((c) => realOther(c.label!, c.valor));
+      const w0 = widths[0];
+      if (w0 !== null && widths.every((x) => x !== null && Math.abs(x - w0) <= TOL) && n.valor - w0 > TOL) {
+        n.valor = w0;
+      }
+    }
+    for (const c of n.filhos) {
+      walk(
+        c,
+        n.tipo === "Y" ? n.valor : yV,
+        n.tipo === "Z" ? n.valor : zV,
+        n.tipo === "W" ? n.valor : wV,
+        n.tipo === "Q" ? n : qN,
+      );
+    }
+  };
+
+  for (const x of tree.filhos) walk(x, 0, 0, 0, null);
+}
+
 function simulateSheets(
   workPieces: Piece[],
   usableW: number,
@@ -66,13 +151,11 @@ function simulateSheets(
 ): {
   fitness: number;
   firstTree: TreeNode;
-  stat_rejectedByMinBreak: number;
-  stat_fragmentCount: number;
-  stat_continuity: number;
 } {
   let currentRemaining = [...workPieces];
   let totalUtil = 0;
   let firstTree: TreeNode | null = null;
+  let firstSheetUtil = 0;
   let sheetsActuallySimulated = 0;
   const sheetArea = usableW * usableH;
 
@@ -81,14 +164,8 @@ function simulateSheets(
     .filter(p => (p.w * p.h) > (sheetArea * 0.2))
     .reduce((a, b) => a + b.w * b.h, 0);
 
-  const initialSmallArea = workPieces
-    .reduce((a, b) => a + b.area * (b.count || 1), 0) - initialLargeArea;
-
   let largeAreaPlaced = 0;
-  let smallAreaPlaced = 0;
   let rejectedCount = 0;
-  let continuityScore = 0;
-  let fragmentCount = 0;
 
   for (let s = 0; s < maxSheets; s++) {
     if (currentRemaining.length === 0) break;
@@ -97,9 +174,19 @@ function simulateSheets(
     // Only apply horizontal strip hint on the first sheet
     const stripHint = s === 0 ? horizontalStrip : undefined;
     const res = runPlacement(currentRemaining, usableW, usableH, minBreak, stripHint);
-    if (s === 0) firstTree = res.tree;
 
-    const placedArea = res.area;
+    // IMPORTANTE: res.area do runPlacement é uma medida incremental NÃO confiável
+    // (pode vir negativa ou inflada — os passos de pós-processamento somam deltas que
+    // não batem com as folhas reais da árvore). Usamos calcPlacedArea, a área
+    // geométrica verdadeira da árvore — a mesma fonte de verdade que runAllSheets usa
+    // (Index.tsx:401). Sem isso, o GA otimiza um sinal quebrado e seleciona layouts
+    // com área espúria (ver benchmark seed 144: res.area=97.72 vs real=63.57).
+    const placedArea = calcPlacedArea(res.tree);
+    if (s === 0) {
+      firstTree = res.tree;
+      firstSheetUtil = placedArea / sheetArea;
+    }
+
     totalUtil += placedArea / sheetArea;
 
     const largeRemaining = res.remaining
@@ -109,11 +196,6 @@ function simulateSheets(
 
     const currentLargePlaced = Math.max(0, (initialLargeArea - largeAreaPlaced) - largeRemaining);
     largeAreaPlaced += currentLargePlaced;
-    smallAreaPlaced += Math.max(0, placedArea - currentLargePlaced);
-
-    const usedW = res.tree.filhos.reduce((a, x) => a + x.valor * x.multi, 0);
-    const freeW = usableW - usedW;
-    if (freeW > 50) continuityScore += freeW / usableW;
 
     const piecesPlaced = countBefore - res.remaining.length;
     if (piecesPlaced === 0) { rejectedCount++; break; }
@@ -122,28 +204,30 @@ function simulateSheets(
     sheetsActuallySimulated++;
   }
 
-  let fitness = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+  // O objetivo REAL do loop multi-chapa é MINIMIZAR o total de chapas, o que equivale
+  // a MAXIMIZAR o aproveitamento médio sobre as chapas necessárias. Por isso a média
+  // multi-chapa (avgUtil, com lookahead = estimatedSheets) é o termo PRIMÁRIO — otimizar
+  // só a 1ª chapa de forma gananciosa fragmenta o restante e usa MAIS chapas.
+  // Crucial: avgUtil agora deriva de calcPlacedArea (área honesta), não de res.area.
+  const avgUtil = sheetsActuallySimulated > 0 ? totalUtil / sheetsActuallySimulated : 0;
+  let fitness = avgUtil;
 
+  // Desempate: leve incentivo a alocar peças grandes cedo (reduz fragmentação).
   if (initialLargeArea > 0) {
-    const largePlacementRatio = largeAreaPlaced / initialLargeArea;
-    const smallPlacementRatio = initialSmallArea > 0 ? smallAreaPlaced / initialSmallArea : 1;
-
-    if (smallPlacementRatio > largePlacementRatio * 1.5) {
-      fitness *= 0.8;
-    } else {
-      fitness += largePlacementRatio * 0.1;
-    }
+    fitness += 0.001 * (largeAreaPlaced / initialLargeArea);
   }
 
-  fitness -= rejectedCount * 0.05;
-  fitness += (continuityScore * 0.01) / (sheetsActuallySimulated || 1);
+  // Desempate fraco a favor de 1ª chapas mais cheias (entre médias equivalentes).
+  fitness += 0.0001 * firstSheetUtil;
+
+  // Penalidade real: ordenação degenerada que não coloca nenhuma peça numa chapa.
+  fitness -= 0.01 * rejectedCount;
+  // Removido o bônus de continuityScore: ele somava fitness por LARGURA SOBRANDO na
+  // chapa, ou seja, premiava NÃO preencher — anti-objetivo direto.
 
   return {
     fitness: Math.max(0, fitness),
     firstTree: firstTree || createRoot(usableW, usableH),
-    stat_rejectedByMinBreak: rejectedCount,
-    stat_fragmentCount: fragmentCount,
-    stat_continuity: continuityScore,
   };
 }
 
@@ -162,6 +246,15 @@ export async function optimizeGeneticAsync(
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
 
   const numPieces = pieces.length;
+
+  // Mapa label→(w,h) real das peças de entrada, para corrigir folhas fantasma no
+  // final (ver capPhantomLeaves). No fluxo do runAllSheets cada instância tem um
+  // label uid único; agrupamentos internos preservam esses labels nas folhas.
+  const labelDims = new Map<string, [number, number]>();
+  for (const p of pieces) {
+    if (p.label) labelDims.set(p.label, [p.w, p.h]);
+    if (p.labels) p.labels.forEach((lb) => { if (lb) labelDims.set(lb, [p.w, p.h]); });
+  }
 
   const GROUPING_MODES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
@@ -419,6 +512,9 @@ export async function optimizeGeneticAsync(
       onProgress({ phase: "Apenas Heurísticas (sem evolução)", current: 1, total: 1, bestUtil: bestFitness * 100 });
     }
     let finalTree = bestTree || createRoot(usableW, usableH);
+    // Cap fantasma na árvore CRUA (antes da normalização) — assim os retângulos
+    // extraídos já saem corretos e a normalização não "assa" a inflação.
+    capPhantomLeaves(finalTree, labelDims);
     if (bestTransposed) {
       finalTree.transposed = true;
       finalTree = normalizeTree(finalTree, usableW, usableH, minBreak);
@@ -448,6 +544,7 @@ export async function optimizeGeneticAsync(
         });
     }
 
+    capPhantomLeaves(finalTree, labelDims);
     return finalTree;
   }
 
@@ -509,6 +606,8 @@ export async function optimizeGeneticAsync(
   }
 
   let finalTree = bestTree || createRoot(usableW, usableH);
+  // Cap fantasma na árvore CRUA (antes da normalização) — ver capPhantomLeaves.
+  capPhantomLeaves(finalTree, labelDims);
   if (bestTransposed) {
     finalTree.transposed = true;
     finalTree = normalizeTree(finalTree, usableW, usableH, minBreak);
@@ -543,6 +642,7 @@ export async function optimizeGeneticAsync(
       });
   }
 
+  capPhantomLeaves(finalTree, labelDims);
   return finalTree;
 }
 
