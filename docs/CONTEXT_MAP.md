@@ -13,7 +13,7 @@ Este diretório contém o núcleo lógico do projeto. É a parte mais complexa e
 | `genetic.ts` | Implementação do algoritmo genético (`optimizeGeneticAsync`). | Para modificar a evolução, função de fitness ou estratégias de agrupamento avançadas. |
 | `placement.ts` | Lógica de inserção de nós na árvore (`runPlacement`). | Para entender como uma peça é fisicamente alocada na chapa (cortes X, Y, Z). |
 | `grouping.ts` | Funções para agrupar peças antes do corte (ex: `groupPiecesByHeight`). | Para alterar ou adicionar novas lógicas de agrupamento de peças idênticas/compatíveis. |
-| `tree-utils.ts` | Utilitários para manipular a `TreeNode` (criar raiz, clonar, buscar nós). | Para operações genéricas na árvore de corte. |
+| `tree-utils.ts` | Utilitários para manipular a `TreeNode` (criar raiz, clonar, buscar nós, `extractLeafPieces`/`previewRemoval` para extração de peças-folha e preview de remoção). | Para operações genéricas na árvore de corte. |
 | `normalization.ts` | Funções para limpar e normalizar a árvore após os cortes. | Para entender como sobras (W, Q, R) são consolidadas. |
 | `post-processing.ts` | Lógica executada após a otimização principal (ex: `postOptimizeRegroup`). | Para ajustes finais no plano de corte. |
 
@@ -24,7 +24,7 @@ A interface é construída em React e gerencia o estado da aplicação, além de
 | Arquivo/Diretório | Responsabilidade Principal | Quando Consultar |
 | :--- | :--- | :--- |
 | `pages/Index.tsx` | Componente principal da página. Gerencia o estado global (chapas, peças, progresso). | Para entender o fluxo de dados entre a UI e o motor de otimização. |
-| `components/SheetViewer.tsx` | Componente visual que renderiza a chapa e os cortes baseados na `TreeNode`. | Para alterar a forma como o plano de corte é desenhado na tela. |
+| `components/SheetViewer.tsx` | Componente visual que renderiza a chapa e os cortes baseados na `TreeNode`. Inclui barra de seleção (info da peça + botão remover). | Para alterar a forma como o plano de corte é desenhado na tela. |
 | `components/SidebarSection.tsx` | Componentes da barra lateral (formulários de entrada, configurações). | Para adicionar novos campos de configuração ou alterar a entrada de dados. |
 | `lib/cnc-engine.ts` | Arquivo de "barrel" (exportação centralizada) para o motor. | Para ver a API pública do motor consumida pela UI. |
 

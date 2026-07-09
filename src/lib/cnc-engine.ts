@@ -16,7 +16,10 @@ export {
   calcPlanUtilization,
   annotateTreeLabels,
   countAllocatedPieces,
+  extractLeafPieces,
+  previewRemoval,
 } from './engine/tree-utils';
+export type { LeafPiece } from './engine/tree-utils';
 
 export { normalizeTree } from './engine/normalization';
 export { optimizeV6, optimizeGeneticAsync, optimizeGeneticV1, getUseWasmEngine, setUseWasmEngine, isWasmReady } from './engine/engine-adapter';

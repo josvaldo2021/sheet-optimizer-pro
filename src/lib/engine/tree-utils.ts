@@ -430,6 +430,98 @@ export function calculateNodeArea(node: TreeNode): number {
   }
   return area;
 }
+// ─── Leaf-piece extraction & removal preview ─────────────────────────────────
+
+export interface LeafPiece {
+  w: number;
+  h: number;
+  label?: string;
+}
+
+/**
+ * Extracts every allocated piece (leaf node) of the tree with its real
+ * dimensions resolved from ancestor context (a Y leaf's width comes from its
+ * X ancestor, etc.). Ignores `label` and expands `multi` — one entry per
+ * physical piece. Leaf types: Y/Z/W/Q without children, R always.
+ */
+export function extractLeafPieces(tree: TreeNode): LeafPiece[] {
+  const pieces: LeafPiece[] = [];
+  const traverse = (n: TreeNode, parents: TreeNode[], parentMultiplier: number) => {
+    const xAncestor = parents.find((p) => p.tipo === "X");
+    const yAncestor = parents.find((p) => p.tipo === "Y");
+    const zAncestor = parents.find((p) => p.tipo === "Z");
+    const wAncestor = parents.find((p) => p.tipo === "W");
+    let pieceW = 0,
+      pieceH = 0,
+      isLeaf = false;
+
+    const totalMulti = parentMultiplier * n.multi;
+
+    if (n.tipo === "Y" && n.filhos.length === 0) {
+      pieceW = xAncestor?.valor || 0;
+      pieceH = n.valor;
+      isLeaf = true;
+    } else if (n.tipo === "Z" && n.filhos.length === 0) {
+      pieceW = n.valor;
+      pieceH = yAncestor?.valor || 0;
+      isLeaf = true;
+    } else if (n.tipo === "W" && n.filhos.length === 0) {
+      pieceW = zAncestor?.valor || 0;
+      pieceH = n.valor;
+      isLeaf = true;
+    } else if (n.tipo === "Q" && n.filhos.length === 0) {
+      pieceW = n.valor;
+      pieceH = wAncestor?.valor || 0;
+      isLeaf = true;
+    } else if (n.tipo === "R") {
+      const qAncestor = parents.find((p) => p.tipo === "Q");
+      pieceW = qAncestor?.valor || 0;
+      pieceH = n.valor;
+      isLeaf = true;
+    }
+
+    if (isLeaf && pieceW > 0 && pieceH > 0) {
+      for (let m = 0; m < totalMulti; m++) {
+        pieces.push({ w: pieceW, h: pieceH, label: n.label });
+      }
+    }
+    n.filhos.forEach((f) => traverse(f, [...parents, n], totalMulti));
+  };
+  traverse(tree, [], 1);
+  return pieces;
+}
+
+/**
+ * Pieces that cease to exist if `nodeId` (and its whole subtree) is removed.
+ * Computed as a multiset diff of extractLeafPieces before/after a simulated
+ * deleteNode on a clone — the input tree is never mutated.
+ */
+export function previewRemoval(tree: TreeNode, nodeId: string): LeafPiece[] {
+  const before = extractLeafPieces(tree);
+  const clone = cloneTree(tree);
+  deleteNode(clone, nodeId);
+  const after = extractLeafPieces(clone);
+
+  const key = (p: LeafPiece) => `${p.w}x${p.h}|${p.label ?? ""}`;
+  const surviving = new Map<string, number>();
+  for (const p of after) {
+    const k = key(p);
+    surviving.set(k, (surviving.get(k) || 0) + 1);
+  }
+
+  const removed: LeafPiece[] = [];
+  for (const p of before) {
+    const k = key(p);
+    const c = surviving.get(k) || 0;
+    if (c > 0) {
+      surviving.set(k, c - 1);
+    } else {
+      removed.push(p);
+    }
+  }
+  return removed;
+}
+
 /** Recursively count labeled pieces in a subtree, accounting for multipliers */
 export function countAllocatedPieces(node: TreeNode): number {
   if (node.filhos.length === 0) {

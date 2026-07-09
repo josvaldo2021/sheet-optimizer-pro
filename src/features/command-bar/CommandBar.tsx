@@ -74,7 +74,7 @@ const CommandBar = ({
             onChange={(e) => { setCmdInput(e.target.value); setShowSuggestions(true); setSelectedSuggestionIdx(-1); }}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-            placeholder="X, Y, Z, W, Q ou U (UNDO). Ex: X100 Y200 Z50 W30 Q15"
+            placeholder="X, Y, Z, W, Q ou U (remover seleção). Ex: X100 Y200 Z50 W30 Q15"
             className="cnc-command-input w-full"
             onKeyDown={(e) => {
               if (e.key === "Enter") {

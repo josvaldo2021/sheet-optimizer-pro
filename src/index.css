@@ -450,6 +450,10 @@
   outline: 2px solid hsl(206 100% 60%) !important;
   z-index: 100;
   box-shadow: 0 0 12px hsla(206 100% 60% / 0.4);
+  background: hsl(206 100% 92%) !important;
+}
+.sv-waste {
+  cursor: pointer;
 }
 .sv-empty {
   display: flex;

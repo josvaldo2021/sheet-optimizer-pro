@@ -15,6 +15,7 @@ import {
   calcAllocation,
   calcPlacedArea,
   calcPlanUtilization,
+  previewRemoval,
   getLastLeftover,
   optimizeGeneticV1,
   optimizeGeneticAsync,
@@ -23,6 +24,7 @@ import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
 import { exportPdf } from "@/lib/export/pdf-export";
+import { restorePiecesToInventory } from "@/lib/inventory-utils";
 import { printLayout } from "@/lib/export/print-layout";
 import SheetViewer from "@/components/SheetViewer";
 import SidebarSection from "@/components/SidebarSection";
@@ -33,6 +35,15 @@ import LotsSection from "@/features/lots/LotsSection";
 import CommandBar from "@/features/command-bar/CommandBar";
 
 type CommandSuggestion = { cmd: string; label: string; desc: string; kind?: "direct" | "lookahead" };
+
+function findParentNode(n: TreeNode, id: string): TreeNode | null {
+  for (const f of n.filhos) {
+    if (f.id === id) return n;
+    const r = findParentNode(f, id);
+    if (r) return r;
+  }
+  return null;
+}
 
 const Index = () => {
   // ─── Sheet setup ───
@@ -133,14 +144,110 @@ const Index = () => {
     [activeChapa, editingExistingChapa],
   );
 
+  // Unified removal handler — selection-bar button, Delete/Backspace and the "U" command all land here
+  const removeSelected = useCallback(() => {
+    if (selectedId === "root") return;
+    const removed = previewRemoval(tree, selectedId);
+    const t = cloneTree(tree);
+    deleteNode(t, selectedId);
+    updateTreeAndChapas(t);
+    // Saved chapas already had their pieces deducted from the inventory on
+    // save — give labeled pieces back. Fresh layouts deduct nothing.
+    if (editingExistingChapa && removed.some((p) => p.label)) {
+      setPieces((prev) => restorePiecesToInventory(prev, removed));
+    }
+    setSelectedId("root");
+    setStatus({
+      msg: removed.length > 0 ? `${removed.length} peça(s) removida(s)` : "Recorte removido",
+      type: "success",
+    });
+  }, [tree, selectedId, updateTreeAndChapas, editingExistingChapa]);
+
+  // Global shortcuts: Delete/Backspace removes the selection, Esc clears it.
+  // Ignored while typing in inputs/textareas (CommandBar has autoFocus).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        removeSelected();
+      } else if (e.key === "Escape") {
+        setSelectedId("root");
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [removeSelected]);
+
+  // Selection bar data: node info + how many pieces the removal would affect (derived from the tree)
+  const selectionInfo = useMemo(() => {
+    if (selectedId === "root") return null;
+    const node = findNode(tree, selectedId);
+    if (!node) return null;
+    const removed = previewRemoval(tree, selectedId);
+    let dims: { w: number; h: number } | undefined;
+    if (node.filhos.length === 0) {
+      if (node.tipo === "Y") {
+        const x = findParentOfType(tree, selectedId, "X");
+        if (x) dims = { w: x.valor, h: node.valor };
+      } else if (node.tipo === "Z") {
+        const y = findParentOfType(tree, selectedId, "Y");
+        if (y) dims = { w: node.valor, h: y.valor };
+      } else if (node.tipo === "W") {
+        const z = findParentOfType(tree, selectedId, "Z");
+        if (z) dims = { w: z.valor, h: node.valor };
+      } else if (node.tipo === "Q") {
+        const w = findParentOfType(tree, selectedId, "W");
+        if (w) dims = { w: node.valor, h: w.valor };
+      } else if (node.tipo === "R") {
+        const q = findParentOfType(tree, selectedId, "Q");
+        if (q) dims = { w: q.valor, h: node.valor };
+      }
+    }
+    const label = node.label || (removed.length === 1 ? removed[0].label : undefined);
+    const parent = findParentNode(tree, selectedId);
+    const hasParent = !!parent && parent.tipo !== "ROOT";
+    return { tipo: node.tipo, valor: node.valor, label, pieceCount: removed.length, dims, hasParent };
+  }, [tree, selectedId]);
+
+  // Clicking a node in the viewer always hits the innermost piece (children
+  // cover parent cuts and stop propagation). Re-clicking the selection climbs
+  // the ancestor chain so container cuts (Z/Y/X) are reachable from the layout:
+  // piece → Z → Y → X → back to piece.
+  const handleSelectNode = useCallback(
+    (id: string) => {
+      if (id === "root") {
+        setSelectedId("root");
+        return;
+      }
+      const chain: string[] = [];
+      let cur: string | null = id;
+      while (cur && cur !== "root") {
+        chain.push(cur);
+        const p = findParentNode(tree, cur);
+        cur = p ? p.id : null;
+      }
+      const idx = chain.indexOf(selectedId);
+      if (idx >= 0) {
+        setSelectedId(idx < chain.length - 1 ? chain[idx + 1] : chain[0]);
+      } else {
+        setSelectedId(id);
+      }
+    },
+    [tree, selectedId],
+  );
+
+  const selectParent = useCallback(() => {
+    if (selectedId === "root") return;
+    const parent = findParentNode(tree, selectedId);
+    setSelectedId(parent ? parent.id : "root");
+  }, [tree, selectedId]);
+
   const processCommand = useCallback(
     (text: string) => {
       if (text === "U") {
-        if (selectedId === "root") return;
-        const t = cloneTree(tree);
-        deleteNode(t, selectedId);
-        updateTreeAndChapas(t);
-        setSelectedId("root");
+        removeSelected();
         return;
       }
       let multi = 1,
@@ -200,7 +307,7 @@ const Index = () => {
         setStatus({ msg: res.error || "Sem espaço", type: "error" });
       }
     },
-    [tree, selectedId, usableW, usableH, minBreak, updateTreeAndChapas],
+    [tree, selectedId, usableW, usableH, minBreak, updateTreeAndChapas, removeSelected],
   );
 
   const extractUsedPiecesWithContext = useCallback(
@@ -1636,7 +1743,7 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
             }
           }}
           selectedId={selectedId}
-          onSelectNode={setSelectedId}
+          onSelectNode={handleSelectNode}
           usableW={usableW}
           usableH={usableH}
           chapaW={chapaW}
@@ -1645,6 +1752,9 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
           mb={mb}
           utilization={utilization}
           layoutGroups={layoutGroups}
+          selectionInfo={selectionInfo}
+          onRemoveSelected={removeSelected}
+          onSelectParent={selectionInfo?.hasParent ? selectParent : undefined}
         />
 
         <CommandBar

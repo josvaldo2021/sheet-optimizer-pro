@@ -6,6 +6,15 @@ import { LayoutGroup } from '@/lib/export/layout-utils';
 const PIECE_BG = 'hsl(0 0% 100%)';
 const PIECE_BORDER = 'hsl(0 0% 70%)';
 
+export interface SelectionInfo {
+  tipo: string;
+  valor: number;
+  label?: string;
+  pieceCount: number;
+  dims?: { w: number; h: number };
+  hasParent?: boolean;
+}
+
 interface SheetViewerProps {
   chapas: Array<{ tree: TreeNode; usedArea: number }>;
   activeIndex: number;
@@ -20,6 +29,9 @@ interface SheetViewerProps {
   mb: number;
   utilization: number;
   layoutGroups?: LayoutGroup[];
+  selectionInfo?: SelectionInfo | null;
+  onRemoveSelected?: () => void;
+  onSelectParent?: () => void;
 }
 
 export default function SheetViewer({
@@ -27,6 +39,7 @@ export default function SheetViewer({
   selectedId, onSelectNode,
   usableW, usableH, chapaW, chapaH,
   ml, mb, utilization, layoutGroups,
+  selectionInfo, onRemoveSelected, onSelectParent,
 }: SheetViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
@@ -83,13 +96,25 @@ export default function SheetViewer({
     (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
   }, [zoomLevel, panOffset]);
 
+  const didPan = useRef(false);
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning.current) return;
+    didPan.current = true;
     setPanOffset({
       x: panOffsetStart.current.x + (e.clientX - panStart.current.x),
       y: panOffsetStart.current.y + (e.clientY - panStart.current.y),
     });
   }, []);
+
+  // Click on empty sheet area (pieces stop propagation) clears the selection
+  const handleBackgroundClick = useCallback(() => {
+    if (didPan.current) {
+      didPan.current = false;
+      return;
+    }
+    onSelectNode('root');
+  }, [onSelectNode]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     isPanning.current = false;
@@ -142,7 +167,7 @@ export default function SheetViewer({
     };
 
     // Collect Y-waste metadata for merging across adjacent X columns
-    type YWasteInfo = { xStart: number; xWidth: number; yStart: number; wasteH: number; xNodeValor: number };
+    type YWasteInfo = { xStart: number; xWidth: number; yStart: number; wasteH: number; xNodeValor: number; xId: string };
     const yWastes: YWasteInfo[] = [];
 
     tree.filhos.forEach(xNode => {
@@ -481,7 +506,7 @@ export default function SheetViewer({
         const yDimTotal = T ? usableW : usableH;
         const yWaste = yDimTotal - yOff;
         if (yWaste > 0 && yWaste * scale >= 4) {
-          yWastes.push({ xStart: cx, xWidth: xNode.valor, yStart: yOff, wasteH: yWaste, xNodeValor: xNode.valor });
+          yWastes.push({ xStart: cx, xWidth: xNode.valor, yStart: yOff, wasteH: yWaste, xNodeValor: xNode.valor, xId: xNode.id });
         }
 
         els.push(
@@ -506,8 +531,12 @@ export default function SheetViewer({
 
     // Merge adjacent Y-wastes with same yStart and wasteH into unified blocks
     if (yWastes.length > 0) {
-      const merged: Array<{ xStart: number; totalWidth: number; yStart: number; wasteH: number }> = [];
-      let current = { xStart: yWastes[0].xStart, totalWidth: yWastes[0].xWidth, yStart: yWastes[0].yStart, wasteH: yWastes[0].wasteH };
+      type MergedWaste = { xStart: number; totalWidth: number; yStart: number; wasteH: number; segments: Array<{ start: number; width: number; xId: string }> };
+      const merged: MergedWaste[] = [];
+      let current: MergedWaste = {
+        xStart: yWastes[0].xStart, totalWidth: yWastes[0].xWidth, yStart: yWastes[0].yStart, wasteH: yWastes[0].wasteH,
+        segments: [{ start: yWastes[0].xStart, width: yWastes[0].xWidth, xId: yWastes[0].xId }],
+      };
 
       for (let i = 1; i < yWastes.length; i++) {
         const w = yWastes[i];
@@ -517,9 +546,10 @@ export default function SheetViewer({
 
         if (adjacent && sameYStart && sameWasteH) {
           current.totalWidth += w.xWidth;
+          current.segments.push({ start: w.xStart, width: w.xWidth, xId: w.xId });
         } else {
-          merged.push({ ...current });
-          current = { xStart: w.xStart, totalWidth: w.xWidth, yStart: w.yStart, wasteH: w.wasteH };
+          merged.push({ ...current, segments: [...current.segments] });
+          current = { xStart: w.xStart, totalWidth: w.xWidth, yStart: w.yStart, wasteH: w.wasteH, segments: [{ start: w.xStart, width: w.xWidth, xId: w.xId }] };
         }
       }
       merged.push(current);
@@ -528,11 +558,25 @@ export default function SheetViewer({
         els.push(
           <div key={`yw-merged-${mi}`} className="sv-waste sv-waste-large" style={{
             position: 'absolute',
+            cursor: 'pointer',
             ...(T
               ? { bottom: m.xStart * scale, left: m.yStart * scale, width: m.wasteH * scale, height: m.totalWidth * scale }
               : { left: m.xStart * scale, bottom: m.yStart * scale, width: m.totalWidth * scale, height: m.wasteH * scale }
             ),
-          }}>
+          }}
+            title="Clique para selecionar o recorte (coluna) desta sobra"
+            onClick={e => {
+              // The merged block may span several X columns — resolve which
+              // column is under the cursor and select that cut directly.
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const offMm = T
+                ? (rect.bottom - e.clientY) / scale + m.xStart
+                : (e.clientX - rect.left) / scale + m.xStart;
+              const seg = m.segments.find(s => offMm >= s.start && offMm <= s.start + s.width) || m.segments[0];
+              onSelectNode(seg.xId);
+            }}
+          >
             <span className="sv-waste-label">{dimLabel(m.totalWidth, m.wasteH)}</span>
           </div>
         );
@@ -584,7 +628,44 @@ export default function SheetViewer({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onClick={handleBackgroundClick}
       >
+        {selectionInfo && (
+          <div
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 px-4 py-2 rounded-lg text-xs"
+            style={{ background: 'hsl(222 47% 15% / 0.92)', color: 'hsl(210 30% 88%)', backdropFilter: 'blur(6px)', boxShadow: '0 4px 12px hsl(222 47% 10% / 0.4)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="font-mono font-bold">{selectionInfo.tipo}{selectionInfo.valor}</span>
+            {selectionInfo.dims && (
+              <span className="font-mono">{Math.round(selectionInfo.dims.w)}×{Math.round(selectionInfo.dims.h)} mm</span>
+            )}
+            {selectionInfo.label && (
+              <span style={{ color: 'hsl(120 70% 65%)' }}>[{selectionInfo.label}]</span>
+            )}
+            {onSelectParent && (
+              <button
+                onClick={onSelectParent}
+                className="px-2.5 py-1 rounded font-bold transition-colors"
+                style={{ background: 'hsl(210 25% 35%)', color: 'white' }}
+                title="Selecionar o recorte que contém esta seleção (ou clique de novo na peça)"
+              >
+                ⬆ Recorte pai
+              </button>
+            )}
+            {onRemoveSelected && (
+              <button
+                onClick={onRemoveSelected}
+                className="px-2.5 py-1 rounded font-bold transition-colors"
+                style={{ background: 'hsl(0 72% 45%)', color: 'white' }}
+                title="Remover a seleção do layout (tecla Delete)"
+              >
+                🗑 {selectionInfo.pieceCount > 0 ? `Remover ${selectionInfo.pieceCount} peça(s)` : 'Remover recorte'}
+              </button>
+            )}
+            <span style={{ color: 'hsl(210 20% 60%)' }}>Esc desseleciona · clique de novo na peça = recorte pai</span>
+          </div>
+        )}
         {tree ? (
           <div
             className="sv-sheet"
@@ -618,6 +699,7 @@ export default function SheetViewer({
           <div
             className="absolute bottom-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
             style={{ background: 'hsl(222 47% 15% / 0.88)', color: 'hsl(210 30% 82%)', backdropFilter: 'blur(6px)' }}
+            onClick={e => e.stopPropagation()}
           >
             <span>{Math.round(zoomLevel * 100)}%</span>
             <button
