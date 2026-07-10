@@ -37,6 +37,7 @@ Módulos responsáveis por gerar saídas do sistema.
 | `pdf-export.ts` | Geração de relatórios em PDF usando `jspdf`. | Para alterar o layout ou os dados incluídos no PDF final. |
 | `excel-export.ts` | Exportação de dados para planilhas Excel usando `xlsx`. | Para modificar as colunas ou o formato do arquivo Excel gerado. |
 | `layout-utils.ts` | Utilitários para agrupar layouts idênticos. | Para entender como chapas repetidas são consolidadas nos relatórios. |
+| `pattern-repetition.ts` | Módulo **puro** de seleção de padrão por repetibilidade no fluxo multi-chapa (spec 006): `scoreCandidate`, `selectByRepetition`, `homogeneousCandidates`. Consumido por `runAllSheets` em `Index.tsx`. | Para alterar como o plano prioriza padrões que se repetem em mais chapas sob um piso de aproveitamento. |
 
 ## 4. Testes (`src/test/`)
 

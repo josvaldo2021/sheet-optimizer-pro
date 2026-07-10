@@ -32,8 +32,8 @@ US2 (controle do piso + visibilidade) refina e torna seguro.
 
 **Purpose**: Criar o esqueleto do módulo puro e do teste.
 
-- [ ] T001 Criar `src/lib/pattern-repetition.ts` com os tipos de `data-model.md` (`LayoutCandidate`, `RepetitionEval`, `RepetitionConfig`, `PatternSummary`, `SelectionResult`) e assinaturas vazias de `scoreCandidate`/`selectByRepetition`/`homogeneousCandidates` conforme `contracts/pattern-selection.md`
-- [ ] T002 [P] Criar `src/test/pattern-repetition.test.ts` com fixtures de candidatos injetáveis (BOM/util/perSheet) e um inventário `remaining` de exemplo, sem asserts finais
+- [X] T001 `src/lib/pattern-repetition.ts` criado com os tipos (`LayoutCandidate`, `RepetitionEval`, `RepetitionConfig`, `SelectionResult`, `BomEntry`, `RemainingItem`) e as funções `scoreCandidate`/`selectByRepetition`/`homogeneousCandidates` + `bestAreaCandidate`
+- [X] T002 [P] `src/test/pattern-repetition.test.ts` criado com fixtures injetáveis de candidatos e inventário
 
 ---
 
@@ -45,14 +45,14 @@ US2 (controle do piso + visibilidade) refina e torna seguro.
 
 ### Tests (TDD) ⚠️
 
-- [ ] T003 [P] Em `src/test/pattern-repetition.test.ts`, testes de `scoreCandidate`: `reps` = `min` de `floor((disponível−count)/count)` sobre o BOM (com rotação); `coverage = 1+reps`; `passesFloor`; pureza (não muta entradas) (contrato)
-- [ ] T004 [P] Em `src/test/pattern-repetition.test.ts`, testes de `selectByRepetition`: vence maior `reps` entre `passesFloor`; empate `reps`→`util`→`key`; fallback (nenhum ≥ piso → maior `util`, `floorReached=false`); `reps=0` quando nada repete; **determinismo** (mesma entrada → mesma saída) (FR-002/006/007/011)
+- [X] T003 [P] Testes de `scoreCandidate` (reps pela peça mais escassa com rotação, coverage, passesFloor, pureza) — verdes
+- [X] T004 [P] Testes de `selectByRepetition` (maior reps sob piso, empate reps→util, fallback, reps=0, determinismo) — verdes
 
 ### Implementation
 
-- [ ] T005 Implementar `scoreCandidate` em `src/lib/pattern-repetition.ts` (contagem de repetição reutilizando a lógica de `Index.tsx:546-558`, agora pura e com rotação)
-- [ ] T006 Implementar `selectByRepetition` em `src/lib/pattern-repetition.ts` (filtro por piso → maior `reps` → desempate `util` → `key`; fallback sinalizado)
-- [ ] T007 Implementar `homogeneousCandidates` em `src/lib/pattern-repetition.ts`: para cada dimensão distinta com `qty` suficiente, candidato pontuado por ladrilhamento (`perSheet = max(floor(uW/w)·floor(uH/h), floor(uW/h)·floor(uH/w))`, `util`, `buildTree` lazy)
+- [X] T005 `scoreCandidate` implementado (contagem por peça mais escassa, com rotação, puro)
+- [X] T006 `selectByRepetition` implementado (filtro piso → reps → util → key; fallback `floorReached=false`)
+- [X] T007 `homogeneousCandidates` implementado (ladrilhamento analítico, `buildTree` lazy)
 
 **Checkpoint**: Núcleo puro completo e verde — decisão de repetição testável sem UI.
 
@@ -66,12 +66,12 @@ US2 (controle do piso + visibilidade) refina e torna seguro.
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Em `src/pages/Index.tsx`, adicionar estado `prioritizeRepetition` (bool, default `false`) e `utilizationFloor` (default `0.85`); adicionar toggle mínimo para ligar/desligar (controle refinado vem na US2)
-- [ ] T009 [US1] Em `runAllSheets` (`src/pages/Index.tsx`), quando `prioritizeRepetition` está ligada: montar `candidates = [bestAreaCandidate, ...homogeneousCandidates(...)]`, onde `bestAreaCandidate` deriva do resultado já obtido (BOM via `extractUsedPiecesWithContext`, `util` via `calcPlacedArea`)
-- [ ] T010 [US1] Em `runAllSheets`, chamar `selectByRepetition`, materializar `chosen.buildTree()`, e reusar o caminho existente de dedução/replicação para o padrão escolhido (linhas ~563-598)
-- [ ] T011 [US1] Ajustar o **cache de layout** (`buildInvKey`/`layoutCache`, `Index.tsx:436-445`) para não forçar o padrão antigo no modo repetição: incluir `prioritizeRepetition` + `utilizationFloor` na chave (ou ignorar o cache quando ligado)
-- [ ] T012 [US1] Mitigar o **bug latente do `optimizeV6` TS** ao materializar candidato homogêneo (peças sem label quebram o ramo de agrupamento — ver spec 005): rotular as peças do subconjunto antes de chamar `optimizeV6`, ou construir a árvore em grade diretamente
-- [ ] T013 [US1] Garantir **não-regressão**: com `prioritizeRepetition=false`, `runAllSheets` segue exatamente o caminho atual (não monta candidatos, não chama o módulo) — validar via suíte existente
+- [X] T008 [US1] Estado `prioritizeRepetition` (default `false`) + `utilizationFloor` (0.85) + `patternSummary` adicionados; toggle na seção "Repetição de Padrão" da sidebar
+- [X] T009 [US1] `runAllSheets` monta `[bestAreaCandidate(...), ...homogeneousCandidates(...)]` quando ligado (BOM via `extractUsedPiecesWithContext`, util via `calcPlacedArea`)
+- [X] T010 [US1] Chama `selectByRepetition`; se o vencedor é homogêneo, `result = chosen.buildTree()` e o caminho existente de dedução/replicação segue inalterado
+- [X] T011 [US1] Cache: **nenhuma mudança necessária** — o `layoutCache` fornece apenas o candidato "melhor-por-área"; os homogêneos são recomputados e a seleção re-roda a cada etapa, então o cache não força o padrão antigo (documentado)
+- [X] T012 [US1] Bug latente do `optimizeV6` TS **evitado por construção**: a árvore homogênea é montada a partir do subconjunto de `inv` (que carrega labels uid) → `hasLabels=true` → ramo seguro; no navegador roda em WASM
+- [X] T013 [US1] Não-regressão verificada: com a flag OFF, suíte completa verde (76 passed, 0 failed), `tsc` limpo, build OK
 
 **Checkpoint**: MVP — menos padrões distintos com a opção ligada; comportamento intacto com ela desligada.
 
@@ -85,10 +85,10 @@ US2 (controle do piso + visibilidade) refina e torna seguro.
 
 ### Implementation for User Story 2
 
-- [ ] T014 [P] [US2] Em `src/components/SidebarSection.tsx`, adicionar o slider "Aproveitamento mínimo" (0–100%, default 85%) vinculado a `utilizationFloor`, visível quando `prioritizeRepetition` está ligada
-- [ ] T015 [US2] Em `runAllSheets`/`Index.tsx`, acumular `PatternSummary` (nº de padrões distintos, chapas por padrão, `floorReached`) ao longo das etapas
-- [ ] T016 [P] [US2] Exibir o resumo de padrões na UI reaproveitando o padrão de `replicationInfo` (nº de padrões distintos + cobertura por padrão + aviso quando `floorReached=false`) (FR-008/SC-007)
-- [ ] T017 [US2] Sinalizar na UI quando o piso não foi atingido em alguma etapa (fallback do FR-006)
+- [X] T014 [US2] Slider "Aproveitamento mínimo" (50–99%, default 85%) na seção "Repetição de Padrão", visível quando a opção está ligada
+- [X] T015 [US2] `patternSummary` computado do grupo escolhido (padrões distintos via `treeFingerprint`, chapas por padrão, `floorReached` = todos os padrões ≥ piso)
+- [X] T016 [US2] Resumo exibido na sidebar (nº de padrões distintos + cobertura/util por padrão)
+- [X] T017 [US2] Aviso na UI quando `floorReached=false` (piso não atingido → usado o de maior aproveitamento)
 
 **Checkpoint**: US1 + US2 — controle previsível do trade-off e visibilidade dos padrões.
 
@@ -96,10 +96,10 @@ US2 (controle do piso + visibilidade) refina e torna seguro.
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T018 [P] `npx tsc --noEmit` limpo
-- [ ] T019 Rodar suíte completa `npm test` — verde, sem regressão (SC-003)
-- [ ] T020 Executar `specs/006-repeticao-padrao/quickstart.md` ponta a ponta (testes puros + sanidade no app com opção on/off e dois valores de piso)
-- [ ] T021 [P] Nota breve em `docs/CONTEXT_MAP.md` sobre `src/lib/pattern-repetition.ts` (novo módulo de orquestração de repetição multi-chapa)
+- [X] T018 [P] `npx tsc --noEmit` limpo (exit 0)
+- [X] T019 Suíte completa verde: 76 passed, 2 skipped, 0 failed; build de produção OK (SC-003)
+- [~] T020 Quickstart: partes automatizadas OK (testes puros 11/11, suíte, tsc, build). **Sanidade manual no navegador (opção ON, dois valores de piso, resumo) NÃO executada neste ambiente** — requer `npm run dev` + interação. Ver observação no relatório.
+- [X] T021 [P] Nota adicionada em `docs/CONTEXT_MAP.md` sobre `src/lib/pattern-repetition.ts`
 
 ---
 

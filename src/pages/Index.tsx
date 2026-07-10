@@ -19,7 +19,14 @@ import {
   getLastLeftover,
   optimizeGeneticV1,
   optimizeGeneticAsync,
+  optimizeV6,
 } from "@/lib/cnc-engine";
+import {
+  selectByRepetition,
+  homogeneousCandidates,
+  bestAreaCandidate,
+  type BomEntry,
+} from "@/lib/pattern-repetition";
 import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
@@ -76,6 +83,14 @@ const Index = () => {
   } | null>(null);
   const [gaPopSize, setGaPopSize] = useState(10);
   const [gaGens, setGaGens] = useState(10);
+  // Spec 006 — priorizar repetição de padrão no plano multi-chapa.
+  const [prioritizeRepetition, setPrioritizeRepetition] = useState(false);
+  const [utilizationFloor, setUtilizationFloor] = useState(0.85);
+  const [patternSummary, setPatternSummary] = useState<{
+    distinctPatterns: number;
+    perPattern: Array<{ label: string; sheets: number; util: number }>;
+    floorReached: boolean;
+  } | null>(null);
   const [pdfFilename, setPdfFilename] = useState("plano-de-corte");
   const [optimizationGroups, setOptimizationGroups] = useState<Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }> }> | null>(null);
   const [activeGroupIdx, setActiveGroupIdx] = useState(0);
@@ -505,6 +520,41 @@ const Index = () => {
           );
           layoutCache.set(invKey, cloneTree(result));
         }
+
+        // --- Spec 006: seleção por repetição de padrão ---
+        // Monta candidatos (melhor-por-área já obtido + homogêneos) e, se ligado,
+        // escolhe o que mais repete sob o piso de aproveitamento. Guardado pela flag:
+        // desligado (default) → caminho idêntico ao atual (não-regressão).
+        if (prioritizeRepetition) {
+          const remItems = remaining
+            .filter((p) => p.qty > 0)
+            .map((p) => ({ w: p.w, h: p.h, qty: p.qty }));
+          const baseUsed = extractUsedPiecesWithContext(result);
+          const bomMap = new Map<string, BomEntry>();
+          baseUsed.forEach((u) => {
+            const k = `${Math.min(u.w, u.h)}x${Math.max(u.w, u.h)}`;
+            const e = bomMap.get(k);
+            if (e) e.count++;
+            else bomMap.set(k, { w: u.w, h: u.h, count: 1 });
+          });
+          const baseBom = Array.from(bomMap.values());
+          if (baseBom.length > 0) {
+            const baseUtil = calcPlacedArea(result) / (usableW * usableH);
+            const bestCand = bestAreaCandidate(baseBom, baseUtil, result);
+            const homoBuild = (dim: { w: number; h: number; count: number }) => {
+              const subset = inv
+                .filter((pc) => (pc.w === dim.w && pc.h === dim.h) || (pc.w === dim.h && pc.h === dim.w))
+                .slice(0, dim.count);
+              return optimizeV6(subset, usableW, usableH, minBreak).tree;
+            };
+            const homos = homogeneousCandidates(remItems, usableW, usableH, minBreak, homoBuild);
+            const sel = selectByRepetition([bestCand, ...homos], remItems, utilizationFloor);
+            if (sel.chosen.candidate.kind === "homogeneous") {
+              result = sel.chosen.candidate.buildTree();
+            }
+          }
+        }
+
         const usedArea = calcPlacedArea(result);
 
         // Extract before restoring labels so we still have uid labels for exact deduction.
@@ -657,6 +707,25 @@ const Index = () => {
     setActiveGroupIdx(bestIdx);
     setChapas(best);
     setFilterActiveLabels(null);
+
+    // Spec 006 — resumo de padrões distintos do plano escolhido.
+    if (prioritizeRepetition && best.length > 0) {
+      const groups = new Map<string, { sheets: number; util: number }>();
+      best.forEach((c) => {
+        const fp = treeFingerprint(c.tree);
+        const g = groups.get(fp);
+        if (g) g.sheets++;
+        else groups.set(fp, { sheets: 1, util: c.usedArea / sheetArea });
+      });
+      const perPattern = Array.from(groups.values())
+        .sort((a, b) => b.sheets - a.sheets)
+        .map((g, i) => ({ label: `Padrão ${i + 1}`, sheets: g.sheets, util: g.util }));
+      const floorReached = perPattern.every((p) => p.util >= utilizationFloor);
+      setPatternSummary({ distinctPatterns: perPattern.length, perPattern, floorReached });
+    } else {
+      setPatternSummary(null);
+    }
+
     if (best.length > 0) {
       setTree(best[0].tree);
       setSelectedId("root");
@@ -666,7 +735,7 @@ const Index = () => {
     setGlobalProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)! Grupo ${bestIdx + 1} selecionado automaticamente.`, type: "success" });
-  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens]);
+  }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens, prioritizeRepetition, utilizationFloor]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1713,6 +1782,56 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
             {tree.filhos.length === 0 && (
               <div className="text-center text-[11px] py-4" style={{ color: "hsl(210 25% 52%)" }}>
                 Nenhum nó na árvore
+              </div>
+            )}
+          </div>
+        </SidebarSection>
+
+        {/* ─── SECTION 4b: Repetição de Padrão (spec 006) ─── */}
+        <SidebarSection title="Repetição de Padrão" icon="🔁" defaultOpen={false}>
+          <div className="p-2 space-y-3">
+            <label className="flex items-center gap-2 text-[12px] cursor-pointer" style={{ color: "hsl(210 25% 82%)" }}>
+              <input
+                type="checkbox"
+                checked={prioritizeRepetition}
+                onChange={(e) => setPrioritizeRepetition(e.target.checked)}
+              />
+              Priorizar repetição de padrão
+            </label>
+            <p className="text-[10px] leading-tight" style={{ color: "hsl(210 25% 52%)" }}>
+              Prefere padrões que se repetem em mais chapas (menos setups na serra),
+              desde que o aproveitamento fique acima do piso.
+            </p>
+            {prioritizeRepetition && (
+              <div className="space-y-1">
+                <label className="flex justify-between text-[11px]" style={{ color: "hsl(210 25% 72%)" }}>
+                  <span>Aproveitamento mínimo</span>
+                  <span>{Math.round(utilizationFloor * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={50}
+                  max={99}
+                  step={1}
+                  value={Math.round(utilizationFloor * 100)}
+                  onChange={(e) => setUtilizationFloor(Number(e.target.value) / 100)}
+                  className="w-full"
+                />
+              </div>
+            )}
+            {patternSummary && (
+              <div className="text-[11px] pt-1 border-t space-y-0.5" style={{ color: "hsl(210 25% 72%)", borderColor: "hsl(222 47% 18%)" }}>
+                <div>Padrões distintos: <strong>{patternSummary.distinctPatterns}</strong></div>
+                {patternSummary.perPattern.slice(0, 6).map((p, i) => (
+                  <div key={i} className="text-[10px]" style={{ color: "hsl(210 25% 55%)" }}>
+                    {p.label}: {p.sheets}× · {Math.round(p.util * 100)}%
+                  </div>
+                ))}
+                {!patternSummary.floorReached && (
+                  <div className="text-[10px]" style={{ color: "hsl(38 92% 60%)" }}>
+                    ⚠ Piso não atingido em alguma etapa (usado o de maior aproveitamento).
+                  </div>
+                )}
               </div>
             )}
           </div>
