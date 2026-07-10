@@ -42,6 +42,11 @@ export function getSortStrategies(): ((a: Piece, b: Piece) => number)[] {
     (a, b) => b.area - a.area || b.h - a.h,
     (a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h),
     (a, b) => (b.w * b.h) / (b.w + b.h) - (a.w * a.h) / (a.w + a.h),
+    // idx 12 — H1: altura ascendente (peça de menor altura primeiro), desempate largura asc.
+    // "Menor dimensão primeiro" — arranjo ausente no conjunto (todos os anteriores são desc).
+    (a, b) => a.h - b.h || a.w - b.w,
+    // idx 13 — H2: largura ascendente (simétrico de H1 no eixo horizontal), desempate altura asc.
+    (a, b) => a.w - b.w || a.h - b.h,
   ];
 }
 

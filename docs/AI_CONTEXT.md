@@ -23,7 +23,7 @@ O projeto emprega uma abordagem híbrida para a otimização, combinando heurís
 
 Esta função implementa diversas estratégias heurísticas para o posicionamento de peças. Ela considera:
 
-*   **Estratégias de Ordenação:** Múltiplas formas de ordenar as peças (por área, maior dimensão, proporção, etc.) para tentar diferentes arranjos.
+*   **Estratégias de Ordenação:** 14 formas de ordenar as peças (por área, maior dimensão, proporção, etc., além de altura/largura **ascendentes** — spec 004→005) para tentar diferentes arranjos. `getSortStrategies()` (TS) e `cmp_by_strategy`/`NUM_SORT_STRATEGIES` (Rust) devem permanecer em paridade.
 *   **Agrupamento:** Antes do posicionamento, peças com características semelhantes (ex: mesma largura ou altura) podem ser agrupadas para serem cortadas juntas, reduzindo o número de cortes primários.
 *   **Rotação:** As peças podem ser rotacionadas em 90 graus para encontrar um encaixe melhor.
 

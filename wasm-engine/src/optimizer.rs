@@ -12,7 +12,7 @@ use crate::grouping::{
     group_identical_pieces_2d,
 };
 
-pub const NUM_SORT_STRATEGIES: usize = 12;
+pub const NUM_SORT_STRATEGIES: usize = 14;
 
 pub fn sort_by_strategy(pieces: &mut Vec<Piece>, idx: usize) {
     pieces.sort_by(|a, b| cmp_by_strategy(a, b, idx));
@@ -46,6 +46,12 @@ pub fn cmp_by_strategy(a: &Piece, b: &Piece, idx: usize) -> std::cmp::Ordering {
             let vb = (b.w * b.h) / (b.w + b.h).max(0.001);
             vb.partial_cmp(&va).unwrap_or(std::cmp::Ordering::Equal)
         }
+        // idx 12 — H1: altura ascendente, desempate largura asc ("menor dimensão primeiro")
+        12 => a.h.partial_cmp(&b.h).unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.w.partial_cmp(&b.w).unwrap_or(std::cmp::Ordering::Equal)),
+        // idx 13 — H2: largura ascendente, desempate altura asc (simétrico de H1)
+        13 => a.w.partial_cmp(&b.w).unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.h.partial_cmp(&b.h).unwrap_or(std::cmp::Ordering::Equal)),
         _ => std::cmp::Ordering::Equal,
     }
 }
