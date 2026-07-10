@@ -41,8 +41,13 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Plano de implementação ativo: `specs/004-selecionar-remover-pecas/plan.md`
-(seleção e remoção visível de peças no layout). Specs anteriores:
+Plano de implementação ativo: `specs/006-repeticao-padrao/plan.md`
+(maximizar repetição de padrão de corte no plano multi-chapa — módulo puro
+`src/lib/pattern-repetition.ts` + `runAllSheets` em `Index.tsx`; escolhe o padrão
+que mais repete sob piso de aproveitamento; Fase A não toca no motor/WASM).
+Specs anteriores:
+`specs/005-novas-heuristicas/` (duas heurísticas de ordenação ascendentes, TS+Rust),
+`specs/004-selecionar-remover-pecas/` (seleção e remoção visível de peças),
 `specs/003-selecionar-chapas-lote/` (selecionar chapas em lote),
 `specs/002-importar-relatorio-of/` (importar .rpt). Spec retroativo do motor em
 `specs/001-otimizacao-plano-corte/` (spec, plan, data-model,
