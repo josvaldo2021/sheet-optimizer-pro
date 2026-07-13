@@ -1,0 +1,203 @@
+{
+  "versao": "baseline-2026-07",
+  "geradoEm": "2026-07-13",
+  "cenarios": [
+    {
+      "nome": "pequenas-em-volume",
+      "perfil": "pecas-pequenas",
+      "chapa": {
+        "w": 2750,
+        "h": 1830,
+        "ml": 10,
+        "mr": 10,
+        "mt": 10,
+        "mb": 10,
+        "minBreak": 10
+      },
+      "permiteRotacao": true,
+      "pecas": [
+        {
+          "w": 350,
+          "h": 250,
+          "qty": 40
+        },
+        {
+          "w": 200,
+          "h": 180,
+          "qty": 50
+        },
+        {
+          "w": 450,
+          "h": 220,
+          "qty": 30
+        }
+      ]
+    },
+    {
+      "nome": "grandes-poucas",
+      "perfil": "pecas-grandes",
+      "chapa": {
+        "w": 2750,
+        "h": 1830,
+        "ml": 10,
+        "mr": 10,
+        "mt": 10,
+        "mb": 10,
+        "minBreak": 10
+      },
+      "permiteRotacao": true,
+      "pecas": [
+        {
+          "w": 1200,
+          "h": 800,
+          "qty": 6
+        },
+        {
+          "w": 900,
+          "h": 700,
+          "qty": 5
+        },
+        {
+          "w": 1300,
+          "h": 600,
+          "qty": 4
+        },
+        {
+          "w": 800,
+          "h": 550,
+          "qty": 6
+        }
+      ]
+    },
+    {
+      "nome": "misto-realista",
+      "perfil": "misto",
+      "chapa": {
+        "w": 2750,
+        "h": 1830,
+        "ml": 10,
+        "mr": 10,
+        "mt": 10,
+        "mb": 10,
+        "minBreak": 10
+      },
+      "permiteRotacao": true,
+      "pecas": [
+        {
+          "w": 1100,
+          "h": 600,
+          "qty": 8
+        },
+        {
+          "w": 600,
+          "h": 400,
+          "qty": 20
+        },
+        {
+          "w": 350,
+          "h": 300,
+          "qty": 35
+        },
+        {
+          "w": 900,
+          "h": 450,
+          "qty": 10
+        },
+        {
+          "w": 250,
+          "h": 200,
+          "qty": 40
+        }
+      ]
+    },
+    {
+      "nome": "alto-volume-uniforme",
+      "perfil": "alto-volume",
+      "chapa": {
+        "w": 2750,
+        "h": 1830,
+        "ml": 10,
+        "mr": 10,
+        "mt": 10,
+        "mb": 10,
+        "minBreak": 10
+      },
+      "permiteRotacao": true,
+      "pecas": [
+        {
+          "w": 300,
+          "h": 200,
+          "qty": 120
+        },
+        {
+          "w": 250,
+          "h": 150,
+          "qty": 80
+        }
+      ]
+    },
+    {
+      "nome": "margens-minbreak-agressivos",
+      "perfil": "restricoes-agressivas",
+      "chapa": {
+        "w": 2440,
+        "h": 1220,
+        "ml": 30,
+        "mr": 30,
+        "mt": 30,
+        "mb": 30,
+        "minBreak": 50
+      },
+      "permiteRotacao": true,
+      "pecas": [
+        {
+          "w": 700,
+          "h": 500,
+          "qty": 12
+        },
+        {
+          "w": 450,
+          "h": 350,
+          "qty": 18
+        },
+        {
+          "w": 300,
+          "h": 250,
+          "qty": 24
+        }
+      ]
+    }
+  ],
+  "baseline": [
+    {
+      "cenario": "pequenas-em-volume",
+      "aproveitamento": 83.68,
+      "chapas": 2,
+      "pecasAlocadas": 120
+    },
+    {
+      "cenario": "grandes-poucas",
+      "aproveitamento": 74.22,
+      "chapas": 4,
+      "pecasAlocadas": 21
+    },
+    {
+      "cenario": "misto-realista",
+      "aproveitamento": 80.16,
+      "chapas": 5,
+      "pecasAlocadas": 113
+    },
+    {
+      "cenario": "alto-volume-uniforme",
+      "aproveitamento": 68.81,
+      "chapas": 3,
+      "pecasAlocadas": 200
+    },
+    {
+      "cenario": "margens-minbreak-agressivos",
+      "aproveitamento": 80,
+      "chapas": 4,
+      "pecasAlocadas": 54
+    }
+  ]
+}
