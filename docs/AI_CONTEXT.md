@@ -29,7 +29,7 @@ Esta função implementa diversas estratégias heurísticas para o posicionament
 
 ### 3.2. `optimizeGeneticAsync` (Algoritmo Genético)
 
-Este é um otimizador mais avançado que utiliza um algoritmo genético para explorar um espaço de soluções maior. Ele funciona da seguinte forma:
+Este é um otimizador mais avançado que utiliza um algoritmo genético para explorar um espaço de soluções maior. **Desde a spec 007 o GA é determinístico**: toda a aleatoriedade vem de um PRNG semeado (`mulberry32` em `src/lib/engine/rng.ts`, semente default `DEFAULT_GA_SEED = 0x5EED2026`, parâmetro opcional `seed` no TS; mesma constante no Rust `genetic.rs`) — mesmo input → mesmo plano. Ele funciona da seguinte forma:
 
 *   **População Inicial:** Gerada a partir de uma combinação de estratégias heurísticas.
 *   **Evolução:** Através de gerações, a população de soluções (planos de corte) é aprimorada usando operadores genéticos (seleção, cruzamento, mutação).

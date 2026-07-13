@@ -15,6 +15,7 @@ Este diretório contém o núcleo lógico do projeto. É a parte mais complexa e
 | `grouping.ts` | Funções para agrupar peças antes do corte (ex: `groupPiecesByHeight`). | Para alterar ou adicionar novas lógicas de agrupamento de peças idênticas/compatíveis. |
 | `tree-utils.ts` | Utilitários para manipular a `TreeNode` (criar raiz, clonar, buscar nós, `extractLeafPieces`/`previewRemoval` para extração de peças-folha e preview de remoção). | Para operações genéricas na árvore de corte. |
 | `normalization.ts` | Funções para limpar e normalizar a árvore após os cortes. | Para entender como sobras (W, Q, R) são consolidadas. |
+| `rng.ts` | PRNG determinístico (`mulberry32`, `DEFAULT_GA_SEED`) — spec 007. Toda aleatoriedade do motor passa por aqui (nunca `Math.random`). | Para qualquer componente novo com aleatoriedade (Princípio V: reprodutibilidade). |
 | `post-processing.ts` | Lógica executada após a otimização principal (ex: `postOptimizeRegroup`). | Para ajustes finais no plano de corte. |
 
 ## 2. Interface do Usuário (`src/`)
@@ -47,6 +48,8 @@ Suíte de testes Vitest para garantir a estabilidade do motor.
 | :--- | :--- | :--- |
 | `optimization.test.ts` | Testes de regressão para cenários de otimização complexos. | Para validar se mudanças no motor não quebraram o comportamento esperado. |
 | `regroup-waste.test.ts` | Testes focados em reagrupamento de sobras e bugs específicos. | Para entender casos extremos (edge cases) e bugs resolvidos anteriormente. |
+| `heuristics-benchmark.test.ts` | Harness de benchmark (spec 007): 5 cenários vs baseline em `fixtures/benchmark-baseline.json`; falha em regressão de aproveitamento/chapas e em não-determinismo. Regravar baseline: `RECORD_BASELINE=1`. | Antes de qualquer mudança que possa afetar aproveitamento; contrato em `specs/007-comparar-heuristicas/contracts/benchmark-contract.md`. |
+| `ga-determinism.test.ts` | Garante GA reprodutível (PRNG semeado, spec 007): mesmo input 2× → planos idênticos. | Ao mexer em `genetic.ts`/`rng.ts` ou introduzir aleatoriedade. |
 
 ## 5. Documentação e Configuração (Raiz)
 

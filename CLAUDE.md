@@ -21,8 +21,9 @@ Isso evita leitura desnecessária de arquivos grandes e previne alucinações.
 
 ```bash
 npm test              # roda todos os testes (vitest)
-npm run build         # TypeScript + build Vite
-npx tsc --noEmit      # só checagem de tipos
+npm run build         # build Vite
+npx tsc -p tsconfig.app.json --noEmit   # checagem de tipos REAL (o tsc --noEmit na raiz é no-op: tsconfig com files:[])
+npm run build:wasm    # rebuild do motor WASM (wasm-pack)
 ```
 
 ## Arquitetura em 5 linhas
@@ -41,11 +42,19 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Plano de implementação ativo: `specs/006-repeticao-padrao/plan.md`
-(maximizar repetição de padrão de corte no plano multi-chapa — módulo puro
-`src/lib/pattern-repetition.ts` + `runAllSheets` em `Index.tsx`; escolhe o padrão
-que mais repete sob piso de aproveitamento; Fase A não toca no motor/WASM).
+Spec mais recente (implementada): `specs/007-comparar-heuristicas/`
+(comparação do catálogo de heurísticas da literatura com o motor — ver
+`relatorio-comparativo.md` e `priorizacao.md`). Resultados: C1 ADOTADO (GA
+determinístico via PRNG semeado — `src/lib/engine/rng.ts` + `genetic.ts`/`genetic.rs`,
+teste `ga-determinism.test.ts`); C2 best-fit de faixa REPROVADO no gate de medição e
+revertido (números na priorização); C3 GRASP e C4 busca em árvore registrados como
+futuros. Harness permanente de benchmark: `src/test/heuristics-benchmark.test.ts` +
+baseline `src/test/fixtures/benchmark-baseline.json` (regravar: `RECORD_BASELINE=1`;
+contrato em `specs/007-comparar-heuristicas/contracts/benchmark-contract.md`).
+Bug adormecido corrigido: ramo de agrupamento sem labels do `optimizeV6` (thunks).
 Specs anteriores:
+`specs/006-repeticao-padrao/` (repetição de padrão no plano multi-chapa,
+`src/lib/pattern-repetition.ts` + `runAllSheets`),
 `specs/005-novas-heuristicas/` (duas heurísticas de ordenação ascendentes, TS+Rust),
 `specs/004-selecionar-remover-pecas/` (seleção e remoção visível de peças),
 `specs/003-selecionar-chapas-lote/` (selecionar chapas em lote),
