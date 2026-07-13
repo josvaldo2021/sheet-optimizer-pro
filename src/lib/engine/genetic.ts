@@ -1,6 +1,7 @@
 // CNC Cut Plan Engine — Genetic Algorithm
 
 import { TreeNode, Piece, OptimizationProgress } from './types';
+import { mulberry32, DEFAULT_GA_SEED } from './rng';
 import { createRoot, calcPlacedArea, insertNode, findNode } from './tree-utils';
 import { normalizeTree } from './normalization';
 import { runPlacement } from './placement';
@@ -240,7 +241,11 @@ export async function optimizeGeneticAsync(
   priorityLabels?: string[],
   gaPopulationSize: number = 10,
   gaGenerations: number = 10,
+  seed: number = DEFAULT_GA_SEED,
 ): Promise<TreeNode> {
+  // Spec 007 (C1): toda a aleatoriedade do GA vem de um PRNG semeado —
+  // mesmo input (e mesma semente) → mesmo plano de corte (Princípio V).
+  const rand = mulberry32(seed);
   const populationSize = Math.max(10, gaPopulationSize);
   const generations = Math.max(0, gaGenerations);
   const eliteCount = Math.max(2, Math.floor(populationSize * 0.1));
@@ -261,15 +266,15 @@ export async function optimizeGeneticAsync(
   function randomIndividual(): GAIndividual {
     const genome = Array.from({ length: numPieces }, (_, i) => i);
     for (let i = genome.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rand() * (i + 1));
       [genome[i], genome[j]] = [genome[j], genome[i]];
     }
     return {
       genome,
-      rotations: Array.from({ length: numPieces }, () => Math.random() > 0.5),
-      groupingMode: GROUPING_MODES[Math.floor(Math.random() * GROUPING_MODES.length)] as GAIndividual['groupingMode'],
-      transposed: Math.random() > 0.5,
-      stripMode: Math.random() > 0.5 ? 'V' : 'H',
+      rotations: Array.from({ length: numPieces }, () => rand() > 0.5),
+      groupingMode: GROUPING_MODES[Math.floor(rand() * GROUPING_MODES.length)] as GAIndividual['groupingMode'],
+      transposed: rand() > 0.5,
+      stripMode: rand() > 0.5 ? 'V' : 'H',
     };
   }
 
@@ -321,9 +326,9 @@ export async function optimizeGeneticAsync(
 
   function tournament(pop: { ind: GAIndividual; fitness: number }[]): GAIndividual {
     const k = 4;
-    let best = pop[Math.floor(Math.random() * pop.length)];
+    let best = pop[Math.floor(rand() * pop.length)];
     for (let i = 1; i < k; i++) {
-      const c = pop[Math.floor(Math.random() * pop.length)];
+      const c = pop[Math.floor(rand() * pop.length)];
       if (c.fitness > best.fitness) best = c;
     }
     return best.ind;
@@ -331,8 +336,8 @@ export async function optimizeGeneticAsync(
 
   function crossover(pA: GAIndividual, pB: GAIndividual): GAIndividual {
     const size = pA.genome.length;
-    const start = Math.floor(Math.random() * size);
-    const end = Math.floor(Math.random() * (size - start)) + start;
+    const start = Math.floor(rand() * size);
+    const end = Math.floor(rand() * (size - start)) + start;
 
     const childGenome = new Array(size).fill(-1);
     for (let i = start; i <= end; i++) {
@@ -348,15 +353,15 @@ export async function optimizeGeneticAsync(
       }
     }
 
-    const childRotations = pA.rotations.map((r, i) => (Math.random() > 0.5 ? r : pB.rotations[i]));
-    const childGrouping = (Math.random() > 0.5 ? pA.groupingMode : pB.groupingMode) as GAIndividual['groupingMode'];
+    const childRotations = pA.rotations.map((r, i) => (rand() > 0.5 ? r : pB.rotations[i]));
+    const childGrouping = (rand() > 0.5 ? pA.groupingMode : pB.groupingMode) as GAIndividual['groupingMode'];
 
     return {
       genome: childGenome,
       rotations: childRotations,
       groupingMode: childGrouping,
-      transposed: Math.random() > 0.5 ? pA.transposed : pB.transposed,
-      stripMode: Math.random() > 0.5 ? pA.stripMode : pB.stripMode,
+      transposed: rand() > 0.5 ? pA.transposed : pB.transposed,
+      stripMode: rand() > 0.5 ? pA.stripMode : pB.stripMode,
     };
   }
 
@@ -369,22 +374,22 @@ export async function optimizeGeneticAsync(
       stripMode: ind.stripMode,
     };
 
-    const r = Math.random();
+    const r = rand();
     if (r < 0.20) {
       // Swap two positions in genome
       if (c.genome.length > 2) {
-        const a = 1 + Math.floor(Math.random() * (c.genome.length - 1));
-        const b = 1 + Math.floor(Math.random() * (c.genome.length - 1));
+        const a = 1 + Math.floor(rand() * (c.genome.length - 1));
+        const b = 1 + Math.floor(rand() * (c.genome.length - 1));
         [c.genome[a], c.genome[b]] = [c.genome[b], c.genome[a]];
       }
     } else if (r < 0.40) {
       // Block move in genome
       if (c.genome.length > 4) {
         const tail = c.genome.splice(1);
-        const blockSize = Math.floor(Math.random() * Math.min(5, tail.length / 2)) + 2;
-        const start = Math.floor(Math.random() * Math.max(1, tail.length - blockSize));
+        const blockSize = Math.floor(rand() * Math.min(5, tail.length / 2)) + 2;
+        const start = Math.floor(rand() * Math.max(1, tail.length - blockSize));
         const segment = tail.splice(start, blockSize);
-        const target = Math.floor(Math.random() * tail.length);
+        const target = Math.floor(rand() * tail.length);
         tail.splice(target, 0, ...segment);
         c.genome = [c.genome[0], ...tail];
       }
@@ -392,12 +397,12 @@ export async function optimizeGeneticAsync(
       // Flip rotations
       const count = Math.max(1, Math.floor(c.rotations.length * 0.1));
       for (let i = 0; i < count; i++) {
-        const idx = Math.floor(Math.random() * c.rotations.length);
+        const idx = Math.floor(rand() * c.rotations.length);
         c.rotations[idx] = !c.rotations[idx];
       }
     } else if (r < 0.70) {
       // Change grouping mode
-      c.groupingMode = GROUPING_MODES[Math.floor(Math.random() * GROUPING_MODES.length)] as GAIndividual['groupingMode'];
+      c.groupingMode = GROUPING_MODES[Math.floor(rand() * GROUPING_MODES.length)] as GAIndividual['groupingMode'];
     } else if (r < 0.82) {
       // Toggle transposed
       c.transposed = !c.transposed;
@@ -592,13 +597,13 @@ export async function optimizeGeneticAsync(
       const pA = tournament(evaluated);
       const pB = tournament(evaluated);
       let child = crossover(pA, pB);
-      if (Math.random() < adaptiveMutationRate) child = mutate(child);
+      if (rand() < adaptiveMutationRate) child = mutate(child);
 
       const key = child.genome.join(",") + child.groupingMode + child.stripMode + (child.transposed ? "T" : "N");
       if (!seenGenomes.has(key)) {
         nextPop.push(child);
         seenGenomes.add(key);
-      } else if (Math.random() < 0.2) {
+      } else if (rand() < 0.2) {
         nextPop.push(randomIndividual());
       }
     }

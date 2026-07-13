@@ -7,9 +7,28 @@ use crate::post_processing::post_optimize_regroup;
 use crate::optimizer::{optimize_v6_arena, cmp_by_strategy, NUM_SORT_STRATEGIES};
 use crate::grouping::apply_grouping;
 
+// Spec 007 (C1): PRNG determinístico (mulberry32) — mesmo algoritmo e mesma
+// semente default do TS (src/lib/engine/rng.ts). O estado é resetado no início
+// de cada optimize_genetic, então mesmo input → mesmo plano (Princípio V).
+const DEFAULT_GA_SEED: u32 = 0x5EED_2026;
+
+thread_local! {
+    static RNG_STATE: std::cell::Cell<u32> = std::cell::Cell::new(DEFAULT_GA_SEED);
+}
+
+fn seed_rng(seed: u32) {
+    RNG_STATE.with(|s| s.set(seed));
+}
+
 #[inline]
 fn rand() -> f64 {
-    js_sys::Math::random()
+    RNG_STATE.with(|s| {
+        let a = s.get().wrapping_add(0x6D2B_79F5);
+        s.set(a);
+        let mut t = (a ^ (a >> 15)).wrapping_mul(1 | a);
+        t = t.wrapping_add((t ^ (t >> 7)).wrapping_mul(61 | t)) ^ t;
+        (t ^ (t >> 14)) as f64 / 4294967296.0
+    })
 }
 
 #[derive(Clone)]
@@ -389,6 +408,8 @@ pub fn optimize_genetic(
     generations: u32,
     on_progress: Option<&dyn Fn(OptimizationProgress)>,
 ) -> Arena {
+    // Spec 007 (C1): reset do PRNG a cada chamada — determinismo por invocação.
+    seed_rng(DEFAULT_GA_SEED);
     let population_size = (pop_size as usize).max(10);
     let generations = generations as usize;
     let elite_count = ((population_size as f64 * 0.1) as usize).max(2);
