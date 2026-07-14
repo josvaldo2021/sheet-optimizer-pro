@@ -39,6 +39,7 @@ Módulos responsáveis por gerar saídas do sistema.
 | `excel-export.ts` | Exportação de dados para planilhas Excel usando `xlsx`. | Para modificar as colunas ou o formato do arquivo Excel gerado. |
 | `layout-utils.ts` | Utilitários para agrupar layouts idênticos. | Para entender como chapas repetidas são consolidadas nos relatórios. |
 | `pattern-repetition.ts` | Módulo **puro** de seleção de padrão por repetibilidade no fluxo multi-chapa (spec 006): `scoreCandidate`, `selectByRepetition`, `homogeneousCandidates`. Consumido por `runAllSheets` em `Index.tsx`. | Para alterar como o plano prioriza padrões que se repetem em mais chapas sob um piso de aproveitamento. |
+| `lots/layout-replication.ts` | Módulo **puro** de replicação de layout e replanejamento pós-save (spec 008 + emenda A1): `buildLayoutBom`, `maxRepetitions`, `allocateDeductions` (reservas id-a-id por cópia), `effectiveInventory` (peças − reservas pendentes), `partitionByPreserved`, `needsReplan`. Salvar ×N reserva; a dedução real acontece só na confirmação do lote. Consumido por `calcReplication`/`saveLayout`/`selectGroup` em `Index.tsx`. | Para alterar o cálculo de repetições, as reservas do save ×N ou o gatilho de replanejamento. |
 
 ## 4. Testes (`src/test/`)
 
@@ -50,6 +51,7 @@ Suíte de testes Vitest para garantir a estabilidade do motor.
 | `regroup-waste.test.ts` | Testes focados em reagrupamento de sobras e bugs específicos. | Para entender casos extremos (edge cases) e bugs resolvidos anteriormente. |
 | `heuristics-benchmark.test.ts` | Harness de benchmark (spec 007): 5 cenários vs baseline em `fixtures/benchmark-baseline.json`; falha em regressão de aproveitamento/chapas e em não-determinismo. Regravar baseline: `RECORD_BASELINE=1`. | Antes de qualquer mudança que possa afetar aproveitamento; contrato em `specs/007-comparar-heuristicas/contracts/benchmark-contract.md`. |
 | `ga-determinism.test.ts` | Garante GA reprodutível (PRNG semeado, spec 007): mesmo input 2× → planos idênticos. | Ao mexer em `genetic.ts`/`rng.ts` ou introduzir aleatoriedade. |
+| `layout-replication.test.ts` | Contrato do módulo de replicação/replanejamento (spec 008, C1–C7) + invariante de conservação SC-001 no save ×N. | Ao mexer em `lots/layout-replication.ts` ou no fluxo de salvar layout com repetições. |
 
 ## 5. Documentação e Configuração (Raiz)
 

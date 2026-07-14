@@ -42,7 +42,18 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Spec mais recente (implementada): `specs/007-comparar-heuristicas/`
+Spec mais recente (implementada, com emenda A1): `specs/008-replanejar-apos-salvar/`
+— salvar layout ×N NÃO deduz o inventário: cria cópias pendentes (`saved: true`,
+checkbox pré-marcado, `deductions` exatas) que RESERVAM inventário até a
+confirmação do lote (única dedução real, via `applyDeductions`); descarta chapas
+automáticas comuns e replaneja o restante com
+`optimizeAllSheets(piecesOverride, {baseChapas})`. Repetições/clamp usam o
+inventário efetivo (`effectiveInventory` = peças − reservas pendentes);
+`selectGroup`/replanejamento preservam `manual || saved`. Módulo puro
+`src/lib/lots/layout-replication.ts`; contrato (com emenda) em
+`specs/008-replanejar-apos-salvar/contracts/layout-replication-contract.md`;
+testes em `src/test/layout-replication.test.ts` (C1–C7, emenda A1, conservação).
+Spec anterior (implementada): `specs/007-comparar-heuristicas/`
 (comparação do catálogo de heurísticas da literatura com o motor — ver
 `relatorio-comparativo.md` e `priorizacao.md`). Resultados: C1 ADOTADO (GA
 determinístico via PRNG semeado — `src/lib/engine/rng.ts` + `genetic.ts`/`genetic.rs`,
