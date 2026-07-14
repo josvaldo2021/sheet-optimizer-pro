@@ -30,6 +30,7 @@ import {
 import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
+import { buildLayoutBom, maxRepetitions, allocateDeductions, effectiveInventory, partitionByPreserved, needsReplan } from "@/lib/lots/layout-replication";
 import { exportPdf } from "@/lib/export/pdf-export";
 import { restorePiecesToInventory } from "@/lib/inventory-utils";
 import { printLayout } from "@/lib/export/print-layout";
@@ -70,7 +71,7 @@ const Index = () => {
   const [selectedId, setSelectedId] = useState("root");
   const [pieces, setPieces] = useState<PieceItem[]>([]);
   const [status, setStatus] = useState({ msg: "Pronto", type: "info" });
-  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean; selected?: boolean; deductions?: Array<{ id: string; qty: number }> }>>([]);
+  const [chapas, setChapas] = useState<Array<{ tree: TreeNode; usedArea: number; manual?: boolean; saved?: boolean; selected?: boolean; deductions?: Array<{ id: string; qty: number }> }>>([]);
   const [activeChapa, setActiveChapa] = useState(0);
   const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [globalProgress, setGlobalProgress] = useState<{ current: number; total: number } | null>(null);
@@ -427,18 +428,26 @@ const Index = () => {
     setStatus({ msg: "Plano de Corte Otimizado!", type: "success" });
   }, [pieces, usableW, usableH, minBreak, priorityIds, gaPopSize, gaGens]);
 
-  const optimizeAllSheets = useCallback(async () => {
-    if (pieces.length === 0) {
+  // Spec 008: com `piecesOverride` gera o plano a partir do inventário informado
+  // (replanejamento pós-save) e preserva as chapas de `opts.baseChapas`
+  // (manuais/salvas). Sem argumentos, comportamento original. Array.isArray
+  // protege contra uso direto como handler de evento (onClick).
+  const optimizeAllSheets = useCallback(async (
+    piecesOverride?: PieceItem[],
+    opts?: { baseChapas?: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; saved?: boolean; selected?: boolean; deductions?: Array<{ id: string; qty: number }> }> },
+  ): Promise<number> => {
+    const sourcePieces = Array.isArray(piecesOverride) ? piecesOverride : pieces;
+    if (sourcePieces.length === 0) {
       setStatus({ msg: "Inventário vazio!", type: "error" });
-      return;
+      return 0;
     }
     setIsOptimizing(true);
     setStatus({ msg: "Processando todas as chapas...", type: "warn" });
 
     const runAllSheets = async (sortFn?: (a: PieceItem, b: PieceItem) => number, label?: string) => {
-      const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
-      const hasPriority = pieces.some((p) => p.priority);
-      const remaining = (hasPriority ? pieces.filter((p) => p.priority) : pieces).map((p) => ({ ...p }));
+      const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }> = [];
+      const hasPriority = sourcePieces.some((p) => p.priority);
+      const remaining = (hasPriority ? sourcePieces.filter((p) => p.priority) : sourcePieces).map((p) => ({ ...p }));
       if (sortFn) remaining.sort(sortFn);
       let sheetCount = 0;
       const totalPieces = remaining.reduce((sum, p) => sum + Math.max(p.qty, 1), 0);
@@ -654,7 +663,7 @@ const Index = () => {
     await new Promise((r) => setTimeout(r, 20));
 
       const uniqueDims = new Set(
-        pieces
+        sourcePieces
           .filter((p) => p.qty > 0)
           .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}`),
       ).size;
@@ -703,9 +712,10 @@ const Index = () => {
     }
 
     const best = candidateGroups[bestIdx]?.chapas || [];
+    const baseChapas = opts?.baseChapas ?? [];
     setOptimizationGroups(candidateGroups);
     setActiveGroupIdx(bestIdx);
-    setChapas(best);
+    setChapas([...baseChapas, ...best]);
     setFilterActiveLabels(null);
 
     // Spec 006 — resumo de padrões distintos do plano escolhido.
@@ -730,11 +740,12 @@ const Index = () => {
       setTree(best[0].tree);
       setSelectedId("root");
     }
-    setActiveChapa(0);
+    setActiveChapa(best.length > 0 ? baseChapas.length : 0);
     setProgress(null);
     setGlobalProgress(null);
     setIsOptimizing(false);
     setStatus({ msg: `✅ ${best.length} chapa(s) gerada(s)! Grupo ${bestIdx + 1} selecionado automaticamente.`, type: "success" });
+    return best.length;
   }, [pieces, usableW, usableH, extractUsedPiecesWithContext, minBreak, priorityIds, gaPopSize, gaGens, prioritizeRepetition, utilizationFloor]);
 
   const handleExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1064,36 +1075,24 @@ const Index = () => {
       return;
     }
 
-    // Build BOM from the current layout
-    const layoutBOM = new Map<string, { w: number; h: number; count: number }>();
-    usedPieces.forEach((used) => {
-      const key = `${Math.min(used.w, used.h)}x${Math.max(used.w, used.h)}`;
-      const existing = layoutBOM.get(key);
-      if (existing) existing.count++;
-      else layoutBOM.set(key, { w: used.w, h: used.h, count: 1 });
-    });
-
-    // Check inventory availability
-    const bomDetails: Array<{ w: number; h: number; need: number; available: number }> = [];
-    let maxReps = Infinity;
-
-    layoutBOM.forEach(({ w, h, count }) => {
-      let available = 0;
-      pieces.forEach((p) => {
-        if ((p.w === w && p.h === h) || (p.w === h && p.h === w)) {
-          available += p.qty;
-        }
-      });
-      const reps = Math.floor(available / count);
-      maxReps = Math.min(maxReps, reps);
-      bomDetails.push({ w, h, need: count, available });
-    });
-
-    if (!isFinite(maxReps)) maxReps = 0;
+    // BOM do layout e máximo de repetições via módulo puro (spec 008, FR-001).
+    // Inventário efetivo: desconta reservas de cópias salvas pendentes (emenda A1).
+    const effective = effectiveInventory(pieces, chapas);
+    const bom = buildLayoutBom(usedPieces);
+    const maxReps = maxRepetitions(effective, bom);
+    const bomDetails = bom.map(({ w, h, count }) => ({
+      w,
+      h,
+      need: count,
+      available: effective.reduce(
+        (s, p) => ((p.w === w && p.h === h) || (p.w === h && p.h === w) ? s + p.qty : s),
+        0,
+      ),
+    }));
 
     setReplicationInfo({ count: maxReps, bom: bomDetails });
     setStatus({ msg: `Layout pode ser repetido ${maxReps}×`, type: maxReps > 0 ? "success" : "error" });
-  }, [tree, pieces, extractUsedPiecesWithContext]);
+  }, [tree, pieces, chapas, extractUsedPiecesWithContext]);
 
   const deleteLayout = useCallback(
     (groupIndex: number) => {
@@ -1236,7 +1235,8 @@ const Index = () => {
     setPieces(filteredPieces);
 
     // Mark only the selected auto chapas as confirmed; unselected stay available (FR-005).
-    setChapas((prev) => prev.map((c) => (isSelectedAuto(c) ? { ...c, manual: true } : c)));
+    // `selected: false` evita contagem fantasma em grupos mistos após a confirmação.
+    setChapas((prev) => prev.map((c) => (isSelectedAuto(c) ? { ...c, manual: true, selected: false } : c)));
 
     const remaining = filteredPieces.reduce((s, p) => s + p.qty, 0);
     setStatus({
@@ -1248,13 +1248,16 @@ const Index = () => {
   // Seleção de chapas para o lote (feature 003): marca as N primeiras chapas de um
   // grupo de layout idêntico como selecionadas; as demais do grupo ficam desmarcadas.
   const setGroupSelectedCount = useCallback((indices: number[], n: number) => {
-    setChapas((prev) =>
-      prev.map((c, i) => {
-        const pos = indices.indexOf(i);
+    setChapas((prev) => {
+      // Spec 008: chapas confirmadas (manual) não entram em lote — a marcação
+      // vale só para as automáticas/salvas do grupo, na ordem em que aparecem.
+      const markable = indices.filter((i) => prev[i]?.manual !== true);
+      return prev.map((c, i) => {
+        const pos = markable.indexOf(i);
         if (pos === -1) return c;
         return { ...c, selected: pos < n };
-      }),
-    );
+      });
+    });
   }, []);
 
   const selectedChapaCount = useMemo(() => countSelectedAuto(chapas), [chapas]);
@@ -1263,56 +1266,75 @@ const Index = () => {
   const selectGroup = useCallback((idx: number) => {
     if (!optimizationGroups || !optimizationGroups[idx]) return;
     const group = optimizationGroups[idx];
+    // Spec 008 (S6): trocar de variante nunca descarta chapas confirmadas nem
+    // cópias salvas pendentes de lote.
+    const { preserved } = partitionByPreserved(chapas);
     setActiveGroupIdx(idx);
-    setChapas(group.chapas);
+    setChapas([...preserved, ...group.chapas]);
     setFilterActiveLabels(null);
     if (group.chapas.length > 0) {
       setTree(group.chapas[0].tree);
       setSelectedId("root");
     }
-    setActiveChapa(0);
+    setActiveChapa(group.chapas.length > 0 ? preserved.length : 0);
     setStatus({ msg: `Grupo ${idx + 1} selecionado: ${group.label} (${group.chapas.length} chapa(s))`, type: "info" });
-  }, [optimizationGroups]);
+  }, [optimizationGroups, chapas]);
 
+  // Spec 008 (emenda A1): salvar ×N NÃO deduz o inventário — cria cópias
+  // pendentes (`saved`, com checkbox pré-marcado e `deductions` exatas) que
+  // reservam inventário até a confirmação do lote. Se existir plano automático
+  // não confirmado (calculado sem essa reserva), descarta-o e replaneja o
+  // restante com o mesmo gerador.
   const saveLayout = useCallback(
-    (reps?: number) => {
+    async (reps?: number) => {
+      if (isOptimizing) return;
       const usedPieces = extractUsedPiecesWithContext(tree, false);
       if (usedPieces.length === 0) {
         setStatus({ msg: "Desenhe um layout primeiro!", type: "error" });
         return;
       }
 
-      const count = reps && reps > 0 ? reps : 1;
-      const newChapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> = [];
+      // Clamp defensivo (S1) contra o inventário efetivo (menos reservas de
+      // saves pendentes anteriores): o N vindo da UI pode estar obsoleto.
+      const bom = buildLayoutBom(usedPieces);
+      const effective = effectiveInventory(pieces, chapas);
+      const maxReps = maxRepetitions(effective, bom);
+      if (maxReps === 0) {
+        setStatus({ msg: "Inventário disponível não cobre as peças deste layout — nada foi salvo.", type: "error" });
+        return;
+      }
+      const count = Math.max(1, Math.min(reps && reps > 0 ? reps : 1, maxReps));
+
+      // Reserva atômica (S2): aloca deduções id-a-id por cópia; falta aborta sem efeitos.
+      const alloc = allocateDeductions(effective, bom, count);
+      if (alloc.shortfall.length > 0) {
+        setStatus({ msg: "Inventário disponível não cobre as peças deste layout — nada foi salvo.", type: "error" });
+        return;
+      }
+
       const usedArea = calcPlacedArea(tree);
+      const copies = alloc.perCopy.map((deductions) => ({
+        tree: cloneTree(tree),
+        usedArea,
+        manual: false,
+        saved: true,
+        selected: true,
+        deductions,
+      }));
 
-      for (let i = 0; i < count; i++) {
-        newChapas.push({ tree: cloneTree(tree), usedArea, manual: true });
+      // S3/S7: com autos descartáveis pendentes, o plano antigo ficou inválido →
+      // descartar; manuais e saves pendentes anteriores são preservados.
+      const replan = needsReplan(chapas);
+      const { preserved } = partitionByPreserved(chapas);
+      const keptChapas = [...preserved, ...copies];
+
+      setChapas(keptChapas);
+      if (replan) {
+        setOptimizationGroups(null);
+        setActiveGroupIdx(0);
+        setPatternSummary(null);
       }
-
-      // Deduct pieces from inventory
-      const updatedPieces = pieces.map((p) => ({ ...p }));
-      for (let i = 0; i < count; i++) {
-        usedPieces.forEach((used) => {
-          for (let j = 0; j < updatedPieces.length; j++) {
-            const p = updatedPieces[j];
-            if ((p.w === used.w && p.h === used.h) || (p.w === used.h && p.h === used.w)) {
-              if (p.qty > 0) {
-                p.qty--;
-                break;
-              }
-            }
-          }
-        });
-      }
-
-      // Remove pieces with qty <= 0
-      const filteredPieces = updatedPieces.filter((p) => p.qty > 0);
-      setPieces(filteredPieces);
-
-      // Add to chapas list
-      setChapas((prev) => [...prev, ...newChapas]);
-      setActiveChapa((prev) => (prev === 0 && chapas.length === 0 ? 0 : chapas.length));
+      setActiveChapa(keptChapas.length - count);
 
       // Reset tree for next layout
       const freshTree = createRoot(usableW, usableH);
@@ -1321,12 +1343,31 @@ const Index = () => {
       setEditingExistingChapa(false);
       setReplicationInfo(null);
 
-      setStatus({
-        msg: `✅ Layout salvo (×${count})! ${filteredPieces.reduce((s, p) => s + p.qty, 0)} peças restantes.`,
-        type: "success",
-      });
+      const remainingPieces = alloc.remaining.filter((p) => p.qty > 0);
+      const remainingQty = remainingPieces.reduce((s, p) => s + p.qty, 0);
+
+      if (replan && remainingPieces.length > 0) {
+        // S4: replanejar o restante (sem as reservas) preservando manuais + cópias.
+        setProgress({ phase: "Replanejando restante...", current: 0, total: 1 });
+        const newSheets = await optimizeAllSheets(remainingPieces, { baseChapas: keptChapas });
+        setStatus({
+          msg: `✅ ${count} cópia(s) marcada(s) para o lote. Plano replanejado: ${newSheets} chapa(s) nova(s), ${remainingQty} peça(s) fora da reserva. Confirme o plano para deduzir do inventário.`,
+          type: "success",
+        });
+      } else if (replan) {
+        // S5: todo o inventário reservado — nada a replanejar.
+        setStatus({
+          msg: `✅ ${count} cópia(s) marcada(s) para o lote — inventário totalmente reservado. Confirme o plano para deduzir.`,
+          type: "success",
+        });
+      } else {
+        setStatus({
+          msg: `✅ Layout salvo (×${count}) e marcado para o lote. Confirme o plano para deduzir do inventário.`,
+          type: "success",
+        });
+      }
     },
-    [tree, pieces, chapas, extractUsedPiecesWithContext, usableW, usableH],
+    [tree, pieces, chapas, isOptimizing, extractUsedPiecesWithContext, usableW, usableH, optimizeAllSheets],
   );
 
   // ─── Lot helpers ───
@@ -1742,7 +1783,7 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
           gaGens={gaGens}
           setGaGens={setGaGens}
           isOptimizing={isOptimizing}
-          onOptimize={optimizeAllSheets}
+          onOptimize={() => optimizeAllSheets()}
           progress={progress}
           globalProgress={globalProgress}
           layoutGroups={layoutGroups}
@@ -1759,10 +1800,6 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
           setPdfFilename={setPdfFilename}
           onExport={() => {
             exportPdf({ chapas, layoutGroups, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb, utilization, filename: pdfFilename });
-          }}
-          onPrintLayout={(groupIdx) => {
-            const group = filteredLayoutGroups[groupIdx];
-            if (group) printLayout({ group, groupIdx, chapaW, chapaH, usableW, usableH, ml, mr, mt, mb });
           }}
           activeChapa={activeChapa}
           usableW={usableW}

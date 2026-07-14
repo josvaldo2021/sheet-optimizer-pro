@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { TreeNode, countAllocatedPieces } from "@/lib/cnc-engine";
+import { TreeNode } from "@/lib/cnc-engine";
 import { LayoutGroup } from "@/lib/export/layout-utils";
 
 function countAllocatedPieces(node: TreeNode, mult = 1): number {

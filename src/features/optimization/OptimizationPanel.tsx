@@ -35,7 +35,6 @@ interface Props {
   pdfFilename: string;
   setPdfFilename: (v: string) => void;
   onExport: () => void;
-  onPrintLayout: (groupIdx: number) => void;
   activeChapa: number;
   usableW: number;
   usableH: number;
