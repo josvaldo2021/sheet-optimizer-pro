@@ -7,6 +7,9 @@ import {
   sheetInvKey,
   countMarkedOnSheet,
   isMarked,
+  pickMarkedForSheet,
+  buildSheetInvExclusive,
+  exclusiveSheetInvKey,
   type MarkedInvItem,
 } from "../lib/unique-per-sheet";
 
@@ -43,6 +46,37 @@ function simulate(initial: Line[], cap: number): Array<Map<string, number>> {
     let budget = cap;
     const bom = new Map<string, number>();
     for (const l of [...marked, ...unmarked]) {
+      const take = Math.min(l.qty, budget);
+      if (take > 0) {
+        bom.set(l.id, take);
+        budget -= take;
+      }
+      if (budget <= 0) break;
+    }
+    sheets.push(bom);
+    for (const [id, cnt] of bom) {
+      const r = remaining.find((p) => p.id === id)!;
+      r.qty -= cnt;
+    }
+    remaining = remaining.filter((p) => p.qty > 0);
+  }
+  return sheets;
+}
+
+/**
+ * Spec 010: simula o loop com a fatia EXCLUSIVA (`buildSheetInvExclusive`) —
+ * no máximo 1 marcada total por chapa, marcada primeiro (prioridade).
+ */
+function simulateExclusive(initial: Line[], cap: number): Array<Map<string, number>> {
+  let remaining = initial.map((p) => ({ ...p }));
+  const sheets: Array<Map<string, number>> = [];
+  let guard = 0;
+  while (remaining.some((p) => p.qty > 0) && guard < 1000) {
+    guard++;
+    const slice = buildSheetInvExclusive(remaining); // marcada (≤1) primeiro, depois não marcadas
+    let budget = cap;
+    const bom = new Map<string, number>();
+    for (const l of slice) {
       const take = Math.min(l.qty, budget);
       if (take > 0) {
         bom.set(l.id, take);
@@ -201,23 +235,112 @@ describe("C7 capped multi-sheet loop invariants", () => {
   }
 });
 
-// ─── US2: múltiplas linhas marcadas independentes ────────────────────────────
+// ─── Spec 010 — E1..E5: exclusividade + prioridade (funções puras) ───────────
 
-describe("US2 multiple marked lines are capped independently and may coexist", () => {
-  it("A and B each ≤1 per sheet; can share a sheet", () => {
+describe("E1 pickMarkedForSheet chooses the first marked line with stock", () => {
+  it("A(2) before B(3); after A empty → B; none → null", () => {
+    const inv = [line("A", 1, 1, 2, true), line("B", 1, 1, 3, true), line("U", 1, 1, 9)];
+    expect(pickMarkedForSheet(inv)!.id).toBe("A");
+    const afterA = [line("A", 1, 1, 0, true), line("B", 1, 1, 3, true)];
+    expect(pickMarkedForSheet(afterA)!.id).toBe("B");
+    expect(pickMarkedForSheet([line("U", 1, 1, 5)])).toBeNull();
+  });
+});
+
+describe("E2 buildSheetInvExclusive offers at most 1 marked total", () => {
+  it("A and B marked + U → exactly 1 marked (A), U integral, no B", () => {
     const inv = [line("A", 100, 100, 3, true), line("B", 200, 200, 3, true), line("U", 50, 50, 12)];
-    const capped = capForSheet(inv);
-    expect(capped.find((p) => p.id === "A")!.qty).toBe(1);
-    expect(capped.find((p) => p.id === "B")!.qty).toBe(1);
+    const slice = buildSheetInvExclusive(inv);
+    const markedCount = slice.filter(isMarked).reduce((s, p) => s + p.qty, 0);
+    expect(markedCount).toBe(1);
+    expect(slice.some((p) => p.id === "A")).toBe(true);
+    expect(slice.some((p) => p.id === "B")).toBe(false);
+    expect(slice.find((p) => p.id === "U")!.qty).toBe(12);
+  });
+});
 
-    const sheets = simulate(inv, 20);
+describe("E3 buildSheetInvExclusive puts the marked piece first (priority)", () => {
+  it("marked pick is the first element", () => {
+    const inv = [line("U", 50, 50, 12), line("A", 100, 100, 3, true)];
+    const slice = buildSheetInvExclusive(inv);
+    expect(slice[0].id).toBe("A");
+    expect(isMarked(slice[0])).toBe(true);
+  });
+});
+
+describe("E4 buildSheetInvExclusive is identity on unmarked-only inventories", () => {
+  it("no marked lines → same lines and qty", () => {
+    const inv = [line("A", 1, 1, 3), line("B", 2, 2, 7)];
+    const slice = buildSheetInvExclusive(inv);
+    expect(slice.map((p) => [p.id, p.qty])).toEqual([
+      ["A", 3],
+      ["B", 7],
+    ]);
+  });
+});
+
+describe("E5 exclusiveSheetInvKey consistent with the exclusive slice", () => {
+  it("no marks → same as raw dims key; marked qty collapses to 1", () => {
+    const plain = [line("A", 100, 200, 3), line("B", 50, 50, 2)];
+    const raw = plain
+      .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}:${p.qty}`)
+      .sort()
+      .join("|");
+    expect(exclusiveSheetInvKey(plain)).toBe(raw);
+    expect(exclusiveSheetInvKey([line("A", 100, 200, 5, true)])).toBe("100x200:1");
+  });
+  it("key changes when the current marked pick changes", () => {
+    const withA = [line("A", 100, 100, 2, true), line("U", 50, 50, 4)];
+    const afterA = [line("A", 100, 100, 0, true), line("B", 300, 300, 2, true), line("U", 50, 50, 4)];
+    expect(exclusiveSheetInvKey(withA)).not.toBe(exclusiveSheetInvKey(afterA));
+  });
+});
+
+// ─── Spec 010 — E6: exclusividade + prioridade + conservação sobre o loop ────
+
+describe("E6 exclusive multi-sheet loop invariants (SC-001/SC-002/SC-003)", () => {
+  const markedIdsOf = (inv: Line[]) => new Set(inv.filter(isMarked).map((p) => p.id));
+
+  it("E6a/E6d SC-001 (≤1 marcada total/chapa) + conservação das não marcadas", () => {
+    const inv = [line("A", 100, 100, 3, true), line("B", 200, 200, 2, true), line("U", 50, 50, 30)];
+    const markedIds = markedIdsOf(inv);
+    const sheets = simulateExclusive(inv, 12);
     for (const bom of sheets) {
-      expect(bom.get("A") ?? 0).toBeLessThanOrEqual(1);
-      expect(bom.get("B") ?? 0).toBeLessThanOrEqual(1);
+      let markedOnSheet = 0;
+      for (const [id, cnt] of bom) if (markedIds.has(id)) markedOnSheet += cnt;
+      expect(markedOnSheet).toBeLessThanOrEqual(1); // SC-001: nunca A+B, nunca A+A
     }
-    // primeira chapa contém 1 de A e 1 de B juntas (cap alto)
-    expect(sheets[0].get("A")).toBe(1);
-    expect(sheets[0].get("B")).toBe(1);
+    // conservação: todas as não marcadas colocadas
+    const placedU = sheets.reduce((s, bom) => s + (bom.get("U") ?? 0), 0);
+    expect(placedU).toBe(30);
+  });
+
+  it("E6b SC-002: as primeiras N chapas contêm 1 marcada cada (N = total marcadas)", () => {
+    const inv = [line("A", 100, 100, 3, true), line("B", 200, 200, 2, true), line("U", 50, 50, 40)];
+    const markedIds = markedIdsOf(inv);
+    const totalMarked = 5;
+    const sheets = simulateExclusive(inv, 12);
+    const markedPerSheet = sheets.map((bom) => {
+      let n = 0;
+      for (const [id, cnt] of bom) if (markedIds.has(id)) n += cnt;
+      return n;
+    });
+    // primeiras N chapas: exatamente 1 marcada cada
+    for (let i = 0; i < totalMarked; i++) expect(markedPerSheet[i]).toBe(1);
+    // chapas seguintes: nenhuma marcada
+    for (let i = totalMarked; i < markedPerSheet.length; i++) expect(markedPerSheet[i]).toBe(0);
+  });
+
+  it("E6c SC-003: nenhuma peça marcada vira sobra", () => {
+    const inv = [line("A", 100, 100, 4, true), line("B", 200, 200, 3, true), line("U", 50, 50, 5)];
+    const markedIds = markedIdsOf(inv);
+    const sheets = simulateExclusive(inv, 8);
+    const placedMarked = sheets.reduce((s, bom) => {
+      let n = 0;
+      for (const [id, cnt] of bom) if (markedIds.has(id)) n += cnt;
+      return s + n;
+    }, 0);
+    expect(placedMarked).toBe(7); // 4 + 3, tudo colocado
   });
 });
 
@@ -275,5 +398,38 @@ describe("FR-010 cap protege repetição de padrão e save ×N", () => {
     }
     const totalMarked = sheets.reduce((s, bom) => s + (bom.get("M") ?? 0), 0);
     expect(totalMarked).toBe(copies); // 1 por cópia, espalhado
+  });
+});
+
+// ─── Spec 010 — US3 (desmarcar) + FR-009 (exclusividade protege 006/008) ─────
+
+describe("Spec 010 US3: unmarking removes exclusivity/priority", () => {
+  it("no marked lines → buildSheetInvExclusive is identity (repetição permitida)", () => {
+    const marked = [line("A", 100, 100, 4, true)];
+    const off = marked.map((p) => ({ ...p, uniquePerSheet: false }));
+    expect(buildSheetInvExclusive(off).find((p) => p.id === "A")!.qty).toBe(4);
+    // com a flag ligada, oferta só 1
+    expect(buildSheetInvExclusive(marked).find((p) => p.id === "A")!.qty).toBe(1);
+  });
+  it("pickMarkedForSheet/buildSheetInvExclusive preserve uniquePerSheet", () => {
+    const inv = [line("A", 1, 1, 2, true)];
+    expect(pickMarkedForSheet(inv)!.uniquePerSheet).toBe(true);
+    expect(buildSheetInvExclusive(inv)[0].uniquePerSheet).toBe(true);
+  });
+});
+
+describe("Spec 010 FR-009: exclusividade protege repetição de padrão e save ×N", () => {
+  it("marcada + não marcada com MESMA dimensão → só 1 marcada ofertada, e nenhuma outra marcada", () => {
+    // A e C marcadas de dimensões distintas + B não marcada com a MESMA dim de A.
+    const inv = [
+      line("A", 100, 100, 9, true),
+      line("B", 100, 100, 50, false),
+      line("C", 300, 300, 4, true),
+    ];
+    const slice = buildSheetInvExclusive(inv);
+    const markedOffered = slice.filter(isMarked).reduce((s, p) => s + p.qty, 0);
+    expect(markedOffered).toBe(1); // só 1 marcada total (A), nunca C junto
+    expect(slice.some((p) => p.id === "C")).toBe(false);
+    expect(slice.find((p) => p.id === "B")!.qty).toBe(50); // não marcada integral (fillers)
   });
 });

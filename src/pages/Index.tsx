@@ -17,10 +17,12 @@ import {
   calcPlanUtilization,
   previewRemoval,
   getLastLeftover,
+  extractLeafPieces,
   optimizeGeneticV1,
   optimizeGeneticAsync,
   optimizeV6,
 } from "@/lib/cnc-engine";
+import { runPlacement } from "@/lib/engine/placement";
 import {
   selectByRepetition,
   homogeneousCandidates,
@@ -31,7 +33,7 @@ import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
 import { buildLayoutBom, maxRepetitions, allocateDeductions, effectiveInventory, partitionByPreserved, needsReplan } from "@/lib/lots/layout-replication";
-import { perSheetQty, sheetInvKey } from "@/lib/unique-per-sheet";
+import { pickMarkedForSheet, exclusiveSheetInvKey } from "@/lib/unique-per-sheet";
 import { exportPdf } from "@/lib/export/pdf-export";
 import { restorePiecesToInventory } from "@/lib/inventory-utils";
 import { printLayout } from "@/lib/export/print-layout";
@@ -495,19 +497,25 @@ const Index = () => {
         const uidToRef = new Map<string, typeof remaining[0]>();
         const uidToOrig = new Map<string, string | undefined>();
         let uidSeq = 0;
-        remaining.forEach((p) => {
-          const area = p.w * p.h;
-          // Spec 009: linhas marcadas "não repetir na chapa" contribuem no máximo
-          // 1 peça por chapa; as demais linhas mantêm a quantidade integral.
-          const perSheet = perSheetQty(p);
-          for (let i = 0; i < perSheet; i++) {
-            if (p.w > 0 && p.h > 0) {
-              const uid = `__${uidSeq++}`;
-              inv.push({ w: p.w, h: p.h, area, label: uid });
-              uidToRef.set(uid, p);
-              uidToOrig.set(uid, p.label);
-            }
+        const pushOne = (p: typeof remaining[0]): string | undefined => {
+          if (p.w > 0 && p.h > 0) {
+            const uid = `__${uidSeq++}`;
+            inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: uid });
+            uidToRef.set(uid, p);
+            uidToOrig.set(uid, p.label);
+            return uid;
           }
+          return undefined;
+        };
+        // Spec 010: no máximo 1 peça marcada NO TOTAL por chapa (exclusividade
+        // entre medidas marcadas diferentes), colocada PRIMEIRO no inv
+        // (prioridade → marcadas ocupam as primeiras chapas, 1 por chapa). As
+        // demais linhas marcadas ficam para as próximas chapas.
+        const markedPick = pickMarkedForSheet(remaining);
+        const markedUid = markedPick ? pushOne(markedPick) : undefined;
+        remaining.forEach((p) => {
+          if (p.uniquePerSheet) return; // marcadas: apenas a escolhida (acima)
+          for (let i = 0; i < p.qty; i++) pushOne(p);
         });
         if (inv.length === 0) break;
 
@@ -524,9 +532,9 @@ const Index = () => {
           .filter(Boolean);
 
         // Cache lookup: same inventory shape → same optimal layout.
-        // Spec 009: chave sobre a fatia CAPADA por chapa (linhas marcadas ≤1),
+        // Spec 010: chave sobre a fatia EXCLUSIVA por chapa (≤1 marcada total),
         // consistente com o `inv` realmente otimizado.
-        const invKey = sheetInvKey(remaining);
+        const invKey = exclusiveSheetInvKey(remaining);
         let result: TreeNode;
         const cached = layoutCache.get(invKey);
         if (cached) {
@@ -550,6 +558,17 @@ const Index = () => {
             gaGens,
           );
           layoutCache.set(invKey, cloneTree(result));
+        }
+
+        // Spec 010 (prioridade): garantir que a peça marcada FOI colocada nesta
+        // chapa. `optimizeV6` escolhe o layout de MAIOR ÁREA e pode EXCLUIR uma
+        // peça marcada pequena (que iria para `remaining` e acabaria no fim do
+        // plano — quebrando a prioridade). Se a marcada não está na árvore,
+        // refaz a chapa com `runPlacement` colocando a marcada PRIMEIRO
+        // (colocação garantida numa chapa vazia) + preenchimento com as demais.
+        if (markedUid && !extractLeafPieces(result).some((lp) => lp.label === markedUid)) {
+          result = runPlacement(inv, usableW, usableH, minBreak).tree;
+          layoutCache.set(invKey, cloneTree(result)); // reusar o layout já com a marcada
         }
 
         // --- Spec 006: seleção por repetição de padrão ---

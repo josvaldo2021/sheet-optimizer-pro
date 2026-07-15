@@ -67,6 +67,57 @@ export function sheetInvKey(
     .join("|");
 }
 
+// ─── Spec 010 — exclusividade total + prioridade ─────────────────────────────
+// Substitui, no plano (runAllSheets), a regra per-linha da 009 (`capForSheet`):
+// no máximo 1 peça marcada NO TOTAL por chapa, colocada primeiro (prioridade), de
+// modo que as marcadas ocupem as primeiras chapas (1 por chapa) até esgotar.
+
+/**
+ * Retorna a PRIMEIRA linha marcada com `qty > 0` (ordem do inventário) ou `null`.
+ * É a única peça marcada ofertada à chapa atual (exclusividade entre medidas
+ * marcadas diferentes). Determinística; não muta.
+ */
+export function pickMarkedForSheet<T extends { uniquePerSheet?: boolean; qty: number }>(
+  remaining: readonly T[],
+): T | null {
+  for (const p of remaining) {
+    if (isMarked(p) && p.qty > 0) return p;
+  }
+  return null;
+}
+
+/**
+ * Fatia de inventário EXCLUSIVA da chapa atual (spec 010): no máximo 1 peça
+ * marcada no total (a de `pickMarkedForSheet`), colocada PRIMEIRO (prioridade),
+ * seguida de todas as linhas não marcadas com `qty` integral. Nenhuma outra linha
+ * marcada entra. Sem marcadas → apenas as não marcadas. Retorna cópias; não muta.
+ */
+export function buildSheetInvExclusive<T extends { uniquePerSheet?: boolean; qty: number }>(
+  remaining: readonly T[],
+): T[] {
+  const pick = pickMarkedForSheet(remaining);
+  const out: T[] = [];
+  if (pick) out.push({ ...pick, qty: 1 });
+  for (const p of remaining) {
+    if (!isMarked(p) && p.qty > 0) out.push({ ...p });
+  }
+  return out;
+}
+
+/**
+ * Chave de cache de layout consistente com `buildSheetInvExclusive`: assinatura
+ * `min×max:qty` da fatia exclusiva, ordenada. Sem marcadas → igual à chave só das
+ * não marcadas (não-regressão do cache/plano).
+ */
+export function exclusiveSheetInvKey(
+  remaining: readonly (MarkedInvItem & { qty: number })[],
+): string {
+  return buildSheetInvExclusive(remaining)
+    .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}:${p.qty}`)
+    .sort()
+    .join("|");
+}
+
 /**
  * Conta, DERIVANDO DA ÁRVORE (Princípio IV), quantas peças de linhas marcadas
  * foram alocadas numa chapa. `markedLabels` é o conjunto de labels (rótulo do

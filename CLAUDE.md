@@ -42,7 +42,29 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Spec mais recente (PLANEJADA, ainda não implementada): `specs/009-peca-unica-por-chapa/`
+Spec mais recente (PLANEJADA, ainda não implementada): `specs/010-medida-exclusiva-prioridade/`
+— REFINA a 009. Duas mudanças na flag `uniquePerSheet`: (1) EXCLUSIVIDADE TOTAL —
+medidas marcadas DIFERENTES não podem dividir a mesma chapa ⇒ no máximo 1 peça
+marcada por chapa NO TOTAL (substitui a coexistência que a 009 permitia); (2)
+PRIORIDADE / primeiras chapas — as marcadas são ofertadas primeiro e ocupam as
+primeiras chapas (1 por chapa) até esgotar o estoque. Enforcement no NÍVEL DO
+PLANO: a montagem do `inv` por chapa em `runAllSheets` (`Index.tsx`, ~L480-493)
+deixa de usar `perSheetQty`/`capForSheet` (per-linha) e passa a ofertar NO MÁXIMO
+1 marcada total, colocada no INÍCIO do `inv` (prioridade). Novas funções puras em
+`src/lib/unique-per-sheet.ts`: `pickMarkedForSheet`, `buildSheetInvExclusive`,
+`exclusiveSheetInvKey` (`capForSheet`/`sheetInvKey`/`perSheetQty` ficam, mas
+saem de uso no plano). Cache por `exclusiveSheetInvKey`. GARANTIA DE PRIORIDADE:
+`optimizeV6` maximiza ÁREA e pode EXCLUIR uma marcada pequena (ela iria p/ o fim
+do plano); por isso, após otimizar, se a marcada (por uid) não está na árvore
+(`extractLeafPieces`), refaz a chapa com `runPlacement(inv,...)` (coloca a marcada
+PRIMEIRO numa chapa vazia = garantido) e regrava o cache — gated por `markedUid`
+(planos sem marcação intocados). Teste: `src/test/exclusive-priority-placement.test.ts`.
+Motor/WASM intocados;
+contagem por árvore (Princípio IV). O teste US2 da 009 (coexistência) é
+ATUALIZADO para exclusividade. Plano/contrato/quickstart em
+`specs/010-medida-exclusiva-prioridade/`; testes previstos E1–E6 em
+`src/test/unique-per-sheet.test.ts` + regressão no benchmark.
+Spec anterior (IMPLEMENTADA e commitada, 1e8d728): `specs/009-peca-unica-por-chapa/`
 — o usuário marca uma LINHA do inventário como "não repetir na chapa"
 (`PieceItem.uniquePerSheet?: boolean`, campo novo, independente de `priority` que é
 FILTRO de UI). Ao gerar o plano multi-chapa, cada linha marcada é limitada a NO
