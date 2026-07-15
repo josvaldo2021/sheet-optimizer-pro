@@ -34,6 +34,14 @@ export interface PieceItem {
   h: number;
   label?: string;
   priority?: boolean;
+  /**
+   * Plan-layer flag (spec 009): when true, this inventory line is limited to at
+   * most 1 piece per sheet ("não repetir na chapa"). Enforced by the multi-sheet
+   * plan (see src/lib/unique-per-sheet.ts); the engine's placement logic ignores
+   * it and it is stripped before the WASM boundary. Independent of `priority`
+   * (which is a UI-level filter with different semantics).
+   */
+  uniquePerSheet?: boolean;
 }
 
 export interface OptimizationProgress {
@@ -60,4 +68,15 @@ export interface Lot {
   sheetW: number;
   sheetH: number;
   totalSheets: number;
+  /**
+   * Contexto de renderização capturado quando o lote foi criado, para reexibir
+   * os layouts fielmente (spec: visualizar layouts do lote). Opcional para
+   * compatibilidade com lotes antigos — quando ausente, a UI usa as margens
+   * atuais como fallback. `usableW/usableH` = área útil dentro das margens;
+   * `ml/mb` = deslocamento das margens esquerda/inferior.
+   */
+  usableW?: number;
+  usableH?: number;
+  ml?: number;
+  mb?: number;
 }

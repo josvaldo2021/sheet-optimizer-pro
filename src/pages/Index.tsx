@@ -31,6 +31,7 @@ import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
 import { buildLayoutBom, maxRepetitions, allocateDeductions, effectiveInventory, partitionByPreserved, needsReplan } from "@/lib/lots/layout-replication";
+import { perSheetQty, sheetInvKey } from "@/lib/unique-per-sheet";
 import { exportPdf } from "@/lib/export/pdf-export";
 import { restorePiecesToInventory } from "@/lib/inventory-utils";
 import { printLayout } from "@/lib/export/print-layout";
@@ -101,6 +102,13 @@ const Index = () => {
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(-1);
   const [lots, setLots] = useState<Lot[]>([]);
   const [expandedLotId, setExpandedLotId] = useState<string | null>(null);
+  // Visualização somente-leitura dos layouts de um lote no visualizador principal.
+  const [viewingLot, setViewingLot] = useState<Lot | null>(null);
+  const [viewingLotIndex, setViewingLotIndex] = useState(0);
+  // Fecha a visualização se o lote deixar de existir (removido/devolvido).
+  useEffect(() => {
+    if (viewingLot && !lots.some((l) => l.id === viewingLot.id)) setViewingLot(null);
+  }, [lots, viewingLot]);
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -458,15 +466,6 @@ const Index = () => {
       // used last time). Massive speedup on uniform inventories where the
       // best layout repeats.
       const layoutCache = new Map<string, TreeNode>();
-      const buildInvKey = (rem: typeof remaining) => {
-        // Sorted compact signature: only piece dimensions matter (label is
-        // for visualization only; same w/h yields the same layout).
-        const arr = rem
-          .filter((p) => p.qty > 0)
-          .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}:${p.qty}`)
-          .sort();
-        return arr.join("|");
-      };
 
       while (remaining.length > 0 && sheetCount < maxSheets) {
         sheetCount++;
@@ -480,10 +479,13 @@ const Index = () => {
         let uidSeq = 0;
         remaining.forEach((p) => {
           const area = p.w * p.h;
-          for (let i = 0; i < p.qty; i++) {
+          // Spec 009: linhas marcadas "não repetir na chapa" contribuem no máximo
+          // 1 peça por chapa; as demais linhas mantêm a quantidade integral.
+          const perSheet = perSheetQty(p);
+          for (let i = 0; i < perSheet; i++) {
             if (p.w > 0 && p.h > 0) {
               const uid = `__${uidSeq++}`;
-              inv.push({ w: p.w, h: p.h, area: p.w * p.h, label: uid });
+              inv.push({ w: p.w, h: p.h, area, label: uid });
               uidToRef.set(uid, p);
               uidToOrig.set(uid, p.label);
             }
@@ -503,8 +505,10 @@ const Index = () => {
           .map((s) => s.trim())
           .filter(Boolean);
 
-        // Cache lookup: same inventory shape → same optimal layout
-        const invKey = buildInvKey(remaining);
+        // Cache lookup: same inventory shape → same optimal layout.
+        // Spec 009: chave sobre a fatia CAPADA por chapa (linhas marcadas ≤1),
+        // consistente com o `inv` realmente otimizado.
+        const invKey = sheetInvKey(remaining);
         let result: TreeNode;
         const cached = layoutCache.get(invKey);
         if (cached) {
@@ -1228,6 +1232,10 @@ const Index = () => {
       sheetW: chapaW,
       sheetH: chapaH,
       totalSheets: autoChapas.length,
+      usableW,
+      usableH,
+      ml,
+      mb,
     };
     setLots((prev) => [...prev, newLot]);
 
@@ -1880,6 +1888,7 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
           setLots={setLots}
           expandedLotId={expandedLotId}
           setExpandedLotId={setExpandedLotId}
+          onView={(lot) => { setViewingLot(lot); setViewingLotIndex(0); }}
           onPrint={printLot}
           onReturn={returnLotToInventory}
         />
@@ -1887,31 +1896,69 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col" style={{ background: "hsl(210 25% 95%)" }}>
-        <SheetViewer
-          chapas={editingExistingChapa && chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
-          activeIndex={editingExistingChapa && chapas.length > 0 ? activeChapa : 0}
-          onSelectSheet={(idx) => {
-            setActiveChapa(idx);
-            if (chapas[idx]) {
-              setTree(chapas[idx].tree);
-              setSelectedId("root");
-              setEditingExistingChapa(true);
-            }
-          }}
-          selectedId={selectedId}
-          onSelectNode={handleSelectNode}
-          usableW={usableW}
-          usableH={usableH}
-          chapaW={chapaW}
-          chapaH={chapaH}
-          ml={ml}
-          mb={mb}
-          utilization={utilization}
-          layoutGroups={layoutGroups}
-          selectionInfo={selectionInfo}
-          onRemoveSelected={removeSelected}
-          onSelectParent={selectionInfo?.hasParent ? selectParent : undefined}
-        />
+        {viewingLot ? (
+          <>
+            <div
+              className="flex items-center justify-between px-3 py-1.5"
+              style={{ background: "hsl(265 60% 16%)", borderBottom: "1px solid hsl(265 60% 34%)" }}
+            >
+              <span className="text-[12px] font-bold" style={{ color: "hsl(265 80% 82%)" }}>
+                👁 Visualizando Lote #{viewingLot.number} — Chapa {viewingLotIndex + 1}/{viewingLot.chapas.length}
+              </span>
+              <button
+                className="text-[10px] px-2.5 py-1 rounded font-bold uppercase tracking-wider"
+                style={{ background: "hsl(0 55% 22%)", color: "hsl(0 60% 82%)", border: "1px solid hsl(0 55% 40%)", cursor: "pointer" }}
+                onClick={() => setViewingLot(null)}
+                title="Voltar ao plano de trabalho"
+              >
+                ✕ Voltar
+              </button>
+            </div>
+            <SheetViewer
+              chapas={viewingLot.chapas}
+              activeIndex={Math.min(viewingLotIndex, viewingLot.chapas.length - 1)}
+              onSelectSheet={setViewingLotIndex}
+              selectedId="root"
+              onSelectNode={() => {}}
+              usableW={viewingLot.usableW ?? usableW}
+              usableH={viewingLot.usableH ?? usableH}
+              chapaW={viewingLot.sheetW}
+              chapaH={viewingLot.sheetH}
+              ml={viewingLot.ml ?? ml}
+              mb={viewingLot.mb ?? mb}
+              utilization={
+                (viewingLot.chapas[Math.min(viewingLotIndex, viewingLot.chapas.length - 1)]?.usedArea ?? 0) /
+                Math.max(1, (viewingLot.usableW ?? usableW) * (viewingLot.usableH ?? usableH))
+              }
+            />
+          </>
+        ) : (
+          <SheetViewer
+            chapas={editingExistingChapa && chapas.length > 0 ? chapas : [{ tree, usedArea: calcPlacedArea(tree) }]}
+            activeIndex={editingExistingChapa && chapas.length > 0 ? activeChapa : 0}
+            onSelectSheet={(idx) => {
+              setActiveChapa(idx);
+              if (chapas[idx]) {
+                setTree(chapas[idx].tree);
+                setSelectedId("root");
+                setEditingExistingChapa(true);
+              }
+            }}
+            selectedId={selectedId}
+            onSelectNode={handleSelectNode}
+            usableW={usableW}
+            usableH={usableH}
+            chapaW={chapaW}
+            chapaH={chapaH}
+            ml={ml}
+            mb={mb}
+            utilization={utilization}
+            layoutGroups={layoutGroups}
+            selectionInfo={selectionInfo}
+            onRemoveSelected={removeSelected}
+            onSelectParent={selectionInfo?.hasParent ? selectParent : undefined}
+          />
+        )}
 
         <CommandBar
           status={status}

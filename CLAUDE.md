@@ -42,7 +42,22 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Spec mais recente (implementada, com emenda A1): `specs/008-replanejar-apos-salvar/`
+Spec mais recente (PLANEJADA, ainda não implementada): `specs/009-peca-unica-por-chapa/`
+— o usuário marca uma LINHA do inventário como "não repetir na chapa"
+(`PieceItem.uniquePerSheet?: boolean`, campo novo, independente de `priority` que é
+FILTRO de UI). Ao gerar o plano multi-chapa, cada linha marcada é limitada a NO
+MÁXIMO 1 peça por chapa (alocação garantida enquanto houver estoque); as não
+marcadas preenchem o restante. Enforcement no NÍVEL DO PLANO (montagem do `inv` por
+chapa em `runAllSheets`/`optimizeAllSheets` de `Index.tsx`, ~L481-491) + módulo puro
+`src/lib/unique-per-sheet.ts` (`splitMarked`/`capForSheet`/`sheetInvKey`/
+`countMarkedOnSheet`); MOTOR E WASM INTOCADOS (a flag é removida antes da fronteira
+WASM). Cache de layout passa a chavear pela fatia CAPADA (`sheetInvKey`). Estoque
+marcado > chapas do restante ⇒ gera chapas adicionais (o loop já roda até esgotar).
+Preservar a flag em `effectiveInventory`/`selectGroup` (como `manual || saved`).
+Interação FR-010 com specs 006/008 via contagem por árvore (Princípio IV). Plano/
+contrato/quickstart em `specs/009-peca-unica-por-chapa/`; testes previstos em
+`src/test/unique-per-sheet.test.ts` (C1–C7) + regressão no benchmark.
+Spec anterior (implementada, com emenda A1): `specs/008-replanejar-apos-salvar/`
 — salvar layout ×N NÃO deduz o inventário: cria cópias pendentes (`saved: true`,
 checkbox pré-marcado, `deductions` exatas) que RESERVAM inventário até a
 confirmação do lote (única dedução real, via `applyDeductions`); descarta chapas

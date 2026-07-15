@@ -7,11 +7,12 @@ interface Props {
   setLots: React.Dispatch<React.SetStateAction<Lot[]>>;
   expandedLotId: string | null;
   setExpandedLotId: (id: string | null) => void;
+  onView: (lot: Lot) => void;
   onPrint: (lot: Lot) => void;
   onReturn: (lot: Lot) => void;
 }
 
-const LotsSection = ({ lots, setLots, expandedLotId, setExpandedLotId, onPrint, onReturn }: Props) => (
+const LotsSection = ({ lots, setLots, expandedLotId, setExpandedLotId, onView, onPrint, onReturn }: Props) => (
   <SidebarSection title={`Lotes${lots.length > 0 ? ` (${lots.length})` : ""}`} icon="📋" defaultOpen={true}>
     <div className="p-2.5" style={{ background: "hsl(237 50% 12%)" }}>
       {lots.length === 0 ? (
@@ -29,6 +30,7 @@ const LotsSection = ({ lots, setLots, expandedLotId, setExpandedLotId, onPrint, 
               lot={lot}
               isExpanded={expandedLotId === lot.id}
               onToggle={() => setExpandedLotId(expandedLotId === lot.id ? null : lot.id)}
+              onView={onView}
               onPrint={onPrint}
               onReturn={onReturn}
               onRemove={(id) => {

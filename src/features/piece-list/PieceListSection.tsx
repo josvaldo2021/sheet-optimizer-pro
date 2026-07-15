@@ -149,7 +149,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
           {pieces.length > 0 && (
             <div
               className="grid gap-1 mb-1"
-              style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px" }}
+              style={{ gridTemplateColumns: "20px 24px 70px 70px 15px 70px 70px 20px" }}
             >
               <button
                 onClick={() => handleSort("priority")}
@@ -166,6 +166,18 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
               >
                 🚩{arrow("priority")}
               </button>
+              <span
+                title="Não repetir na chapa (máx. 1 por chapa)"
+                style={{
+                  color: "hsl(220 18% 52%)",
+                  fontSize: "11px",
+                  textAlign: "center",
+                  display: "block",
+                  userSelect: "none",
+                }}
+              >
+                1×
+              </span>
               {headerBtn("qty",   "Qtd")}
               {headerBtn("w",     "Larg")}
               <span />
@@ -175,7 +187,7 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
             </div>
           )}
           {sorted.map((p) => (
-            <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: "20px 70px 70px 15px 70px 70px 20px" }}>
+            <div key={p.id} className="cnc-inv-item" style={{ gridTemplateColumns: "20px 24px 70px 70px 15px 70px 70px 20px" }}>
               <div className="flex items-center justify-center">
                 <input
                   type="checkbox"
@@ -185,6 +197,19 @@ const PieceListSection = ({ pieces, setPieces, pieceFilter, setPieceFilter, tota
                   }
                   title="Processar somente este pedido"
                   style={{ accentColor: "hsl(28 90% 52%)", cursor: "pointer", width: "12px", height: "12px" }}
+                />
+              </div>
+              <div className="flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={!!p.uniquePerSheet}
+                  onChange={(e) =>
+                    setPieces((ps) =>
+                      ps.map((x) => (x.id === p.id ? { ...x, uniquePerSheet: e.target.checked || undefined } : x)),
+                    )
+                  }
+                  title="Não repetir na chapa (aloca no máx. 1 por chapa)"
+                  style={{ accentColor: "hsl(206 82% 62%)", cursor: "pointer", width: "12px", height: "12px" }}
                 />
               </div>
               <input

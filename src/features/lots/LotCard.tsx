@@ -4,12 +4,13 @@ interface Props {
   lot: Lot;
   isExpanded: boolean;
   onToggle: () => void;
+  onView: (lot: Lot) => void;
   onPrint: (lot: Lot) => void;
   onReturn: (lot: Lot) => void;
   onRemove: (lotId: string) => void;
 }
 
-const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Props) => {
+const LotCard = ({ lot, isExpanded, onToggle, onView, onPrint, onReturn, onRemove }: Props) => {
   const totalPiecesInLot = lot.piecesUsed.reduce((s, p) => s + p.qty, 0);
 
   return (
@@ -75,6 +76,14 @@ const LotCard = ({ lot, isExpanded, onToggle, onPrint, onReturn, onRemove }: Pro
             </tbody>
           </table>
           <div className="flex gap-1.5 mt-1">
+            <button
+              className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
+              style={{ background: "hsl(265 60% 22%)", color: "hsl(265 80% 84%)", border: "1px solid hsl(265 60% 40%)", cursor: "pointer" }}
+              onClick={() => onView(lot)}
+              title="Ver os layouts (chapas) deste lote no visualizador"
+            >
+              👁 Ver layouts
+            </button>
             <button
               className="flex-1 text-[9px] py-1.5 rounded font-bold uppercase tracking-wider"
               style={{ background: "hsl(206 82% 20%)", color: "hsl(206 82% 82%)", border: "1px solid hsl(206 82% 36%)", cursor: "pointer" }}
