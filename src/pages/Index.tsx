@@ -109,6 +109,24 @@ const Index = () => {
   useEffect(() => {
     if (viewingLot && !lots.some((l) => l.id === viewingLot.id)) setViewingLot(null);
   }, [lots, viewingLot]);
+  // Navegação por teclado (←/→) entre as chapas do lote em visualização.
+  useEffect(() => {
+    if (!viewingLot) return;
+    const total = viewingLot.chapas.length;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setViewingLotIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setViewingLotIndex((i) => Math.min(total - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewingLot]);
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -1902,9 +1920,40 @@ ${hasId ? `<text x="${textCX}" y="${idY}" text-anchor="middle" dominant-baseline
               className="flex items-center justify-between px-3 py-1.5"
               style={{ background: "hsl(265 60% 16%)", borderBottom: "1px solid hsl(265 60% 34%)" }}
             >
-              <span className="text-[12px] font-bold" style={{ color: "hsl(265 80% 82%)" }}>
-                👁 Visualizando Lote #{viewingLot.number} — Chapa {viewingLotIndex + 1}/{viewingLot.chapas.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-bold" style={{ color: "hsl(265 80% 82%)" }}>
+                  👁 Visualizando Lote #{viewingLot.number} — Chapa {viewingLotIndex + 1}/{viewingLot.chapas.length}
+                </span>
+                {viewingLot.chapas.length > 1 && (
+                  <>
+                    <button
+                      className="text-[11px] px-2 py-0.5 rounded font-bold"
+                      style={{
+                        background: "hsl(265 60% 26%)", color: "hsl(265 80% 85%)", border: "1px solid hsl(265 60% 40%)",
+                        cursor: viewingLotIndex > 0 ? "pointer" : "default", opacity: viewingLotIndex > 0 ? 1 : 0.35,
+                      }}
+                      disabled={viewingLotIndex <= 0}
+                      onClick={() => setViewingLotIndex((i) => Math.max(0, i - 1))}
+                      title="Chapa anterior (←)"
+                    >
+                      ◀
+                    </button>
+                    <button
+                      className="text-[11px] px-2 py-0.5 rounded font-bold"
+                      style={{
+                        background: "hsl(265 60% 26%)", color: "hsl(265 80% 85%)", border: "1px solid hsl(265 60% 40%)",
+                        cursor: viewingLotIndex < viewingLot.chapas.length - 1 ? "pointer" : "default",
+                        opacity: viewingLotIndex < viewingLot.chapas.length - 1 ? 1 : 0.35,
+                      }}
+                      disabled={viewingLotIndex >= viewingLot.chapas.length - 1}
+                      onClick={() => setViewingLotIndex((i) => Math.min(viewingLot.chapas.length - 1, i + 1))}
+                      title="Próxima chapa (→)"
+                    >
+                      ▶
+                    </button>
+                  </>
+                )}
+              </div>
               <button
                 className="text-[10px] px-2.5 py-1 rounded font-bold uppercase tracking-wider"
                 style={{ background: "hsl(0 55% 22%)", color: "hsl(0 60% 82%)", border: "1px solid hsl(0 55% 40%)", cursor: "pointer" }}
