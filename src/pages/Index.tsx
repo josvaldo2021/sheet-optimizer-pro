@@ -113,6 +113,9 @@ const Index = () => {
   useEffect(() => {
     if (viewingLot && !lots.some((l) => l.id === viewingLot.id)) setViewingLot(null);
   }, [lots, viewingLot]);
+  // O cálculo de repetições vale para o layout que o gerou: se a árvore muda,
+  // o N vira intenção obsoleta (o botão da barra o repassaria ao salvar).
+  useEffect(() => setReplicationInfo(null), [tree]);
   // Navegação por teclado (←/→) entre as chapas do lote em visualização.
   useEffect(() => {
     if (!viewingLot) return;
