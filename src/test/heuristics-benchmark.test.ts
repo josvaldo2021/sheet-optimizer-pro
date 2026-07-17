@@ -14,9 +14,18 @@
 import { describe, it, expect } from "vitest";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { optimizeV6, calcPlacedArea } from "../lib/cnc-engine";
+import { optimizeV6, calcPlacedArea, setUseWasmEngine } from "../lib/cnc-engine";
 import type { TreeNode, Piece } from "../lib/engine/types";
 import baselineFile from "./fixtures/benchmark-baseline.json";
+
+// O baseline foi gravado com o motor TypeScript. `optimizeV6` vem do
+// engine-adapter, que usa WASM quando ele está carregado — e o carregamento é
+// assíncrono, então "qual motor rodou" era decidido por uma CORRIDA: em Node o
+// fetch do .wasm normalmente falha e cai no TS, mas basta outro teste do mesmo
+// worker ter carregado o módulo para o benchmark comparar WASM contra um
+// baseline de TS e falhar de forma intermitente. Fixar o motor torna o gate
+// determinístico; a paridade TS↔WASM é coberta por wasm-parity.test.ts.
+setUseWasmEngine(false);
 
 // ─── Tipos do arquivo de baseline (data-model.md da spec 007) ───
 

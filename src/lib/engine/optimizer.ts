@@ -71,7 +71,6 @@ export function optimizeV6(
 
   const sequenceSignature = (arr: Piece[]) => arr.map(pieceSignature).join('|');
 
-  const hasLabels = pieces.some((p) => p.label);
   const strategies = getSortStrategies();
 
   const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
@@ -88,9 +87,15 @@ export function optimizeV6(
   const maxRepetition = Math.max(0, ...Array.from(dimCounts.values()));
   const skipExpensiveGrouping = pieces.length > 50 && maxRepetition < 3;
 
-  const pieceVariantBuilders: Array<() => Piece[]> = hasLabels
-    ? [() => pieces, () => rotatedPieces]
-    : useGrouping === false || skipExpensiveGrouping
+  // Spec 012: peças rotuladas caíam num ramo SEM agrupamento (guard `hasLabels`),
+  // perdendo as 50+ variantes abaixo. Como todo trabalho real vem rotulado do
+  // relatório de OF, o motor nunca rodava com agrupamento em produção — violando
+  // o Princípio III e fragmentando as sobras. O guard encobria duas falhas de
+  // conservação na expansão de grupos rotulados, ambas corrigidas: o roteamento
+  // do splitAxis (placement.ts) e a mistura de alturas por tolerância no
+  // groupStripPackingDP (grouping.ts).
+  const pieceVariantBuilders: Array<() => Piece[]> =
+    useGrouping === false || skipExpensiveGrouping
       ? [() => pieces, () => rotatedPieces]
       : [
           // Bug adormecido corrigido (spec 007): estas entradas eram arrays já

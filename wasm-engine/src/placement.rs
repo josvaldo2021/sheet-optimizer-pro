@@ -87,6 +87,11 @@ pub fn create_piece_nodes(
             }
             "W" => {
                 let z_id = z_node_to_use.unwrap_or_else(|| insert_node(arena, y_id, NodeType::Z, placed_w, 1));
+                // Spec 012: o Z pode ser um slot REAPROVEITADO, mais largo que este
+                // grupo. Sem a tampa Q abaixo, cada folha W renderiza com a largura
+                // do SLOT em vez da largura real da peça. O caminho de peça solta já
+                // faz isso; o agrupado não fazia.
+                let slot_w = arena.get(z_id).valor;
                 for i in 0..count {
                     let dim_h = piece.individual_dims.as_ref()
                         .and_then(|d| d.get(i).copied())
@@ -98,6 +103,10 @@ pub fn create_piece_nodes(
                         if let Some(l) = piece.labels.as_ref().and_then(|ls| ls.get(0)) {
                             arena.get_mut(z_id).label = Some(l.clone());
                         }
+                    }
+                    if placed_w < slot_w {
+                        let q_id = arena.add_child(w_id, NodeType::Q, placed_w, 1);
+                        if let Some(l) = lbl { arena.get_mut(q_id).label = Some(l); }
                     }
                 }
             }

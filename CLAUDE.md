@@ -37,12 +37,84 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 ## Armadilhas críticas (leia sempre)
 
 1. **`n.label` check** — `countAllocatedPieces` e `extractUsedPiecesWithContext` pulam nós sem label → retornam 0 para peças não rotuladas. Para tracking interno (runAllSheets), use `extractAll` local que ignora label.
-2. **`useGrouping=false`** — remove 50+ estratégias do `optimizeV6`, causando queda drástica de qualidade (~9 peças/chapa vs 30+). Nunca use isso.
+2. **Agrupamento desligado** — remove 50+ estratégias do `optimizeV6`, causando queda drástica de qualidade (~9 peças/chapa vs 30+). Nunca use `useGrouping=false`. ATENÇÃO (spec 012): isto acontecia SOZINHO, sem ninguém pedir — o guard `hasLabels` desligava o agrupamento para QUALQUER peça rotulada, ou seja, em 100% dos trabalhos reais. Guard removido; se voltar a aparecer um guard assim, ele está encobrindo bug de expansão, não protegendo de um.
 3. **`v6Result.remaining`** — pode conter peças agrupadas (`count>1`, `individualDims`). Não use set-difference com o inventário original; extraia da árvore.
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Spec mais recente (PLANEJADA, ainda não implementada): `specs/010-medida-exclusiva-prioridade/`
+Spec mais recente (IMPLEMENTADA, não commitada): `specs/012-qualidade-pecas-identificadas/`
+— CORRIGE VIOLAÇÃO dos Princípios III e IV. O guard `hasLabels` (`optimizer.ts`)
+reduzia as ~54 variantes de agrupamento para 2 quando QUALQUER peça tinha rótulo —
+e todo trabalho real vem rotulado do relatório de OF (uid por peça,
+`Index.tsx:506`) ⇒ o motor NUNCA rodava com agrupamento em produção. Sintoma:
+sobra fragmentada. O guard encobria DUAS falhas de conservação independentes na
+expansão de grupos rotulados, ambas corrigidas (a 2ª estava escondida atrás da 1ª):
+(1) ROTEAMENTO `splitAxis` (`placement.ts`): `("h",rotacionado)` caía num `else`
+que devolvia `R` — SEMPRE folha — e o grupo virava UMA folha com o rótulo de uma
+só peça (fantasma `250×800`); o Rust já estava certo e foi retroportado, junto com
+`zNodeToUse && Z → Q` (não `W`). (2) TOLERÂNCIA DE ALTURA em
+`groupStripPackingDP` (`grouping.ts`, variante #42 = tol 100): a tolerância junta
+peças de alturas DIFERENTES na mesma faixa, mas um grupo de eixo "w" guarda UMA
+altura (`h`) e `individualDims` só com as LARGURAS ⇒ as peças mais baixas eram
+cortadas com a altura da faixa (fantasma `250×300`, inflação 385→429). Agravado
+por `stripHeight = max` do GRUPO enquanto o knapsack seleciona um SUBCONJUNTO.
+Corrigido subdividindo por altura EXATA antes do knapsack. Guard REMOVIDO em TS e
+Rust; WASM reconstruído (o app usa WASM por padrão:
+`localStorage.useWasmEngine !== 'false'`). REGRA GERAL: um grupo (`count>1`) NÃO é
+peça — `w`/`h` são do AGREGADO, e a medida TRANSVERSAL é compartilhada por todos os
+membros; agrupar medidas transversais diferentes é irrepresentável. Teste
+`src/test/grouped-expansion.test.ts` (67) trava produtor (P1-P5, inclui P4: a medida
+do grupo bate com CADA membro — foi a ausência disso que escondeu o bug) e
+consumidor (C1-C5, as 4 combinações eixo×rotação). Custo aceito: suíte 61s→306s.
+Cenário-âncora (4× 2473×1262 + 2× 2634×406 em 5980×3190) verificado no app real
+com WASM: 6 peças, 1 chapa, sobra consolidada em 4946×666. TERCEIRA falha, achada
+pelo usuário no app (2026-07-17) e SÓ no WASM: `group_pieces_fill_row`
+(`grouping.rs`) normalizava cada peça para `(w,h,label)` e DESCARTAVA
+`count`/`labels`/`individual_dims` ⇒ um grupo virava UMA peça e as outras `count-1`
+sumiam sem cair em `remaining` (WASM alocava 2 de 8). O T025 declarava esse espelho
+feito, mas a correção só existia no TS; a remoção do `has_labels` acordou o defeito.
+Junto: `remaining.retain` por igualdade de `(w,h,label)` apagava TODAS as duplicatas
+iguais, não só a usada (o TS remove por identidade) — corrigido em `fill_row` e
+`fill_col` removendo por índice. A rede que faltava agora existe:
+`src/test/wasm-parity.test.ts` (mesmo input ⇒ mesma contagem alocada nos dois
+motores + conservação; carrega o pkg `--target web` no Node passando os bytes do
+`.wasm`). ESTENDA-O ao mexer no motor. `heuristics-benchmark` fixado em TS
+(`setUseWasmEngine(false)`): o baseline é de TS e a escolha do motor via
+`engine-adapter` era uma CORRIDA ⇒ falhava intermitentemente. QUARTA falha (T035):
+o T010 estava PELA METADE nos DOIS motores — a correção de tolerância pegou
+`groupStripPackingDP` mas não o gêmeo `groupStripPackingDPTransposed`
+(`grouping.ts:780`/`grouping.rs:566`), que tem o bug SIMÉTRICO (tolerância de
+LARGURA + `strip_w = max`, `individualDims` só com alturas ⇒ peça estreita cortada
+com a largura da faixa). Medido: 60 peças únicas ⇒ 60/60 alocadas mas 20
+FANTASMAS, área 9145k→9177k. Corrigido nos dois. LIÇÃO: contar peças NÃO basta —
+o motor alocava a quantidade certa e mentia a MEDIDA; foi assim que passou pelo
+T012. `wasm-parity.test.ts` agora trava isso ("nenhuma folha afirma medida
+inexistente": multiset de medidas + igualdade de área). Ao corrigir um agrupador,
+PROCURE O GÊMEO TRANSPOSTO. Hipótese `skipExpensiveGrouping` REFUTADA: o gate
+(`optimizer.ts:88`) não existe no Rust (divergência viva do Princípio VI ⇒ nunca
+afetou o usuário, que roda WASM) e, medido nos relatórios de OF reais dele
+(agrupados por material), nunca dispararia — exige `maxRepetition < 3` e os dados
+dão maxRep 22/12/2. PENDENTE: T011 (rede de validação no limite), T013
+(`genetic.ts:258-262` mapeia rótulo→medida do AGREGADO), T036 (destino do
+`skipExpensiveGrouping` — decisão do usuário), polimento (T027-T031), e RE-MEDIR o
+2º relato do usuário (não percebeu melhora de fragmentação) — o relato foi feito
+sobre o build que perdia peças no WASM, então precisa ser refeito antes de teorizar.
+Spec anterior (PLANEJADA, ainda não implementada; a 012 corrige a MIRA dela — media
+a sobra contra `remaining`, e o usuário definiu que sobra vale POR SI, independente
+do inventário): `specs/011-lookahead-residual-sobra/`
+— critério de LOOKAHEAD RESIDUAL na seleção de layout do `optimizeV6`: entre
+candidatos de MESMA área alocada, preferir o cujo MAIOR retângulo livre comporta a
+MAIOR peça ainda não alocada (`result.remaining`) → menos fragmentação ⇒ mais
+peças/chapa ⇒ mais aproveitamento (NÃO premia sobra: é só desempate, subordinado à
+área). MUDA O MOTOR (≠ specs 009/010 que eram no plano): seleção em
+`optimizer.ts:192` passa de `area→compactness` para `area→residual-fit→compactness`;
+espelho OBRIGATÓRIO em Rust `optimizer.rs:164` + rebuild wasm (Princípio VI). Novo
+helper `largestFreeRect` (generaliza `getLastLeftover` coletando o MAIOR gap) em
+TS `tree-utils.ts` e Rust. Guarda: `heuristics-benchmark.test.ts` barra qualquer
+regressão de aproveitamento/nº de chapas; se MELHORAR, regravar baseline. Cenário-
+âncora "Chapa 2" (do ESTUDO DE LAYOUTS.docx do usuário). Contrato/plano em
+`specs/011-lookahead-residual-sobra/`; teste `src/test/residual-lookahead.test.ts`.
+Spec anterior (IMPLEMENTADA e commitada): `specs/010-medida-exclusiva-prioridade/`
 — REFINA a 009. Duas mudanças na flag `uniquePerSheet`: (1) EXCLUSIVIDADE TOTAL —
 medidas marcadas DIFERENTES não podem dividir a mesma chapa ⇒ no máximo 1 peça
 marcada por chapa NO TOTAL (substitui a coexistência que a 009 permitia); (2)

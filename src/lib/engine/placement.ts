@@ -48,19 +48,25 @@ export function createPieceNodes(
 
   if (isGrouped) {
     const originalAxis = piece.groupedAxis || "w";
-    let splitAxis: "Z" | "W" | "Q" | "R";
 
-    if (originalAxis === "w" && !rotated) {
-      splitAxis = "Z";
-    } else if ((originalAxis === "h" && !rotated) || (originalAxis === "w" && rotated)) {
-      splitAxis = "W";
-    } else if (originalAxis === "w" && rotated) {
-      splitAxis = "Q"; // Width split in W
-    } else {
-      splitAxis = "R"; // Height split in Q
-    }
+    // Considerada a rotação, um grupo espalhado no eixo horizontal precisa de
+    // divisão Z (lado a lado); um grupo empilhado precisa de W (um sobre outro):
+    //
+    //   "w"+!rotated → espalhado horizontalmente        → Z
+    //   "h"+rotated  → empilhado que, girado 90°, espalha → Z
+    //   "h"+!rotated → empilhado verticalmente          → W
+    //   "w"+rotated  → espalhado que, girado 90°, empilha → W
+    //
+    // O caso "h"+rotated caía num ramo `else` que devolvia "R" — sempre folha,
+    // incapaz de conter as N peças: o grupo virava UMA folha com a medida do
+    // agregado e o rótulo de uma só peça (as demais sumiam do rastreio).
+    let splitAxis: "Z" | "W" | "Q" =
+      (originalAxis === "w" && !rotated) || (originalAxis === "h" && rotated) ? "Z" : "W";
 
-    if (zNodeToUse && splitAxis === "Z") splitAxis = "W";
+    // Com um Z já existente não dá para dividir em Z. Forçar "W" gravaria as
+    // larguras individuais em W.valor (campo de altura), produzindo medidas
+    // erradas; "Q" mantém largura em Q.valor e altura em W.valor.
+    if (zNodeToUse && splitAxis === "Z") splitAxis = "Q";
 
     if (splitAxis === "Z") {
       for (let i = 0; i < piece.count!; i++) {
@@ -74,14 +80,25 @@ export function createPieceNodes(
       }
     } else if (splitAxis === "W") {
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
+      // O Z pode ser um slot REAPROVEITADO, mais largo que este grupo. Sem a
+      // tampa Q abaixo, cada folha W renderiza com a largura do SLOT em vez da
+      // largura real da peça (a folha mente a medida e o plano infla). O ramo de
+      // peça solta já faz isso; o agrupado não fazia.
+      const slotW = zNode.valor;
       for (let i = 0; i < piece.count!; i++) {
         const dimH = piece.individualDims ? piece.individualDims[i] : Math.round(placedH / piece.count!);
         const wId = insertNode(tree, zNode.id, "W", dimH, 1);
         const wNode_f = findNode(tree, wId)!;
         if (piece.labels && piece.labels[i]) wNode_f.label = piece.labels[i];
         if (i === 0 && piece.labels && piece.labels[i]) zNode.label = piece.labels[i];
+        if (placedW < slotW) {
+          const qId = insertNode(tree, wId, "Q", placedW, 1);
+          const qNode = findNode(tree, qId)!;
+          if (piece.labels && piece.labels[i]) qNode.label = piece.labels[i];
+        }
       }
-    } else if (splitAxis === "Q") {
+    } else {
+      // splitAxis === "Q"
       const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
       const wId = insertNode(tree, zNode.id, "W", placedH, 1);
       const wNode = findNode(tree, wId)!;
@@ -92,26 +109,6 @@ export function createPieceNodes(
         if (piece.labels && piece.labels[i]) {
           qNode.label = piece.labels[i];
           if (i === 0) {
-            wNode.label = piece.labels[i];
-            zNode.label = piece.labels[i];
-          }
-        }
-      }
-    } else {
-      // splitAxis === "R"
-      const zNode = zNodeToUse || findNode(tree, insertNode(tree, yNode.id, "Z", placedW, 1))!;
-      const wId = insertNode(tree, zNode.id, "W", placedH, 1);
-      const wNode = findNode(tree, wId)!;
-      const qId = insertNode(tree, wId, "Q", placedW, 1);
-      const qNode = findNode(tree, qId)!;
-      for (let i = 0; i < piece.count!; i++) {
-        const dimH = piece.individualDims ? piece.individualDims[i] : Math.round(placedH / piece.count!);
-        const rId = insertNode(tree, qId, "R", dimH, 1);
-        const rNode = findNode(tree, rId)!;
-        if (piece.labels && piece.labels[i]) {
-          rNode.label = piece.labels[i];
-          if (i === 0) {
-            qNode.label = piece.labels[i];
             wNode.label = piece.labels[i];
             zNode.label = piece.labels[i];
           }
@@ -166,6 +163,7 @@ export function runPlacement(
   const tree = createRoot(usableW, usableH);
   let placedArea = 0;
   const remaining = [...inventory];
+
 
   // === Horizontal strip mode: pre-seed the tree with X=fullWidth, Y=baseH ===
   if (horizontalStrip && remaining.length > 0) {
@@ -791,11 +789,12 @@ export function runPlacement(
         }
       }
     }
-    // Void filling
+      // Void filling
     if (remaining.length > 0) {
       placedArea += fillVoids(tree, remaining, usableW, usableH, minBreak);
     }
   }
+
 
   // Post-processing pipeline
   if (remaining.length > 0) {

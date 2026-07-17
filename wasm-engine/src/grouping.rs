@@ -112,7 +112,16 @@ pub fn group_pieces_by_width(pieces: &[Piece]) -> Vec<Piece> {
 }
 
 pub fn group_pieces_fill_row(pieces: &[Piece], usable_w: f64, raw: bool) -> Vec<Piece> {
-    let normalized: Vec<_> = pieces.iter().map(|p| {
+    // Peças que JÁ são grupos passam intactas (espelha groupPiecesFillRow do TS).
+    // A normalização abaixo reduz cada peça a (largura, altura, rótulo) e
+    // descarta count/labels/individual_dims — um grupo que passasse por aqui
+    // viraria UMA peça, e as outras count-1 sumiriam do plano sem sequer cair
+    // em `remaining`. Além disso a rotação por max/min inverteria a orientação
+    // do grupo sem trocar grouped_axis.
+    let (pre_grouped, singles): (Vec<Piece>, Vec<Piece>) =
+        pieces.iter().cloned().partition(|p| p.effective_count() > 1);
+
+    let normalized: Vec<_> = singles.iter().map(|p| {
         let nw = if raw { p.w } else { p.w.max(p.h) };
         let nh = if raw { p.h } else { p.w.min(p.h) };
         (nw, nh, p.label.clone())
@@ -123,7 +132,7 @@ pub fn group_pieces_fill_row(pieces: &[Piece], usable_w: f64, raw: bool) -> Vec<
         height_groups.entry((*nh * 1000.0) as i64).or_default().push((*nw, *nh, lbl.clone()));
     }
 
-    let mut result = Vec::new();
+    let mut result = pre_grouped;
     for (_, group) in &height_groups {
         let h = group[0].1;
         let mut sorted: Vec<_> = group.clone();
@@ -133,15 +142,20 @@ pub fn group_pieces_fill_row(pieces: &[Piece], usable_w: f64, raw: bool) -> Vec<
         while !remaining.is_empty() {
             let mut row = Vec::new();
             let mut row_w = 0.0f64;
-            for item in &remaining {
-                if row_w + item.0 <= usable_w { row.push(item.clone()); row_w += item.0; }
+            for (idx, item) in remaining.iter().enumerate() {
+                if row_w + item.0 <= usable_w { row.push(idx); row_w += item.0; }
             }
 
             if row.len() >= 2 {
-                let labels: Vec<String> = row.iter().filter_map(|p| p.2.clone()).collect();
-                let dims: Vec<f64> = row.iter().map(|p| p.0).collect();
-                result.push(make_piece(row_w, h, None, row.len(), if labels.is_empty() { None } else { Some(labels) }, "w", dims));
-                for r in &row { remaining.retain(|i| !(i.0 == r.0 && (i.1 - r.1).abs() < 0.5 && i.2 == r.2)); }
+                let picked: Vec<_> = row.iter().map(|&i| remaining[i].clone()).collect();
+                let labels: Vec<String> = picked.iter().filter_map(|p| p.2.clone()).collect();
+                let dims: Vec<f64> = picked.iter().map(|p| p.0).collect();
+                result.push(make_piece(row_w, h, None, picked.len(), if labels.is_empty() { None } else { Some(labels) }, "w", dims));
+                // Remover POR ÍNDICE, uma ocorrência por item usado. Um retain
+                // por (largura, altura, rótulo) apagava TODAS as peças iguais —
+                // peças anônimas duplicadas somem em bloco (o TS remove por
+                // identidade, uma a uma).
+                for &i in row.iter().rev() { remaining.remove(i); }
             } else {
                 let p = remaining.remove(0);
                 result.push(single_piece(p.0, p.1, p.2));
@@ -180,15 +194,17 @@ pub fn group_pieces_fill_col(pieces: &[Piece], usable_h: f64, raw: bool) -> Vec<
         while !remaining.is_empty() {
             let mut col = Vec::new();
             let mut col_h = 0.0f64;
-            for item in &remaining {
-                if col_h + item.1 <= usable_h { col.push(item.clone()); col_h += item.1; }
+            for (idx, item) in remaining.iter().enumerate() {
+                if col_h + item.1 <= usable_h { col.push(idx); col_h += item.1; }
             }
 
             if col.len() >= 2 {
-                let labels: Vec<String> = col.iter().filter_map(|p| p.2.clone()).collect();
-                let dims: Vec<f64> = col.iter().map(|p| p.1).collect();
-                result.push(make_piece(w, col_h, None, col.len(), if labels.is_empty() { None } else { Some(labels) }, "h", dims));
-                for c in &col { remaining.retain(|i| !(i.0 == c.0 && (i.1 - c.1).abs() < 0.5 && i.2 == c.2)); }
+                let picked: Vec<_> = col.iter().map(|&i| remaining[i].clone()).collect();
+                let labels: Vec<String> = picked.iter().filter_map(|p| p.2.clone()).collect();
+                let dims: Vec<f64> = picked.iter().map(|p| p.1).collect();
+                result.push(make_piece(w, col_h, None, picked.len(), if labels.is_empty() { None } else { Some(labels) }, "h", dims));
+                // Remover POR ÍNDICE: ver a nota em group_pieces_fill_row.
+                for &i in col.iter().rev() { remaining.remove(i); }
             } else {
                 let p = remaining.remove(0);
                 result.push(single_piece(p.0, p.1, p.2));
@@ -455,17 +471,35 @@ pub fn group_strip_packing_dp(pieces: &[Piece], usable_w: f64, usable_h: f64, to
 
     for group in height_groups {
         if group.len() < 2 { unassigned.extend(group); continue; }
-        let strip_h = group.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
-        let widths: Vec<f64> = group.iter().map(|p| p.0).collect();
-        let selected = knapsack_select(&widths, usable_w);
-        if selected.len() < 2 { unassigned.extend(group); continue; }
-        let total_w: f64 = selected.iter().map(|&i| widths[i]).sum();
-        let sel_pieces: Vec<_> = selected.iter().map(|&i| group[i].clone()).collect();
-        let sel_set: std::collections::HashSet<usize> = selected.into_iter().collect();
-        for (i, p) in group.iter().enumerate() {
-            if !sel_set.contains(&i) { unassigned.push(p.clone()); }
+
+        // Spec 012: um grupo de eixo "w" guarda UMA altura (`h`) para todos os
+        // membros, e individual_dims carrega apenas as larguras. A tolerância
+        // acima aproxima peças de alturas DIFERENTES, e a faixa adotava a altura
+        // do mais alto — as peças mais baixas passavam a ser cortadas com a
+        // altura da faixa (folha fantasma: medida inexistente e área inflada).
+        // A representação não expressa alturas heterogêneas, então a faixa só
+        // agrupa peças de altura idêntica; as demais voltam a ser peças soltas,
+        // onde o caminho de peça única corta a altura real (tampas Q/R).
+        let mut by_exact_height: std::collections::BTreeMap<i64, Vec<(f64, f64, Option<String>)>> =
+            std::collections::BTreeMap::new();
+        for p in group {
+            by_exact_height.entry(p.1.round() as i64).or_default().push(p);
         }
-        strips.push((strip_h, total_w, sel_pieces));
+
+        for (_, sub) in by_exact_height {
+            if sub.len() < 2 { unassigned.extend(sub); continue; }
+            let strip_h = sub[0].1;
+            let widths: Vec<f64> = sub.iter().map(|p| p.0).collect();
+            let selected = knapsack_select(&widths, usable_w);
+            if selected.len() < 2 { unassigned.extend(sub); continue; }
+            let total_w: f64 = selected.iter().map(|&i| widths[i]).sum();
+            let sel_pieces: Vec<_> = selected.iter().map(|&i| sub[i].clone()).collect();
+            let sel_set: std::collections::HashSet<usize> = selected.into_iter().collect();
+            for (i, p) in sub.iter().enumerate() {
+                if !sel_set.contains(&i) { unassigned.push(p.clone()); }
+            }
+            strips.push((strip_h, total_w, sel_pieces));
+        }
     }
 
     if strips.is_empty() { return pieces.to_vec(); }
@@ -529,17 +563,35 @@ pub fn group_strip_packing_dp_transposed(pieces: &[Piece], usable_w: f64, usable
 
     for group in width_groups {
         if group.len() < 2 { unassigned.extend(group); continue; }
-        let strip_w = group.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
-        let heights: Vec<f64> = group.iter().map(|p| p.1).collect();
-        let selected = knapsack_select(&heights, usable_h);
-        if selected.len() < 2 { unassigned.extend(group); continue; }
-        let total_h: f64 = selected.iter().map(|&i| heights[i]).sum();
-        let sel_pieces: Vec<_> = selected.iter().map(|&i| group[i].clone()).collect();
-        let sel_set: std::collections::HashSet<usize> = selected.into_iter().collect();
-        for (i, p) in group.iter().enumerate() {
-            if !sel_set.contains(&i) { unassigned.push(p.clone()); }
+
+        // Espelha a correção de group_strip_packing_dp (o gêmeo não-transposto):
+        // um grupo de eixo "h" guarda UMA largura (`w`) para todos os membros, e
+        // individual_dims carrega apenas as alturas. A tolerância acima aproxima
+        // peças de larguras DIFERENTES, e a faixa adotava a largura da mais larga
+        // — as mais estreitas passavam a ser cortadas com a largura da faixa
+        // (folha fantasma: medida inexistente e área inflada). A representação
+        // não expressa larguras heterogêneas, então a faixa só agrupa peças de
+        // largura idêntica; as demais voltam a ser peças soltas.
+        let mut by_exact_width: std::collections::BTreeMap<i64, Vec<(f64, f64, Option<String>)>> =
+            std::collections::BTreeMap::new();
+        for p in group {
+            by_exact_width.entry(p.0.round() as i64).or_default().push(p);
         }
-        strips.push((strip_w, total_h, sel_pieces));
+
+        for (_, sub) in by_exact_width {
+            if sub.len() < 2 { unassigned.extend(sub); continue; }
+            let strip_w = sub[0].0;
+            let heights: Vec<f64> = sub.iter().map(|p| p.1).collect();
+            let selected = knapsack_select(&heights, usable_h);
+            if selected.len() < 2 { unassigned.extend(sub); continue; }
+            let total_h: f64 = selected.iter().map(|&i| heights[i]).sum();
+            let sel_pieces: Vec<_> = selected.iter().map(|&i| sub[i].clone()).collect();
+            let sel_set: std::collections::HashSet<usize> = selected.into_iter().collect();
+            for (i, p) in sub.iter().enumerate() {
+                if !sel_set.contains(&i) { unassigned.push(p.clone()); }
+            }
+            strips.push((strip_w, total_h, sel_pieces));
+        }
     }
 
     if strips.is_empty() { return pieces.to_vec(); }

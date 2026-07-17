@@ -160,7 +160,15 @@ export function groupPiecesByWidth(pieces: Piece[]): Piece[] {
 }
 
 export function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolean = false): Piece[] {
-  const normalized = pieces.map((p) => ({
+  // Peças que JÁ são grupos passam intactas. A árvore expande um único nível de
+  // agrupamento (placement.ts lê individualDims/labels de uma peça agrupada), e
+  // a normalização abaixo rotaciona por max/min — o que inverteria a orientação
+  // de um grupo sem trocar groupedAxis. Reagrupar um grupo perdia labels, count
+  // e individualDims, fazendo N peças contarem como 1.
+  const preGrouped = pieces.filter((p) => (p.count ?? 1) > 1);
+  const singles = pieces.filter((p) => (p.count ?? 1) <= 1);
+
+  const normalized = singles.map((p) => ({
     ...p,
     nw: raw ? p.w : Math.max(p.w, p.h),
     nh: raw ? p.h : Math.min(p.w, p.h),
@@ -172,7 +180,7 @@ export function groupPiecesFillRow(pieces: Piece[], usableW: number, raw: boolea
     heightGroups.get(p.nh)!.push(p);
   });
 
-  const result: Piece[] = [];
+  const result: Piece[] = [...preGrouped];
 
   heightGroups.forEach((group, h) => {
     const sorted = [...group].sort((a, b) => b.nw - a.nw);
@@ -637,28 +645,50 @@ export function groupStripPackingDP(
       continue;
     }
 
-    const stripHeight = Math.max(...group.map(p => p.nh));
-    const widths = group.map(p => p.nw);
-
-    const selected = knapsackSelectItems(widths, usableW);
-
-    if (selected.length < 2) {
-      unassigned.push(...group);
-      continue;
+    // Um grupo de eixo "w" guarda UMA altura (`h`) para todos os membros, e
+    // `individualDims` carrega apenas as larguras. A tolerância acima aproxima
+    // peças de alturas DIFERENTES, e a faixa adotava a altura do mais alto — as
+    // peças mais baixas passavam a ser cortadas com a altura da faixa (folha
+    // fantasma: medida inexistente e área inflada). A representação não expressa
+    // alturas heterogêneas, então a faixa só agrupa peças de altura idêntica; as
+    // demais voltam a ser peças soltas, onde o caminho de peça única corta a
+    // altura real (tampas Q/R).
+    const byExactHeight = new Map<number, typeof group>();
+    for (const p of group) {
+      const k = Math.round(p.nh);
+      if (!byExactHeight.has(k)) byExactHeight.set(k, []);
+      byExactHeight.get(k)!.push(p);
     }
 
-    const selectedPieces = selected.map(i => group[i]);
-    const totalWidth = selected.reduce((sum, i) => sum + widths[i], 0);
+    for (const sub of byExactHeight.values()) {
+      if (sub.length < 2) {
+        unassigned.push(...sub);
+        continue;
+      }
 
-    strips.push({
-      height: stripHeight,
-      totalWidth,
-      pieces: selectedPieces,
-    });
+      const stripHeight = sub[0].nh;
+      const widths = sub.map(p => p.nw);
 
-    const selectedSet = new Set(selected);
-    for (let i = 0; i < group.length; i++) {
-      if (!selectedSet.has(i)) unassigned.push(group[i]);
+      const selected = knapsackSelectItems(widths, usableW);
+
+      if (selected.length < 2) {
+        unassigned.push(...sub);
+        continue;
+      }
+
+      const selectedPieces = selected.map(i => sub[i]);
+      const totalWidth = selected.reduce((sum, i) => sum + widths[i], 0);
+
+      strips.push({
+        height: stripHeight,
+        totalWidth,
+        pieces: selectedPieces,
+      });
+
+      const selectedSet = new Set(selected);
+      for (let i = 0; i < sub.length; i++) {
+        if (!selectedSet.has(i)) unassigned.push(sub[i]);
+      }
     }
   }
 
@@ -747,24 +777,47 @@ export function groupStripPackingDPTransposed(
       continue;
     }
 
-    const stripWidth = Math.max(...group.map(p => p.nw));
-    const heights = group.map(p => p.nh);
-
-    const selected = knapsackSelectItems(heights, usableH);
-
-    if (selected.length < 2) {
-      unassigned.push(...group);
-      continue;
+    // Espelha a correção feita em groupStripPackingDP (o gêmeo não-transposto):
+    // um grupo de eixo "h" guarda UMA largura (`w`) para todos os membros, e
+    // `individualDims` carrega apenas as alturas. A tolerância acima aproxima
+    // peças de larguras DIFERENTES, e a faixa adotava a largura da mais larga —
+    // as mais estreitas passavam a ser cortadas com a largura da faixa (folha
+    // fantasma: medida inexistente e área inflada). A representação não expressa
+    // larguras heterogêneas, então a faixa só agrupa peças de largura idêntica;
+    // as demais voltam a ser peças soltas, onde o caminho de peça única corta a
+    // largura real.
+    const byExactWidth = new Map<number, typeof group>();
+    for (const p of group) {
+      const k = Math.round(p.nw);
+      if (!byExactWidth.has(k)) byExactWidth.set(k, []);
+      byExactWidth.get(k)!.push(p);
     }
 
-    const selectedPieces = selected.map(i => group[i]);
-    const totalHeight = selected.reduce((sum, i) => sum + heights[i], 0);
+    for (const sub of byExactWidth.values()) {
+      if (sub.length < 2) {
+        unassigned.push(...sub);
+        continue;
+      }
 
-    strips.push({ width: stripWidth, totalHeight, pieces: selectedPieces });
+      const stripWidth = sub[0].nw;
+      const heights = sub.map(p => p.nh);
 
-    const selectedSet = new Set(selected);
-    for (let i = 0; i < group.length; i++) {
-      if (!selectedSet.has(i)) unassigned.push(group[i]);
+      const selected = knapsackSelectItems(heights, usableH);
+
+      if (selected.length < 2) {
+        unassigned.push(...sub);
+        continue;
+      }
+
+      const selectedPieces = selected.map(i => sub[i]);
+      const totalHeight = selected.reduce((sum, i) => sum + heights[i], 0);
+
+      strips.push({ width: stripWidth, totalHeight, pieces: selectedPieces });
+
+      const selectedSet = new Set(selected);
+      for (let i = 0; i < sub.length; i++) {
+        if (!selectedSet.has(i)) unassigned.push(sub[i]);
+      }
     }
   }
 

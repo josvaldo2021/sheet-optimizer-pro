@@ -80,10 +80,16 @@ pub fn optimize_v6_arena(
         return (Arena::new_root(usable_w), vec![]);
     }
 
-    let has_labels = pieces.iter().any(|p| p.label.is_some());
     let rotated = rotate_pieces(pieces);
 
-    let variants: Vec<Vec<Piece>> = if has_labels || !use_grouping {
+    // Spec 012: peças rotuladas caíam num ramo SEM agrupamento (guard `has_labels`),
+    // perdendo as 50+ variantes abaixo. Como todo trabalho real vem rotulado do
+    // relatório de OF, o motor nunca rodava com agrupamento em produção — violando
+    // o Princípio III e fragmentando as sobras. O guard encobria duas falhas de
+    // conservação na expansão de grupos rotulados, ambas corrigidas: o roteamento
+    // do split_axis (placement.rs) e a mistura de alturas por tolerância no
+    // group_strip_packing_dp (grouping.rs).
+    let variants: Vec<Vec<Piece>> = if !use_grouping {
         vec![pieces.to_vec(), rotated.clone()]
     } else {
         vec![
