@@ -18,6 +18,7 @@ import {
   previewRemoval,
   getLastLeftover,
   extractLeafPieces,
+  consolidateColumns,
   optimizeGeneticV1,
   optimizeGeneticAsync,
   optimizeV6,
@@ -33,7 +34,8 @@ import { groupIdenticalLayouts, LayoutGroup } from "@/lib/export/layout-utils";
 import { isOfReport, parseOfReport } from "@/lib/import/of-report";
 import { selectedAutoChapas, applyDeductions, countAuto, countSelectedAuto, isSelectedAuto } from "@/lib/lots/lot-selection";
 import { buildLayoutBom, maxRepetitions, allocateDeductions, effectiveInventory, partitionByPreserved, needsReplan } from "@/lib/lots/layout-replication";
-import { pickMarkedForSheet, exclusiveSheetInvKey } from "@/lib/unique-per-sheet";
+import { pickDedicatedForSheet, dedicatedSheetInvKey, isDedicated, requiresDedicatedSheet } from "@/lib/unique-per-sheet";
+import { buildJumboSheet } from "@/lib/jumbo-sheet";
 import { exportPdf } from "@/lib/export/pdf-export";
 import { restorePiecesToInventory } from "@/lib/inventory-utils";
 import { printLayout } from "@/lib/export/print-layout";
@@ -507,14 +509,14 @@ const Index = () => {
           }
           return undefined;
         };
-        // Spec 010: no máximo 1 peça marcada NO TOTAL por chapa (exclusividade
-        // entre medidas marcadas diferentes), colocada PRIMEIRO no inv
-        // (prioridade → marcadas ocupam as primeiras chapas, 1 por chapa). As
-        // demais linhas marcadas ficam para as próximas chapas.
-        const markedPick = pickMarkedForSheet(remaining);
+        // Spec 010 + 014: no máximo 1 peça DEDICADA no total por chapa, colocada
+        // PRIMEIRO (prioridade → dedicadas ocupam as primeiras chapas, 1 por
+        // chapa). "Dedicada" = marcada pelo usuário (specs 009/010) OU jumbo por
+        // geometria (`max(w,h) > usableH` ⇒ chapa dedicada automática, spec 014).
+        const markedPick = pickDedicatedForSheet(remaining, usableW, usableH);
         const markedUid = markedPick ? pushOne(markedPick) : undefined;
         remaining.forEach((p) => {
-          if (p.uniquePerSheet) return; // marcadas: apenas a escolhida (acima)
+          if (isDedicated(p, usableW, usableH)) return; // dedicadas: apenas a escolhida (acima)
           for (let i = 0; i < p.qty; i++) pushOne(p);
         });
         if (inv.length === 0) break;
@@ -532,9 +534,9 @@ const Index = () => {
           .filter(Boolean);
 
         // Cache lookup: same inventory shape → same optimal layout.
-        // Spec 010: chave sobre a fatia EXCLUSIVA por chapa (≤1 marcada total),
-        // consistente com o `inv` realmente otimizado.
-        const invKey = exclusiveSheetInvKey(remaining);
+        // Spec 010 + 014: chave sobre a fatia DEDICADA por chapa (≤1 dedicada
+        // total — marcada ou jumbo), consistente com o `inv` realmente otimizado.
+        const invKey = dedicatedSheetInvKey(remaining, usableW, usableH);
         let result: TreeNode;
         const cached = layoutCache.get(invKey);
         if (cached) {
@@ -567,7 +569,21 @@ const Index = () => {
         // refaz a chapa com `runPlacement` colocando a marcada PRIMEIRO
         // (colocação garantida numa chapa vazia) + preenchimento com as demais.
         if (markedUid && !extractLeafPieces(result).some((lp) => lp.label === markedUid)) {
-          result = runPlacement(inv, usableW, usableH, minBreak).tree;
+          // Spec 014 (fase 2): se a peça forçada é JUMBO, decompor a sobra (dois
+          // retângulos exatos ao lado/abaixo dela) e otimizar cada um com
+          // optimizeV6 — enche a sobra do jumbo com as peças médias, muito melhor
+          // que o `runPlacement` guloso. Peça marcada NÃO-jumbo mantém o fallback
+          // guloso da spec 010.
+          const jumboP = inv.find((p) => p.label === markedUid);
+          const jr = jumboP && requiresDedicatedSheet(jumboP, usableW, usableH)
+            ? buildJumboSheet(
+                jumboP, usableW, usableH,
+                inv.filter((p) => p.label !== markedUid), minBreak, optimizeV6,
+              )
+            : null;
+          result = jr ? jr.tree : runPlacement(inv, usableW, usableH, minBreak).tree;
+          // Spec 013: consolida a sobra lateral (o `runPlacement` não faz sozinho).
+          consolidateColumns(result);
           layoutCache.set(invKey, cloneTree(result)); // reusar o layout já com a marcada
         }
 

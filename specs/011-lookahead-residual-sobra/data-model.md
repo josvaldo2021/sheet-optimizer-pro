@@ -1,5 +1,10 @@
 # Data Model: Seleção de layout por lookahead residual
 
+> ⚠️ **PIVÔ (2026-07-18)**: implementado como **CONSOLIDAÇÃO PURA** (maior
+> `largestFreeRect` vence, subordinado à área), não residual-fit. `result.remaining`
+> é sempre vazio, então a "próxima peça restante" não existe. `largestFreeRect`
+> continua sendo a entidade derivada central. Ver `research.md`.
+
 Fase 1. Sem novo dado persistido nem novo tipo de domínio. A feature adiciona um
 **critério de seleção** e um **helper geométrico** derivados da árvore.
 

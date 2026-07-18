@@ -10,6 +10,11 @@ import {
   pickMarkedForSheet,
   buildSheetInvExclusive,
   exclusiveSheetInvKey,
+  requiresDedicatedSheet,
+  isDedicated,
+  pickDedicatedForSheet,
+  buildSheetInvDedicated,
+  dedicatedSheetInvKey,
   type MarkedInvItem,
 } from "../lib/unique-per-sheet";
 
@@ -431,5 +436,50 @@ describe("Spec 010 FR-009: exclusividade protege repetição de padrão e save �
     expect(markedOffered).toBe(1); // só 1 marcada total (A), nunca C junto
     expect(slice.some((p) => p.id === "C")).toBe(false);
     expect(slice.find((p) => p.id === "B")!.qty).toBe(50); // não marcada integral (fillers)
+  });
+});
+
+// ─── Spec 014 — chapa dedicada automática (jumbo por geometria) ──────────────
+
+describe("chapa dedicada automática (spec 014)", () => {
+  const W = 5980, H = 3190; // úteis
+  const jumbo = { id: "J", w: 1956, h: 3560, qty: 4, uniquePerSheet: false }; // alto: 3560 > 3190
+  const normal = { id: "N", w: 1200, h: 800, qty: 10, uniquePerSheet: false };
+  const marcada = { id: "M", w: 1000, h: 900, qty: 3, uniquePerSheet: true };
+
+  it("requiresDedicatedSheet: verdade quando 2 cópias não cabem (alto OU grande quadrada)", () => {
+    expect(requiresDedicatedSheet({ w: 1956, h: 3560 }, W, H)).toBe(true);  // alto
+    expect(requiresDedicatedSheet({ w: 3560, h: 1956 }, W, H)).toBe(true);  // rotação irrelevante
+    expect(requiresDedicatedSheet({ w: 3000, h: 3000 }, W, H)).toBe(true);  // grande "quadrada": 2×3000 > 5980
+    expect(requiresDedicatedSheet({ w: 1200, h: 800 }, W, H)).toBe(false);  // 2 cabem lado a lado
+    expect(requiresDedicatedSheet({ w: 2900, h: 2900 }, W, H)).toBe(false); // 2×2900=5800 ≤ 5980 → 2 cabem
+  });
+
+  it("isDedicated = marcada OU jumbo (sem sobrecarregar o flag)", () => {
+    expect(isDedicated(jumbo, W, H)).toBe(true);   // jumbo, uniquePerSheet=false
+    expect(isDedicated(marcada, W, H)).toBe(true);  // marcada, não-jumbo
+    expect(isDedicated(normal, W, H)).toBe(false);
+    expect(jumbo.uniquePerSheet).toBe(false);       // NÃO mutou o flag do usuário
+  });
+
+  it("pickDedicatedForSheet: primeira dedicada com qty>0", () => {
+    expect(pickDedicatedForSheet([normal, jumbo, marcada], W, H)!.id).toBe("J");
+    expect(pickDedicatedForSheet([normal], W, H)).toBeNull();
+    expect(pickDedicatedForSheet([{ ...jumbo, qty: 0 }, marcada], W, H)!.id).toBe("M");
+  });
+
+  it("buildSheetInvDedicated: ≤1 dedicada (qty 1) primeiro + não-dedicadas integrais", () => {
+    const slice = buildSheetInvDedicated([normal, jumbo, marcada], W, H);
+    expect(slice[0].id).toBe("J");           // dedicada primeiro (prioridade)
+    expect(slice[0].qty).toBe(1);            // capada a 1
+    expect(slice.filter((p) => isDedicated(p, W, H)).length).toBe(1); // só 1 dedicada no total
+    expect(slice.some((p) => p.id === "M")).toBe(false);           // marcada não entra junto
+    expect(slice.find((p) => p.id === "N")!.qty).toBe(10);         // filler integral
+  });
+
+  it("dedicatedSheetInvKey: consistente e sem jumbo == chave só das não-dedicadas", () => {
+    const semJumbo = [normal];
+    expect(dedicatedSheetInvKey(semJumbo, W, H)).toBe(`${800}x${1200}:10`);
+    expect(dedicatedSheetInvKey([jumbo, normal], W, H)).toContain("1956x3560:1");
   });
 });

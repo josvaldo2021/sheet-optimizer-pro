@@ -1,7 +1,7 @@
 // CNC Cut Plan Engine — Main Optimizer V6
 
 import { TreeNode, Piece } from './types';
-import { createRoot, calcPlacedArea, physicalCount, physicalMeasureSet, validatePlacementCandidate } from './tree-utils';
+import { createRoot, calcPlacedArea, physicalCount, physicalMeasureSet, validatePlacementCandidate, largestFreeRect, cloneTree, consolidateColumns } from './tree-utils';
 import { normalizeTree } from './normalization';
 import { runPlacement } from './placement';
 import { postOptimizeRegroup } from './post-processing';
@@ -159,6 +159,7 @@ export function optimizeV6(
   let bestRemaining: Piece[] = [];
   let bestTransposed = false;
   let bestCompactness = Infinity;
+  let bestFreeArea = 0; // spec 011 — área do maior retângulo livre do melhor atual
   const seenVariants = new Set<string>();
   const seenSortedOrders = new Set<string>();
 
@@ -217,13 +218,53 @@ export function optimizeV6(
           continue;
         }
 
+        // Área domina (objetivo primário): um candidato com menos área nunca
+        // vence, então nem calculamos a consolidação dele (poda de custo).
+        if (result.area < bestArea) continue;
+
         const compactness = calcCompactness(result.tree);
-        if (result.area > bestArea || (result.area === bestArea && compactness < bestCompactness)) {
+
+        // Spec 011 — CONSOLIDAÇÃO da sobra (desempate SUBORDINADO à área): entre
+        // candidatos de mesma área, preferir o cujo MAIOR retângulo livre é MAIOR
+        // — a sobra fica num bloco único reutilizável em vez de fragmentada. A
+        // sobra vale por si (definição do usuário), independente de peça específica.
+        //
+        // CRÍTICO: mede-se na árvore COMO ELA SERÁ finalizada. `normalizeTree`
+        // reestrutura os cortes e muda o maior retângulo livre; e o resultado só é
+        // normalizado quando transposto (ou minBreak>0). Medir na árvore crua
+        // escolheria o candidato errado (medido: âncora ficava em 991k em vez do
+        // bloco consolidado). Ver research.md, "Validação empírica".
+        //
+        // ACHADO que trocou o critério ESCRITO (residual-fit): `runPlacement`
+        // DESCARTA a peça que não cabe (`remaining.shift()`), então
+        // `result.remaining` é sempre vazio e o residual-fit nunca dispararia; e no
+        // cenário-âncora todas as peças cabem (sem "próxima peça") ⇒ só a
+        // consolidação distingue os candidatos.
+        let measuredTree = result.tree;
+        if (transposed) {
+          const c = cloneTree(result.tree);
+          c.transposed = true;
+          measuredTree = normalizeTree(c, usableW, usableH, minBreak);
+        } else if (minBreak > 0) {
+          measuredTree = normalizeTree(cloneTree(result.tree), usableW, usableH, minBreak);
+        }
+        const freeRect = largestFreeRect(measuredTree, usableW, usableH);
+        const freeArea = freeRect ? freeRect.w * freeRect.h : 0;
+
+        const better =
+          result.area > bestArea ||
+          (result.area === bestArea && (
+            freeArea > bestFreeArea ||
+            (freeArea === bestFreeArea && compactness < bestCompactness)
+          ));
+
+        if (better) {
           bestArea = result.area;
           bestTree = result.tree;
           bestRemaining = result.remaining;
           bestTransposed = transposed;
           bestCompactness = compactness;
+          bestFreeArea = freeArea;
         }
       }
     }
@@ -244,6 +285,11 @@ export function optimizeV6(
   } else if (minBreak > 0) {
     finalTree = normalizeTree(finalTree, usableW, usableH, minBreak);
   }
+
+  // Spec 013 — "cortar até o final primeiro": consolida a sobra lateral de
+  // colunas com peças de mesma largura empilhadas. Não move peças; só junta os
+  // retalhos laterais num bloco reutilizável.
+  consolidateColumns(finalTree);
 
   return {
     tree: finalTree,

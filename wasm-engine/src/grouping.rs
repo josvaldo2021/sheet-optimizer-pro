@@ -17,12 +17,19 @@ pub fn group_pieces_by_same_width(pieces: &[Piece], max_h: f64) -> Vec<Piece> {
     }).collect();
 
     let mut width_groups: std::collections::HashMap<i64, Vec<(f64, f64, Option<String>)>> = std::collections::HashMap::new();
+    // Ordem de INSERÇÃO das chaves (espelha o Map do TS). Iterar o HashMap
+    // diretamente é NÃO-DETERMINÍSTICO (RandomState por chamada) ⇒ layout variava
+    // entre execuções. Ver src/lib/engine/grouping.ts (Map.forEach = inserção).
+    let mut width_groups_order: Vec<i64> = Vec::new();
     for (nw, nh, lbl) in &normalized {
-        width_groups.entry((*nw * 1000.0) as i64).or_default().push((*nw, *nh, lbl.clone()));
+        let k = (*nw * 1000.0) as i64;
+        if !width_groups.contains_key(&k) { width_groups_order.push(k); }
+        width_groups.entry(k).or_default().push((*nw, *nh, lbl.clone()));
     }
 
     let mut result = Vec::new();
-    for (_, group) in &width_groups {
+    for k in &width_groups_order {
+        let group = &width_groups[k];
         let w = group[0].0;
         let mut sorted: Vec<_> = group.clone();
         sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -64,12 +71,17 @@ pub fn group_pieces_by_same_height(pieces: &[Piece], max_w: f64) -> Vec<Piece> {
     }).collect();
 
     let mut height_groups: std::collections::HashMap<i64, Vec<(f64, f64, Option<String>)>> = std::collections::HashMap::new();
+    // Ordem de INSERÇÃO das chaves (determinismo; espelha o Map do TS).
+    let mut height_groups_order: Vec<i64> = Vec::new();
     for (nw, nh, lbl) in &normalized {
-        height_groups.entry((*nh * 1000.0) as i64).or_default().push((*nw, *nh, lbl.clone()));
+        let k = (*nh * 1000.0) as i64;
+        if !height_groups.contains_key(&k) { height_groups_order.push(k); }
+        height_groups.entry(k).or_default().push((*nw, *nh, lbl.clone()));
     }
 
     let mut result = Vec::new();
-    for (_, group) in &height_groups {
+    for k in &height_groups_order {
+        let group = &height_groups[k];
         let h = group[0].1;
         let mut sorted: Vec<_> = group.clone();
         sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
@@ -128,12 +140,17 @@ pub fn group_pieces_fill_row(pieces: &[Piece], usable_w: f64, raw: bool) -> Vec<
     }).collect();
 
     let mut height_groups: std::collections::HashMap<i64, Vec<(f64, f64, Option<String>)>> = std::collections::HashMap::new();
+    // Ordem de INSERÇÃO das chaves (determinismo; espelha o Map do TS).
+    let mut height_groups_order: Vec<i64> = Vec::new();
     for (nw, nh, lbl) in &normalized {
-        height_groups.entry((*nh * 1000.0) as i64).or_default().push((*nw, *nh, lbl.clone()));
+        let k = (*nh * 1000.0) as i64;
+        if !height_groups.contains_key(&k) { height_groups_order.push(k); }
+        height_groups.entry(k).or_default().push((*nw, *nh, lbl.clone()));
     }
 
     let mut result = pre_grouped;
-    for (_, group) in &height_groups {
+    for k in &height_groups_order {
+        let group = &height_groups[k];
         let h = group[0].1;
         let mut sorted: Vec<_> = group.clone();
         sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
@@ -180,12 +197,19 @@ pub fn group_pieces_fill_col(pieces: &[Piece], usable_h: f64, raw: bool) -> Vec<
     }).collect();
 
     let mut width_groups: std::collections::HashMap<i64, Vec<(f64, f64, Option<String>)>> = std::collections::HashMap::new();
+    // Ordem de INSERÇÃO das chaves (espelha o Map do TS). Iterar o HashMap
+    // diretamente é NÃO-DETERMINÍSTICO (RandomState por chamada) ⇒ layout variava
+    // entre execuções. Ver src/lib/engine/grouping.ts (Map.forEach = inserção).
+    let mut width_groups_order: Vec<i64> = Vec::new();
     for (nw, nh, lbl) in &normalized {
-        width_groups.entry((*nw * 1000.0) as i64).or_default().push((*nw, *nh, lbl.clone()));
+        let k = (*nw * 1000.0) as i64;
+        if !width_groups.contains_key(&k) { width_groups_order.push(k); }
+        width_groups.entry(k).or_default().push((*nw, *nh, lbl.clone()));
     }
 
     let mut result = Vec::new();
-    for (_, group) in &width_groups {
+    for k in &width_groups_order {
+        let group = &width_groups[k];
         let w = group[0].0;
         let mut sorted: Vec<_> = group.clone();
         sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -288,7 +312,9 @@ pub fn group_by_common_dimension(pieces: &[Piece], usable_w: f64, _usable_h: f64
         if (p.h - p.w).abs() > 0.5 { *dim_count.entry((p.h * 1000.0) as i64).or_default() += 1; }
     }
 
-    let (best_dim_key, best_count) = dim_count.iter().max_by_key(|(_, &v)| v).map(|(&k, &v)| (k, v)).unwrap_or((0, 0));
+    // Desempate por chave (o `max_by_key` só por contagem seria não-determinístico
+    // em empates — a ordem do HashMap decidiria). Determinístico.
+    let (best_dim_key, best_count) = dim_count.iter().max_by_key(|(&k, &v)| (v, k)).map(|(&k, &v)| (k, v)).unwrap_or((0, 0));
     let best_dim = best_dim_key as f64 / 1000.0;
     let min_count = (pieces.len() as f64 * threshold).floor().max(2.0) as usize;
     if best_count < min_count { return pieces.to_vec(); }
@@ -350,7 +376,9 @@ pub fn group_by_common_dimension_transposed(pieces: &[Piece], _usable_w: f64, us
         if (p.h - p.w).abs() > 0.5 { *dim_count.entry((p.h * 1000.0) as i64).or_default() += 1; }
     }
 
-    let (best_dim_key, best_count) = dim_count.iter().max_by_key(|(_, &v)| v).map(|(&k, &v)| (k, v)).unwrap_or((0, 0));
+    // Desempate por chave (o `max_by_key` só por contagem seria não-determinístico
+    // em empates — a ordem do HashMap decidiria). Determinístico.
+    let (best_dim_key, best_count) = dim_count.iter().max_by_key(|(&k, &v)| (v, k)).map(|(&k, &v)| (k, v)).unwrap_or((0, 0));
     let best_dim = best_dim_key as f64 / 1000.0;
     let min_count = (pieces.len() as f64 * threshold).floor().max(2.0) as usize;
     if best_count < min_count { return pieces.to_vec(); }
@@ -630,7 +658,9 @@ pub fn group_common_dimension_dp(pieces: &[Piece], usable_w: f64, _usable_h: f64
         if (p.h - p.w).abs() > 0.5 { *dim_count.entry((p.h * 1000.0) as i64).or_default() += 1; }
     }
 
-    let (best_dim_key, best_count) = dim_count.iter().max_by_key(|(_, &v)| v).map(|(&k, &v)| (k, v)).unwrap_or((0, 0));
+    // Desempate por chave (o `max_by_key` só por contagem seria não-determinístico
+    // em empates — a ordem do HashMap decidiria). Determinístico.
+    let (best_dim_key, best_count) = dim_count.iter().max_by_key(|(&k, &v)| (v, k)).map(|(&k, &v)| (k, v)).unwrap_or((0, 0));
     let best_dim = best_dim_key as f64 / 1000.0;
     let min_count = (pieces.len() as f64 * threshold).floor().max(2.0) as usize;
     if best_count < min_count { return pieces.to_vec(); }
@@ -701,15 +731,18 @@ pub fn group_identical_pieces_2d(pieces: &[Piece], usable_w: f64, usable_h: f64)
 
     let mut groups: std::collections::HashMap<(i64, i64), Vec<(f64, f64, Option<String>)>> =
         std::collections::HashMap::new();
+    // Ordem de INSERÇÃO das chaves (determinismo; espelha o Map do TS).
+    let mut groups_order: Vec<(i64, i64)> = Vec::new();
     for (nw, nh, ref lbl) in &normalized {
-        groups.entry(((*nw * 1000.0) as i64, (*nh * 1000.0) as i64))
-              .or_default()
-              .push((*nw, *nh, lbl.clone()));
+        let k = ((*nw * 1000.0) as i64, (*nh * 1000.0) as i64);
+        if !groups.contains_key(&k) { groups_order.push(k); }
+        groups.entry(k).or_default().push((*nw, *nh, lbl.clone()));
     }
 
     let mut result: Vec<Piece> = Vec::new();
 
-    for (_, group) in &groups {
+    for k in &groups_order {
+        let group = &groups[k];
         let pw = group[0].0;
         let ph = group[0].1;
         let mut remaining = group.clone();

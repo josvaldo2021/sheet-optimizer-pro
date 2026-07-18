@@ -15,6 +15,34 @@ contracts/residual-lookahead-contract.md, quickstart.md
 subordinação) são P1 e compartilham a implementação TS. A **paridade TS↔WASM**
 (Princípio VI) é fase própria e **obrigatória** — não mesclar sem ela.
 
+---
+
+## ⚠️ STATUS: IMPLEMENTADA (2026-07-18) com PIVÔ de critério
+
+O critério ESCRITO (residual-fit contra `result.remaining`) foi INVALIDADO na
+implementação e, por decisão do usuário, trocado por **CONSOLIDAÇÃO PURA**. Ver
+`research.md`, seção "PIVÔ na implementação". Resumo:
+- `result.remaining` é SEMPRE vazio (`runPlacement` descarta a peça que não cabe)
+  ⇒ residual-fit nunca dispararia; e na âncora não há "próxima peça" (tudo cabe).
+- Critério final: `area → maior largestFreeRect → compactness`. `largestFreeRect`
+  (TS+Rust) é o helper; `residualFits` foi REMOVIDO.
+- Mede na árvore normalizada "como será finalizada" (clone+normalize p/ transposto).
+- Âncora Chapa 2: 991k → **932×2473 = 2305k** (bloco único). Benchmark sem regressão.
+- Paridade: os dois consolidam (>1800k); valor exato diverge (TS 2305k/WASM 2481k)
+  por dívida pré-existente de normalize + estado process-local do WASM.
+- FASE 2 (fora do escopo): construtor row-first/shelf p/ o ideal 4946×666;
+  `largestFreeRect` geométrico p/ paridade exata.
+
+Mapeamento das tarefas ao que foi feito:
+- T001 ✅ (mapeado: Rust não tinha gap-walk; escrito do zero). T002/T003 ✅ (helper
+  `largestFreeRect`; `residualFits` implementado e depois REMOVIDO no pivô).
+- T004/T005 ✅ como CONSOLIDAÇÃO (S1 âncora consolida; seleção `area→freeArea→compact`).
+- T006/T007 ✅ (S2 subordinação à área; benchmark sem regressão).
+- T008 ✅ (determinismo S4). T009/T010/T011/T012 ✅ (espelho Rust + wasm rebuild +
+  parity; parity afirma "os dois consolidam", ver dívida acima).
+- T013 N/A (não houve melhora no benchmark ⇒ baseline não regravado).
+- T014 ✅ (tsc limpo). T015 pendente (validação no app pelo usuário). T016 ✅ (docs).
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: paralelizável (arquivos distintos, sem dependência pendente)

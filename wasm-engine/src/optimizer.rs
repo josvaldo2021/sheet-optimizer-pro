@@ -1,7 +1,7 @@
 use crate::types::{Arena, Piece, OptimizeV6Result, ROOT_ID};
 use crate::placement::run_placement;
 use crate::normalization::normalize_tree;
-use crate::tree_utils::{physical_count, physical_measure_set, validate_placement_candidate};
+use crate::tree_utils::{physical_count, physical_measure_set, validate_placement_candidate, largest_free_rect, consolidate_columns};
 use crate::grouping::{
     group_pieces_by_same_width, group_pieces_by_same_height,
     group_pieces_fill_row, group_pieces_fill_col,
@@ -157,6 +157,7 @@ pub fn optimize_v6_arena(
     let mut best_remaining: Vec<Piece> = pieces.to_vec();
     let mut best_transposed = false;
     let mut best_compactness = u32::MAX;
+    let mut best_free_area = 0.0f64; // spec 011 — consolidação da sobra do melhor atual
 
     // Spec 012 (T024) — validação no LIMITE candidato→plano (espelha optimizer.ts).
     // `pieces` é o inventário físico; toda variante o reagrupa, então a conservação
@@ -196,14 +197,43 @@ pub fn optimize_v6_arena(
                     continue;
                 }
 
+                // Spec 011 — área domina: candidato com menos área nunca vence;
+                // nem calculamos a consolidação dele (poda de custo).
+                if result.area < best_area {
+                    continue;
+                }
+
                 let compactness = calc_compactness(&result.arena);
-                if result.area > best_area
-                    || (result.area == best_area && compactness < best_compactness)
-                {
+
+                // Spec 011 — CONSOLIDAÇÃO da sobra (desempate SUBORDINADO à área):
+                // preferir o candidato cujo MAIOR retângulo livre é MAIOR (bloco
+                // único reutilizável). Mede-se na árvore COMO ELA SERÁ finalizada:
+                // `normalize_tree` reestrutura os cortes e muda o maior livre, e o
+                // resultado só é normalizado quando transposto (ou min_break>0).
+                // Espelha optimizer.ts. Ver research.md.
+                let measured = if transposed {
+                    let mut c = result.arena.clone();
+                    c.get_mut(ROOT_ID).transposed = true;
+                    normalize_tree(c, usable_w, usable_h, min_break)
+                } else if min_break > 0.0 {
+                    normalize_tree(result.arena.clone(), usable_w, usable_h, min_break)
+                } else {
+                    result.arena.clone()
+                };
+                let free_area = largest_free_rect(&measured, usable_w, usable_h)
+                    .map_or(0.0, |(w, h)| w * h);
+
+                let better = result.area > best_area
+                    || (result.area == best_area
+                        && (free_area > best_free_area
+                            || (free_area == best_free_area && compactness < best_compactness)));
+
+                if better {
                     best_area = result.area;
                     best_remaining = result.remaining;
                     best_transposed = transposed;
                     best_compactness = compactness;
+                    best_free_area = free_area;
                     best_arena = Some(result.arena);
                 }
             }
@@ -225,6 +255,9 @@ pub fn optimize_v6_arena(
     } else if min_break > 0.0 {
         final_arena = normalize_tree(final_arena, usable_w, usable_h, min_break);
     }
+
+    // Spec 013 — "cortar até o final primeiro": consolida a sobra lateral.
+    consolidate_columns(&mut final_arena);
 
     (final_arena, best_remaining)
 }

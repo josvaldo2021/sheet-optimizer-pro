@@ -118,6 +118,84 @@ export function exclusiveSheetInvKey(
     .join("|");
 }
 
+// ─── Spec 014 — Chapa dedicada AUTOMÁTICA (jumbo por geometria) ──────────────
+// Uma peça cujo MAIOR lado passa da altura útil só cabe deitada ao longo da
+// largura ⇒ duas nunca dividem chapa (lado a lado > largura; empilhadas > altura).
+// É um FATO geométrico, não preferência: por isso NÃO sobrecarrega
+// `uniquePerSheet` (escolha do usuário, specs 009/010). Mas o EFEITO é o mesmo
+// (≤1 por chapa, prioritária), então "dedicado" = marcado ∪ jumbo, e o plano
+// reusa a mesma mecânica de exclusividade/prioridade da spec 010.
+
+/**
+ * A peça EXIGE chapa dedicada por geometria? Verdade quando DUAS cópias não cabem
+ * na chapa em nenhum arranjo guilhotina (lado a lado ou empilhadas, cada uma em
+ * qualquer orientação) — ou seja, "só cabe 1 por chapa". Cobre tanto o jumbo alto
+ * (maior lado > altura) quanto a peça grande "quadrada" (ex.: 3000×3000, cujo
+ * maior lado não passa da altura mas 2 não cabem lado a lado).
+ */
+export function requiresDedicatedSheet(
+  p: { w: number; h: number }, usableW: number, usableH: number,
+): boolean {
+  const a = Math.min(p.w, p.h), b = Math.max(p.w, p.h);
+  const twoFit =
+    (2 * b <= usableW && a <= usableH) || // lado a lado, lado longo na largura
+    (2 * a <= usableW && b <= usableH) || // lado a lado, lado longo na altura
+    (b <= usableW && 2 * a <= usableH) || // empilhadas, lado longo na largura
+    (a <= usableW && 2 * b <= usableH);   // empilhadas, lado longo na altura
+  return !twoFit;
+}
+
+/** "Dedicada" = marcada pelo usuário (specs 009/010) OU jumbo por geometria. */
+export function isDedicated(
+  p: { w: number; h: number; uniquePerSheet?: boolean },
+  usableW: number, usableH: number,
+): boolean {
+  return isMarked(p) || requiresDedicatedSheet(p, usableW, usableH);
+}
+
+/**
+ * Primeira linha DEDICADA (marcada ou jumbo) com `qty > 0`, ou `null`. É a única
+ * dedicada ofertada à chapa (exclusividade). Generaliza `pickMarkedForSheet`.
+ */
+export function pickDedicatedForSheet<T extends { w: number; h: number; uniquePerSheet?: boolean; qty: number }>(
+  remaining: readonly T[],
+  usableW: number, usableH: number,
+): T | null {
+  for (const p of remaining) {
+    if (isDedicated(p, usableW, usableH) && p.qty > 0) return p;
+  }
+  return null;
+}
+
+/**
+ * Fatia EXCLUSIVA da chapa considerando jumbos automáticos: ≤1 peça dedicada no
+ * total (a de `pickDedicatedForSheet`), PRIMEIRO (prioridade), seguida das linhas
+ * não dedicadas com `qty` integral. Generaliza `buildSheetInvExclusive`.
+ */
+export function buildSheetInvDedicated<T extends { w: number; h: number; uniquePerSheet?: boolean; qty: number }>(
+  remaining: readonly T[],
+  usableW: number, usableH: number,
+): T[] {
+  const pick = pickDedicatedForSheet(remaining, usableW, usableH);
+  const out: T[] = [];
+  if (pick) out.push({ ...pick, qty: 1 });
+  for (const p of remaining) {
+    if (!isDedicated(p, usableW, usableH) && p.qty > 0) out.push({ ...p });
+  }
+  return out;
+}
+
+/** Chave de cache consistente com `buildSheetInvDedicated`. */
+export function dedicatedSheetInvKey(
+  remaining: readonly (MarkedInvItem & { qty: number })[],
+  usableW: number, usableH: number,
+): string {
+  return buildSheetInvDedicated(remaining, usableW, usableH)
+    .map((p) => `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}:${p.qty}`)
+    .sort()
+    .join("|");
+}
+
 /**
  * Conta, DERIVANDO DA ÁRVORE (Princípio IV), quantas peças de linhas marcadas
  * foram alocadas numa chapa. `markedLabels` é o conjunto de labels (rótulo do

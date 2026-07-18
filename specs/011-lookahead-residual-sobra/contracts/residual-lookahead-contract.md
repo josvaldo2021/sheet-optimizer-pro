@@ -1,5 +1,14 @@
 # Contract: lookahead residual na seleção do `optimizeV6`
 
+> ⚠️ **PIVÔ na implementação (2026-07-18)**: o critério deste contrato (residual-fit
+> — "a sobra que recebe a próxima peça de `result.remaining`") foi INVALIDADO e
+> substituído por **CONSOLIDAÇÃO PURA** (preferir o MAIOR `largestFreeRect`,
+> subordinado à área). Motivos: `result.remaining` é sempre vazio (o `runPlacement`
+> descarta a peça que não cabe) e no cenário-âncora não há "próxima peça". A função
+> `residualFits` deste contrato foi removida; `largestFreeRect` permanece e é a base
+> do desempate. Ver `research.md` ("PIVÔ na implementação") e `tasks.md` (banner de
+> status). O texto abaixo é o desenho original, mantido para histórico.
+
 Mudança no **motor** (TS de referência + espelho Rust). Adiciona um helper
 geométrico e um nível de desempate na seleção de layout. Deriva tudo da árvore
 (Princípio IV) e mantém paridade TS↔WASM (Princípio VI).

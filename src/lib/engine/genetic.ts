@@ -2,7 +2,7 @@
 
 import { TreeNode, Piece, OptimizationProgress } from './types';
 import { mulberry32, DEFAULT_GA_SEED } from './rng';
-import { createRoot, calcPlacedArea, insertNode, findNode } from './tree-utils';
+import { createRoot, calcPlacedArea, insertNode, findNode, consolidateColumns } from './tree-utils';
 import { normalizeTree } from './normalization';
 import { runPlacement } from './placement';
 import { postOptimizeRegroup } from './post-processing';
@@ -591,6 +591,7 @@ export async function optimizeGeneticAsync(
     }
 
     capPhantomLeaves(finalTree, labelDims);
+    consolidateColumns(finalTree); // spec 013 — cortar até o final primeiro
     return finalTree;
   }
 
@@ -689,6 +690,7 @@ export async function optimizeGeneticAsync(
   }
 
   capPhantomLeaves(finalTree, labelDims);
+  consolidateColumns(finalTree); // spec 013 — cortar até o final primeiro
   return finalTree;
 }
 

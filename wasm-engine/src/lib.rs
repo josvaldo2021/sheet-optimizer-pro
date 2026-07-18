@@ -48,7 +48,7 @@ pub fn wasm_optimize_genetic(
         }) as Box<dyn Fn(OptimizationProgress)>
     });
 
-    let arena = optimize_genetic(
+    let mut arena = optimize_genetic(
         &pieces,
         usable_w,
         usable_h,
@@ -57,6 +57,10 @@ pub fn wasm_optimize_genetic(
         generations,
         progress_fn.as_deref(),
     );
+
+    // Spec 013 — "cortar até o final primeiro": consolida a sobra lateral do plano
+    // final do GA (o caminho de produção). `optimize_v6` já consolida internamente.
+    tree_utils::consolidate_columns(&mut arena);
 
     let tree_json = arena.to_json_node(ROOT_ID);
     serde_json::to_string(&tree_json).unwrap_or_default()

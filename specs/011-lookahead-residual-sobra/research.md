@@ -103,3 +103,74 @@ legítima muda os números para melhor e deve ser fixada como novo piso.
 
 Nenhum `NEEDS CLARIFICATION` remanescente (a única questão aberta — desempate vs
 global — está registrada como assunção segura + item de clarify).
+
+## Validação empírica (2026-07-18) — o lever é a SELEÇÃO, o candidato já existe
+
+Investigação feita no motor real (WASM) sobre o cenário-âncora Chapa 2 (4× 2473×1262
++ 2× 2634×406 em 5980×3190), com a spec 012 já garantindo conservação. Confirma R1
+(o lever é a seleção, não a geração) com número:
+
+- **Passada NORMAL (coluna-primeiro)**: sobra em **5 retângulos**, maior 2473×666
+  (**37%** da sobra). O corte vertical em x=2473 (que separa as duas colunas de
+  peças) desce até o fim da chapa e **racha** a faixa inferior em dois 2473×666.
+- **Passada TRANSPOSTA (linha-primeiro, que o `optimizeV6` já gera e avalia)**:
+  sobra em **3 retângulos**, maior **932×2473** + faixa de largura cheia **5980×311**
+  (**52%** consolidado). Área total de sobra idêntica (4.454k) — muda só a FORMA.
+
+**Conclusão que fixa o desenho**: o candidato mais consolidado **já é gerado** a
+cada otimização (via transposição — `optimizer.ts` roda `for transposed of [false,
+true]`). O motor NÃO o escolhe porque desempata por `area → calcCompactness`
+(menos colunas/nós), **cego à qualidade da sobra** — e o `optimizeV6` chega a
+preferir um layout AINDA pior (7 retalhos, maior só 22%, medido). Portanto o
+critério de residual-fit (R1/R2) é o lever correto e **suficiente para este
+cenário**: ele viraria a escolha para o transposto consolidado sem tocar no
+placement.
+
+**Ressalva registrada (fora do escopo v1)**: nem o transposto entrega o "ideal"
+teórico de um ÚNICO bloco 4946×666 — para aquela forma exata precisaria de um
+**construtor row-first / shelf dedicado** que gere o candidato "grade no topo +
+faixa de largura cheia embaixo". Isso é **fase 2**, uma mudança de GERAÇÃO, e fica
+fora desta spec (que é só seleção). A seleção sozinha já entrega ganho material
+aqui (37%→52%, 5→3 sobras); o shelf builder espremeria o resto depois, se medirmos
+que vale.
+
+## PIVÔ na implementação (2026-07-18): residual-fit → CONSOLIDAÇÃO
+
+Durante a implementação, dois achados invalidaram o critério ESCRITO (residual-fit
+contra `result.remaining`) e levaram, com decisão do usuário, a trocá-lo por
+**consolidação pura**:
+
+1. **`result.remaining` é SEMPRE vazio.** O laço de `runPlacement` DESCARTA a peça
+   que não cabe (`remaining.shift()` no ramo `!bestFit`), não a devolve. Medido: 20
+   peças 1000×1000 numa chapa 2000×2000 ⇒ 4 colocadas, `remaining` = 0. Logo o
+   residual-fit (que consulta `result.remaining` para achar a "próxima peça")
+   NUNCA dispararia.
+2. **No cenário-âncora não há "próxima peça".** Todas as 6 peças cabem na Chapa 2,
+   então mesmo derivando as não-alocadas de input−árvore, o conjunto é vazio — o
+   residual-fit não distingue os candidatos. O que distingue a Chapa 2 boa da ruim
+   é a FORMA da sobra, não uma peça que caiba nela.
+
+**Decisão do usuário**: critério = **consolidação pura** — entre candidatos de
+mesma área, preferir o cujo MAIOR retângulo livre é MAIOR (bloco único
+reutilizável). Bate com "a sobra vale por si". Reusa o helper `largestFreeRect`.
+Medido: âncora passou de 991k (fragmentado, 5 retalhos) para **932×2473 = 2305k**
+(bloco único) no motor real.
+
+**Detalhe crítico de implementação**: a consolidação só se materializa APÓS
+`normalizeTree` (que mescla/reestrutura os cortes), e o resultado só é normalizado
+quando transposto (ou `minBreak>0`). Medir na árvore CRUA escolhe o candidato
+errado (âncora ficava em 991k). Então o critério normaliza um CLONE do candidato
+"como ele será finalizado" antes de medir `largestFreeRect`. Poda de custo: só
+calcula para candidatos com `area >= bestArea` (área domina).
+
+**Dívida de paridade EXPOSTA (não causada) pela spec**: como o critério agora
+depende da saída do normalize, ele revelou que TS e WASM divergem no valor exato
+(TS 2305k, WASM 2481k — os dois consolidam, WASM até melhor). Causas pré-existentes:
+(a) `normalizeTree`/`normalize_tree` reestruturam cortes de forma um pouco
+diferente; (b) o motor WASM tem estado process-local (resultado depende de chamadas
+anteriores: isolado 2305k, após outras chamadas 2481k). Ambas são dívidas
+anteriores. O `wasm-parity.test.ts` trava o invariante que importa (os dois
+consolidam num bloco grande, > 1800k), não a igualdade exata. FOLLOW-UP proposto: um
+`largestFreeRect` GEOMÉTRICO (maior retângulo vazio a partir das posições das peças,
+independente da estrutura de corte) daria paridade exata e dispensaria o normalize
+na medição — registrado como evolução futura.

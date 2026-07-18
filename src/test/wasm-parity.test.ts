@@ -15,7 +15,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { optimizeV6 as optimizeV6TS } from "@/lib/engine/optimizer";
-import { extractLeafPieces } from "@/lib/engine/tree-utils";
+import { extractLeafPieces, largestFreeRect } from "@/lib/engine/tree-utils";
 import type { Piece, TreeNode } from "@/lib/engine/types";
 
 interface WasmBindings {
@@ -165,4 +165,57 @@ describe("Paridade TS ↔ WASM (Princípio VI)", () => {
       }
     });
   }
+});
+
+// Spec 011 (S5) — o desempate por CONSOLIDAÇÃO deve valer nos DOIS motores: no
+// cenário-âncora "Chapa 2" a sobra vira um bloco único grande (~2305k+), não
+// fragmentos (~991k).
+//
+// NOTA de paridade: o valor EXATO pode divergir entre TS e WASM (medido: TS
+// 2305k, WASM 2481k — WASM consolida até melhor). A causa é PRÉ-EXISTENTE, não da
+// spec 011: (1) `normalize_tree` (Rust) e `normalizeTree` (TS) reestruturam os
+// cortes de forma um pouco diferente, e o critério mede na árvore normalizada;
+// (2) o motor WASM tem estado process-local que faz o resultado depender das
+// chamadas anteriores (isolado dá 2305k; após outras chamadas, 2481k). Ambos são
+// dívidas de paridade anteriores que este critério apenas EXPÔS. O invariante que
+// importa — e que travamos — é que os DOIS consolidam a sobra num bloco grande.
+describe("Paridade TS ↔ WASM — consolidação da sobra (spec 011)", () => {
+  const W = 5980, H = 3190;
+  const anchor: Piece[] = [...mk(2473, 1262, 4, "A"), ...mk(2634, 406, 2, "B")];
+
+  const freeAreaK = (tree: TreeNode) => {
+    const fr = largestFreeRect(tree, W, H);
+    return fr ? Math.round(fr.w * fr.h / 1000) : 0;
+  };
+
+  it("Chapa 2: TS e WASM consolidam a sobra num bloco grande (não fragmentam)", () => {
+    const ts = freeAreaK(optimizeV6TS(anchor, W, H, 0).tree);
+    const ws = freeAreaK(runWasm(anchor, W, H).tree);
+    // Ambos ≫ 991k (o fragmentado que a compactação sozinha escolhia).
+    expect(ts, `TS (${ts}k) deveria consolidar`).toBeGreaterThan(1800);
+    expect(ws, `WASM (${ws}k) deveria consolidar`).toBeGreaterThan(1800);
+  });
+
+  // Spec 013 — "cortar até o final primeiro": o padrão do usuário (peças de mesma
+  // largura empilhadas) tem de virar UM bloco 926×1233 nos DOIS motores.
+  const userPattern: Piece[] = [
+    { w: 3560, h: 1956, area: 3560 * 1956, label: "02508" },
+    { w: 2634, h: 413, area: 2634 * 413, label: "02525a" },
+    { w: 2634, h: 413, area: 2634 * 413, label: "02525b" },
+    { w: 2634, h: 407, area: 2634 * 407, label: "02525c" },
+  ];
+  const bigRect = (tree: TreeNode) => {
+    const fr = largestFreeRect(tree, 3560, 3189);
+    return fr ? `${Math.round(fr.w)}×${Math.round(fr.h)}` : "-";
+  };
+
+  it("padrão-usuário: TS e WASM consolidam a coluna no MESMO bloco 926×1233", () => {
+    const ts = optimizeV6TS(userPattern, 3560, 3189, 0);
+    const ws = JSON.parse(wasm.wasm_optimize_v6(JSON.stringify(userPattern), 3560, 3189, 0)) as { tree: TreeNode };
+    expect(bigRect(ts.tree), "TS").toBe("926×1233");
+    expect(bigRect(ws.tree), "WASM").toBe("926×1233");
+    // conservação nos dois
+    expect(extractLeafPieces(ts.tree).filter((l) => l.label).length).toBe(4);
+    expect(extractLeafPieces(ws.tree).filter((l) => l.label).length).toBe(4);
+  });
 });

@@ -42,7 +42,64 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Spec mais recente (IMPLEMENTADA; núcleo do motor commitado em 3453a9e, restante no working tree): `specs/012-qualidade-pecas-identificadas/`
+Spec 013 IMPLEMENTADA (working tree; implementada DIRETO do relato do usuário, sem
+pasta specs/ formal): "CORTAR ATÉ O FINAL PRIMEIRO" — consolidação da sobra LATERAL
+de colunas. Achado do usuário (2026-07-18, na árvore real do app/WASM): numa coluna
+Z, o placement abre uma faixa `W` da ALTURA EXATA de cada peça e deixa um retalho à
+direita de CADA faixa; quando peças de MESMA largura se empilham, esses retalhos são
+fatias do MESMO bloco. Isto é GERAÇÃO (a estrutura fragmentada é criada pelo
+placement), não seleção — por isso a spec 011 (que só escolhe entre layouts) NÃO
+resolvia o caso real (44 chapas inalteradas). Novo passo puro `consolidateColumns`
+(`tree-utils.ts` + espelho `consolidate_columns` em `tree_utils.rs`), genérico
+(`applyLevel`) rodando em DOIS níveis: `X→Y-linhas→Z` (caminho do GA / strip
+horizontal — o de PRODUÇÃO) e `Z→W-bandas→Q` (caminho por coluna do optimizeV6).
+Funde a corrida de bandas de mesma largura de sub-coluna numa só banda de altura
+somada, com a sub-coluna cheia e as peças empilhadas na sub-banda seguinte —
+isolando a sobra lateral como UM bloco. ATENÇÃO: a 1ª tentativa só cobria o nível
+`W→Q` e o usuário "não viu diferença" porque o GA fragmenta no nível `Y→Z`
+(`X→Y1956/Y413/Y413/Y407→Z`); generalizado depois disso. As peças NÃO se movem (mesma posição/medida) ⇒ conservação preservada
+(guardada pela rede da spec 012). Aplicado ao tree FINAL em: `optimizeV6` (antes do
+return), TS `genetic.ts` (2 returns), e no binding WASM `lib.rs` `wasm_optimize_genetic`
+(1 ponto, cobre os 4 returns do `genetic.rs`). Rebuild WASM. Padrão-âncora do
+usuário: coluna 3560 com 02508(3560×1956) + 3× 02525(2634×413/413/407) ⇒ sobra
+926×413 (retalho) VIRA 926×1233 (bloco). TS e WASM idênticos. Testes:
+`column-consolidation.test.ts` (9: estrutura, conservação, sobra 926×1233,
+idempotência, e os 3 casos que NÃO consolidam — larguras diferentes, run<2,
+peça de largura cheia) + parity no `wasm-parity.test.ts`. Benchmark sem regressão;
+produção 268 peças: 44 chapas mantidas, 268/268, 9s (consolida a sobra de CADA
+chapa; nº de chapas é outra frente — repetição/chapa dedicada). PENDENTE: validação
+no app pelo usuário; primeira iteração cobre só o padrão "W→Q-folha de mesma
+largura" — padrões mais profundos (Q com R, larguras escalonadas) ficam p/ depois.
+
+Spec IMPLEMENTADA (working tree, não commitada): `specs/011-lookahead-residual-sobra/`
+— CONSOLIDAÇÃO DA SOBRA na seleção do `optimizeV6`. Novo helper `largestFreeRect`
+(`tree-utils.ts` + espelho `tree_utils.rs`), que generaliza `getLastLeftover`
+coletando o MAIOR retângulo livre da chapa. Seleção passa de `area→compactness`
+para `area→FREE-AREA→compactness` (`optimizer.ts` + espelho `optimizer.rs` +
+rebuild wasm, Princípio VI): entre candidatos de MESMA área, prefere o cujo maior
+retângulo livre é MAIOR ⇒ sobra num bloco único reutilizável em vez de fragmentada.
+DESEMPATE estrito, subordinado à área. PIVÔ (decisão do usuário, ver `research.md`):
+o critério ESCRITO era "residual-fit" (sobra que recebe a próxima peça de
+`result.remaining`), mas DOIS achados o invalidaram — (1) `result.remaining` é
+SEMPRE vazio (o `runPlacement` DESCARTA a peça que não cabe via `remaining.shift()`,
+não a devolve); (2) no cenário-âncora todas as peças cabem, então não há "próxima
+peça" e só a FORMA da sobra distingue. Trocado por consolidação pura ("a sobra vale
+por si"). DETALHE CRÍTICO: a consolidação só aparece APÓS `normalizeTree`, e o
+resultado só é normalizado quando transposto — então o critério normaliza um CLONE
+do candidato "como será finalizado" antes de medir (poda: só p/ `area>=bestArea`).
+Medido: âncora Chapa 2 foi de 991k (fragmentado, 5 retalhos) para 932×2473 = 2305k
+(bloco único). Produção 268 peças: 44 chapas mantidas, 6.9s (sobras mais
+reutilizáveis; nº de chapas é dominado pelo GA evoluído + jumbo). DÍVIDA DE PARIDADE
+EXPOSTA (não causada): TS 2305k vs WASM 2481k (os dois consolidam) — `normalizeTree`
+TS/Rust divergem e o WASM tem estado process-local; `wasm-parity.test.ts` trava "os
+dois consolidam > 1800k", não igualdade exata. FOLLOW-UP: `largestFreeRect`
+GEOMÉTRICO (maior retângulo vazio das posições, independente do corte) daria
+paridade exata sem depender do normalize. Testes: `residual-lookahead.test.ts`
+(L1-L4 do helper, S1 âncora consolida, S2 subordinação, S4 determinismo) +
+consolidação no `wasm-parity.test.ts`. Benchmark sem regressão. RESSALVA: o ideal
+teórico (bloco único 4946×666) exigiria construtor row-first/shelf = FASE 2.
+
+Spec anterior (IMPLEMENTADA; núcleo do motor commitado em 3453a9e + conclusão em 328364b): `specs/012-qualidade-pecas-identificadas/`
 — CORRIGE VIOLAÇÃO dos Princípios III e IV. O guard `hasLabels` (`optimizer.ts`)
 reduzia as ~54 variantes de agrupamento para 2 quando QUALQUER peça tinha rótulo —
 e todo trabalho real vem rotulado do relatório de OF (uid por peça,

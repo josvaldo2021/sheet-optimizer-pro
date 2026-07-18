@@ -18,6 +18,7 @@ export {
   countAllocatedPieces,
   extractLeafPieces,
   previewRemoval,
+  consolidateColumns,
 } from './engine/tree-utils';
 export type { LeafPiece } from './engine/tree-utils';
 

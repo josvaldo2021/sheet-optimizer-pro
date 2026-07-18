@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub const ROOT_ID: u32 = 0;
 pub const NO_PARENT: u32 = u32::MAX;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeType {
     Root,
     X,
