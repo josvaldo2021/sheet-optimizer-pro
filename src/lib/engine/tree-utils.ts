@@ -1,6 +1,6 @@
 // CNC Cut Plan Engine — Tree Manipulation Utilities
 
-import { NodeType, TreeNode, PieceItem } from './types';
+import { NodeType, TreeNode, PieceItem, Piece } from './types';
 
 let _c = 0;
 export function gid(): string {
@@ -520,6 +520,95 @@ export function previewRemoval(tree: TreeNode, nodeId: string): LeafPiece[] {
     }
   }
   return removed;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Spec 012 (T011) — Validação de conservação no LIMITE candidato→plano.
+//
+// A classe de bug desta spec é o candidato corrompido VENCER o desempate por
+// parecer mais compacto (menos nós). A defesa é validar os invariantes ANTES de
+// aceitar um resultado como o melhor e DESCARTAR o inválido (nunca reparar — a
+// jusante a informação já se perdeu). Ver data-model.md, "Regras de validação".
+// Compartilhado entre optimizer e GA (ambos usam a mesma expansão).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Chave de medida normalizada (ordem-independente), arredondada ao inteiro. */
+function dimKey(w: number, h: number): string {
+  const a = Math.round(Math.min(w, h));
+  const b = Math.round(Math.max(w, h));
+  return `${a}x${b}`;
+}
+
+/** Nº de peças FÍSICAS que uma lista de Piece representa (grupo conta `count`). */
+export function physicalCount(pieces: Piece[]): number {
+  let n = 0;
+  for (const p of pieces) n += p.count ?? 1;
+  return n;
+}
+
+/**
+ * Conjunto de medidas físicas REAIS presentes no inventário `pieces`, para o
+ * teste de fidelidade (INV-2). Devolve `null` — que DESLIGA a checagem de
+ * fidelidade — quando algum grupo não é decodificável em medidas por peça
+ * (`groupedAxis === "2d"` ou sem `individualDims`), evitando falsas rejeições.
+ */
+export function physicalMeasureSet(pieces: Piece[]): Set<string> | null {
+  const set = new Set<string>();
+  for (const p of pieces) {
+    const n = p.count ?? 1;
+    if (n <= 1) {
+      set.add(dimKey(p.w, p.h));
+      continue;
+    }
+    // Grupo: as medidas reais vêm de individualDims × a medida transversal.
+    if (p.groupedAxis === "2d" || !p.individualDims || p.groupedAxis === undefined) {
+      return null; // não decodificável → não arriscar rejeição indevida
+    }
+    const transverse = p.groupedAxis === "w" ? p.h : p.w;
+    for (const d of p.individualDims) {
+      set.add(p.groupedAxis === "w" ? dimKey(d, transverse) : dimKey(transverse, d));
+    }
+  }
+  return set;
+}
+
+/**
+ * Valida INV-1 (conservação), INV-2 (fidelidade de medida) e INV-3
+ * (rastreabilidade) de um candidato. INV-4 (expansão total) é subsumido por
+ * INV-1 + INV-3. Devolve `true` se o candidato é ACEITÁVEL como plano.
+ *
+ * @param expectedPhysical nº de peças físicas oferecidas ao motor.
+ * @param validMeasures    medidas reais para o teste de fidelidade, ou `null`
+ *                         para pular INV-2 (ver `physicalMeasureSet`).
+ */
+export function validatePlacementCandidate(
+  tree: TreeNode,
+  remaining: Piece[],
+  expectedPhysical: number,
+  validMeasures: Set<string> | null,
+): boolean {
+  const leaves = extractLeafPieces(tree);
+
+  // INV-1 (Conservação): folhas alocadas + restantes == oferecidas. Nunca mais.
+  if (leaves.length + physicalCount(remaining) !== expectedPhysical) return false;
+
+  // INV-3 (Rastreabilidade): cada rótulo aparece no máximo uma vez.
+  const seen = new Set<string>();
+  for (const leaf of leaves) {
+    if (!leaf.label) continue;
+    if (seen.has(leaf.label)) return false;
+    seen.add(leaf.label);
+  }
+
+  // INV-2 (Fidelidade): nenhuma folha rotulada afirma medida inexistente.
+  if (validMeasures) {
+    for (const leaf of leaves) {
+      if (!leaf.label) continue;
+      if (!validMeasures.has(dimKey(leaf.w, leaf.h))) return false;
+    }
+  }
+
+  return true;
 }
 
 /** Recursively count labeled pieces in a subtree, accounting for multipliers */

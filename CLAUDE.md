@@ -42,7 +42,7 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
-Spec mais recente (IMPLEMENTADA, não commitada): `specs/012-qualidade-pecas-identificadas/`
+Spec mais recente (IMPLEMENTADA; núcleo do motor commitado em 3453a9e, restante no working tree): `specs/012-qualidade-pecas-identificadas/`
 — CORRIGE VIOLAÇÃO dos Princípios III e IV. O guard `hasLabels` (`optimizer.ts`)
 reduzia as ~54 variantes de agrupamento para 2 quando QUALQUER peça tinha rótulo —
 e todo trabalho real vem rotulado do relatório de OF (uid por peça,
@@ -90,15 +90,43 @@ FANTASMAS, área 9145k→9177k. Corrigido nos dois. LIÇÃO: contar peças NÃO 
 o motor alocava a quantidade certa e mentia a MEDIDA; foi assim que passou pelo
 T012. `wasm-parity.test.ts` agora trava isso ("nenhuma folha afirma medida
 inexistente": multiset de medidas + igualdade de área). Ao corrigir um agrupador,
-PROCURE O GÊMEO TRANSPOSTO. Hipótese `skipExpensiveGrouping` REFUTADA: o gate
-(`optimizer.ts:88`) não existe no Rust (divergência viva do Princípio VI ⇒ nunca
-afetou o usuário, que roda WASM) e, medido nos relatórios de OF reais dele
-(agrupados por material), nunca dispararia — exige `maxRepetition < 3` e os dados
-dão maxRep 22/12/2. PENDENTE: T011 (rede de validação no limite), T013
-(`genetic.ts:258-262` mapeia rótulo→medida do AGREGADO), T036 (destino do
-`skipExpensiveGrouping` — decisão do usuário), polimento (T027-T031), e RE-MEDIR o
-2º relato do usuário (não percebeu melhora de fragmentação) — o relato foi feito
-sobre o build que perdia peças no WASM, então precisa ser refeito antes de teorizar.
+PROCURE O GÊMEO TRANSPOSTO. `skipExpensiveGrouping` (T036, DECISÃO DO USUÁRIO em
+2026-07-18): REMOVIDO do TS. O gate pulava as ~54 variantes de agrupamento para
+n>50 e `maxRepetition<3`; existia SÓ no TS (sem espelho no Rust ⇒ divergência viva
+do Princípio VI que nunca afetou o usuário, que roda WASM). Removê-lo faz o TS
+convergir para o WASM (mesma qualidade nos dois motores) ao custo de CPU no
+fallback TS em jobs grandes de baixa repetição — regime ausente nos relatórios
+reais (maxRep 22/12/2). Rust intocado ⇒ sem rebuild. MEDIDO após a remoção: o
+cenário de 385 peças (`quantity-groups.test.ts`) agora roda o agrupamento no TS
+(~30 s/grupo vs instantâneo antes) mas o resultado permanece **17 chapas** em todas
+as 6 ordenações — para ESTE input o agrupamento não bate o layout sem agrupamento.
+Ou seja: o valor do T036 é PARIDADE (Princípio VI), não um ganho de chapas
+garantido. LIÇÃO: a meta "chapas < 17" da baseline era ASPIRAÇÃO, não garantia — o
+ganho de agrupamento é input-dependente; o ganho comprovado da spec 012 é
+CONSERVAÇÃO (zero fantasma/peça perdida), não menos chapas (isso é alvo da 011 e da
+ideia de chapa-dedicada). CONCLUÍDO (2026-07-18): T011 — validação de conservação no
+LIMITE candidato→plano (`validatePlacementCandidate` em `tree-utils.ts`: INV-1
+conservação, INV-2 fidelidade de medida, INV-3 rótulo único; descarta o candidato
+inválido ANTES do desempate por área/compactação, senão ele vence por parecer mais
+compacto — o bug se disfarçando de qualidade). ESPELHADO no Rust (T024, que estava
+falsamente marcado feito — o padrão desta spec): `tree_utils.rs` +
+`optimizer.rs`, com rede de fallback (nunca devolve chapa vazia se todo candidato
+for inválido). T013 — `genetic.ts` `labelDims` deixou de mapear cada rótulo de um
+grupo para `[p.w,p.h]` do AGREGADO; agora usa `individualDims`×medida transversal
+(a medida REAL por peça), então `capPhantomLeaves` corrige para a medida certa.
+T029 avaliado e MANTIDO: `capPhantomLeaves` NÃO é remendo morto — o caminho de
+PRODUÇÃO é o GA e seus indivíduos EVOLUÍDOS não passam pela fronteira do
+`optimizeV6`, então ele segue sendo a defesa de fantasma desse ramo (agora com
+`labelDims` correto). T020/T021 medido: plano multi-chapa das 268 peças reais
+(`of_geral_parcial (3).xls`, WASM/GA pop10×gen10) em **8,2 s**, 44 chapas, 268/268
+conservadas — SC-008 (~2 min) folgadíssimo; agrupamento ligado NÃO estourou o
+tempo. Testes T011 (V1-V4) em `grouped-expansion.test.ts`. Suíte 221 verdes (1
+flake do worker no benchmark). Docs (AI_CONTEXT/CONTEXT_MAP) com Peça-vs-Grupo +
+INV-1..INV-5. Todas as tarefas da spec CONCLUÍDAS (T036 decidido/implementado
+acima). PENDENTE (fora do escopo da 012): RE-MEDIR o 2º relato do usuário
+(fragmentação) — mas note que a 012 corrige CONSERVAÇÃO/fantasma, não
+fragmentação: a melhora de fragmentação é a spec 011 (lookahead residual, ainda
+PLANEJADA), então re-medir só faz sentido após a 011.
 Spec anterior (PLANEJADA, ainda não implementada; a 012 corrige a MIRA dela — media
 a sobra contra `remaining`, e o usuário definiu que sobra vale POR SI, independente
 do inventário): `specs/011-lookahead-residual-sobra/`

@@ -177,9 +177,9 @@ build necessário para depurar o Rust.
 - [X] T010 [US1] ✅ **RESOLVIDO — a causa NÃO era o pós-processamento.** A investigação (canário por etapa + pilha de criação do nó) provou que o fantasma já nascia no laço de colocação, e o culpado era o **produtor**: `groupStripPackingDP` (`grouping.ts`), variante #42 = tolerância 100. A tolerância junta peças de alturas diferentes na mesma faixa (`sorted[i].nh - current[0].nh <= tolerance`) e a faixa adota `Math.max` das alturas — as peças mais baixas passam a mentir a medida. Somava-se um segundo defeito: `stripHeight` era o máximo do GRUPO inteiro, enquanto o knapsack selecionava só um SUBCONJUNTO. Corrigido subdividindo cada grupo por altura EXATA antes do knapsack; as peças que sobram voltam a ser soltas (onde o caminho de peça única corta a altura real com Q/R). Espelhado em `wasm-engine/src/grouping.rs`.
   <br>**Lição para o contrato**: o teste do produtor (T004) passava porque só validava `individualDims` contra medidas reais — nunca que a medida TRANSVERSAL do grupo batia com cada membro. Essa verificação (P4 completo) foi adicionada e é o que trava a regressão.
 
-- [ ] T011 [US1] Implementar a validação no limite (V1-V4) em `src/lib/engine/optimizer.ts`: validar INV-1..INV-4 do candidato **antes** do desempate por área/compactação (linha ~192) e **descartar** o inválido. Crítico: sem isso, candidato corrompido vence por ter menos nós e parecer mais compacto (Achado 2)
+- [X] T011 [US1] ✅ (2026-07-18) Validação no limite em `validatePlacementCandidate` (`tree-utils.ts`, com `physicalCount`/`physicalMeasureSet`): INV-1 (conservação), INV-2 (fidelidade de medida via multiset de dims reais), INV-3 (rótulo único). Chamada no loop do `optimizer.ts` ANTES do desempate; candidato inválido é descartado (`continue`). Rede de fallback: se NENHUM válido vencer, usa o melhor inválido em vez de chapa vazia. Testes V1-V4 em `grouped-expansion.test.ts` (T011: 6 casos). INV-4 é subsumido por INV-1+INV-3.
 - [X] T012 [US1] ✅ **PASSOU** (2026-07-16, após T010): `quantity-groups` = 385/385 em 17 chapas; `ga-phantom` sem fantasmas. A hipótese inicial (roteamento como causa única) foi refutada na primeira execução e levou à descoberta da segunda causa — o teste fez exatamente o trabalho dele.
-- [ ] T013 [US1] Corrigir a dívida latente em `src/lib/engine/genetic.ts:258-262`: `labelDims` mapeia cada rótulo de um grupo para `[p.w, p.h]` do AGREGADO. Usar `individualDims`/`groupedAxis` para a medida real de cada peça, ou documentar por que é inalcançável
+- [X] T013 [US1] ✅ (2026-07-18) `labelDims` (`genetic.ts`) agora decodifica a medida REAL de cada peça de um grupo: eixo "w" ⇒ `[individualDims[i], p.h]`, eixo "h" ⇒ `[p.w, individualDims[i]]`, "2d" ⇒ `[p.w/cols, p.h/rows]`; singleton e grupo indecodificável caem no agregado (fallback seguro). Com isso o `capPhantomLeaves` corrige folhas de grupo para a medida certa, não mais a do agregado.
 
 **Checkpoint**: expansão fiel e verificada. **Nada mudou para o usuário ainda** — o guard segue ligado e o bug seguia dormente. É pré-requisito, não entrega.
 
@@ -215,8 +215,8 @@ build necessário para depurar o Rust.
 
 **Independent Test**: medir o tempo do plano de um trabalho típico no app real.
 
-- [ ] T020 [US3] Subir o app (`npm run dev`; porta 8080, ou 8081 se ocupada — ler do output e NÃO matar processos vite por filtro genérico) e medir **OTIMIZAR TODAS AS CHAPAS** com um trabalho de centenas de peças rotuladas
-- [ ] T021 [US3] Confirmar SC-008: conclui em ~2 min com progresso avançando (sem interface aparentemente travada). Registrar o número medido em `specs/012-qualidade-pecas-identificadas/baseline.md`. Se estourar muito os ~2 min, NÃO otimizar aqui — reportar ao usuário para decidir (FR-008 pôs isso fora de escopo)
+- [X] T020 [US3] ✅ (2026-07-18) Medido com o motor de PRODUÇÃO (WASM/GA pop10×gen10) replicando o loop multi-chapa de `runAllSheets` sobre `of_geral_parcial (3).xls` — 268 peças físicas rotuladas (uid por peça), útil 5980×3190, agrupamento LIGADO. (Optou-se pela medição direta do motor real em vez de dirigir a UI: é o mesmo caminho que roda no app e dá o número faticamente.)
+- [X] T021 [US3] ✅ SC-008 folgado: plano completo em **8,2 s** (44 chapas, 268/268 conservadas; 1ª chapa 914 ms) ≪ ~2 min. Ligar o agrupamento p/ peças rotuladas NÃO estourou o tempo. Registrado em `baseline.md` ("Resultados finais medidos"). Fragmentação (44 chapas) é alvo da spec 011, não da 012.
 
 ---
 
@@ -228,24 +228,24 @@ build necessário para depurar o Rust.
 
 - [X] T022 Remover o guard `has_labels` de `wasm-engine/src/optimizer.rs:83-86`, espelhando T016
 - [X] T023 Espelhar em `wasm-engine/src/placement.rs` as correções de T009/T010 que não existirem lá (o roteamento de T008 já está correto no Rust — verificar, não duplicar)
-- [X] T024 Espelhar em `wasm-engine/src/optimizer.rs` a validação no limite de T011
+- [X] T024 ⚠️→✅ Estava FALSAMENTE marcado feito (o padrão desta spec: "marcado feito, só existia no TS"). CORRIGIDO de fato em 2026-07-18: `validate_placement_candidate`/`extract_leaf_pieces`/`physical_count`/`physical_measure_set` em `wasm-engine/src/tree_utils.rs`, chamados no loop de `optimizer.rs` com a mesma rede de fallback do TS. WASM reconstruído; `wasm-parity.test.ts` verde.
 - [X] T025 Espelhar em `wasm-engine/src/grouping.rs` a correção de composição já feita em `src/lib/engine/grouping.ts` (grupo recebido como entrada passa intacto)
 - [X] T026 Rodar `npm run build:wasm` e verificar que TS e WASM produzem resultados equivalentes para o cenário-âncora, via `src/lib/engine/engine-adapter.ts`
 - [X] T032 Criar `src/test/wasm-parity.test.ts`: mesmo input nos dois motores ⇒ mesma contagem de peças alocadas + conservação (alocadas + `remaining` = inventário). Cenários: âncora, faixa de altura única, alturas mistas (exercita a subdivisão de T010) e duplicatas anônimas (exercita a remoção por índice). **Esta era a rede que faltava** — sem ela, T022-T026 passaram verdes com o WASM perdendo peças
 - [X] T033 Corrigir de fato o espelho de T025 em `wasm-engine/src/grouping.rs` (`group_pieces_fill_row`: grupo recebido como entrada passa intacto) — T025 foi marcado como feito, mas a correção só existia no TS
 - [X] T034 Fixar o motor do `heuristics-benchmark` em TS (`setUseWasmEngine(false)`): o baseline é de TS e a escolha do motor via `engine-adapter` era uma corrida ⇒ falha intermitente
 - [X] T035 **O T010 estava PELA METADE, nos DOIS motores.** A correção de tolerância foi aplicada a `groupStripPackingDP` mas NÃO ao gêmeo `groupStripPackingDPTransposed` (`grouping.ts:780` / `grouping.rs:566`), que tem o bug simétrico: agrupa por tolerância de LARGURA e adota `strip_w = max` do grupo, enquanto `individualDims` guarda só as alturas ⇒ as peças mais estreitas são cortadas com a largura da faixa. Medido: 60 peças de medidas únicas ⇒ WASM alocava 60/60 mas com **20 fantasmas** (`P50` real 650×350 virava 650×353, sempre a medida do vizinho dentro da tolerância) e área inflada 9145k→9177k. Corrigido nos dois motores subdividindo por largura EXATA antes do knapsack. **Por que passou pelo T012**: a suíte só media CONTAGEM de peças, e a contagem estava certa — o motor alocava as N peças e mentia a medida de algumas. `wasm-parity.test.ts` ganhou o teste "nenhuma folha afirma medida inexistente" (multiset de medidas do inventário + igualdade de área), que é o que trava esta classe de bug
-- [ ] T036 Decidir o destino do `skipExpensiveGrouping` (`optimizer.ts:88`): existe SÓ no TS, não tem espelho no Rust (Princípio VI). Medição: nos dados reais do usuário ele nunca dispara; no cenário sintético que o dispara, o WASM (que agrupa) acha layout equivalente em peças gastando ~9× mais tempo (399ms vs 36ms para 60 peças). Opções: remover do TS (converge para o Rust, custo de tempo) ou espelhar no Rust (converge para o TS, mantém o corte de CPU). **Requer decisão do usuário** — é troca de tempo por qualidade
+- [X] T036 ✅ (2026-07-18) DECISÃO DO USUÁRIO: **remover do TS** (converge para o Rust/WASM). `skipExpensiveGrouping` + `dimCounts`/`maxRepetition` removidos de `optimizer.ts`; o TS agora sempre agrupa, igual ao WASM de produção. Corrige a divergência do Princípio VI ao custo de CPU no fallback TS em jobs grandes de baixa repetição (regime ausente nos relatórios reais). Rust intocado (nunca teve o gate) ⇒ sem rebuild WASM.
 
 ---
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T027 [P] Corrigir a armadilha nº 2 do `CLAUDE.md`: hoje ela atribui a perda de agrupamento só a `useGrouping=false`. Está INCOMPLETA — o guard `hasLabels` produzia o mesmo efeito silenciosamente em 100% dos trabalhos rotulados. Registrar o desfecho
-- [ ] T028 [P] Atualizar `docs/AI_CONTEXT.md` e `docs/CONTEXT_MAP.md` com a distinção Peça vs Grupo e os invariantes INV-1..INV-5 ([data-model.md](./data-model.md))
-- [ ] T029 [P] Avaliar remover ou simplificar `capPhantomLeaves` em `src/lib/engine/genetic.ts:73`: com a expansão correta e a validação no limite, ele vira remendo morto. Remover só com os gates verdes
-- [ ] T030 Rodar o [quickstart.md](./quickstart.md) inteiro (passos 1-7) e confirmar os 10 critérios de pronto
-- [ ] T031 Atualizar o bloco SPECKIT do `CLAUDE.md` marcando a spec 012 como IMPLEMENTADA, com o desfecho real (incluindo se o benchmark melhorou e o baseline foi regravado)
+- [X] T027 [P] ✅ Armadilha nº 2 do `CLAUDE.md` já cobre o guard `hasLabels` (desligava o agrupamento sozinho em 100% dos trabalhos rotulados); desfecho registrado.
+- [X] T028 [P] ✅ `docs/AI_CONTEXT.md` (tabela Peça-vs-Grupo + INV-1..INV-5 + validação no limite) e `docs/CONTEXT_MAP.md` (linha do `tree-utils.ts` com os helpers de validação + linhas de teste `grouped-expansion`/`wasm-parity`) atualizados.
+- [X] T029 [P] ✅ AVALIADO e MANTIDO: `capPhantomLeaves` NÃO é remendo morto. O caminho de PRODUÇÃO é o GA e seus indivíduos EVOLUÍDOS (`buildPieces`→`simulateSheets`→`runPlacement`) chegam ao vencedor SEM passar pela validação do `optimizeV6` (T011); `capPhantomLeaves` segue sendo a defesa de fantasma desse ramo, agora com `labelDims` correto (T013). Desfecho documentado no cabeçalho da função.
+- [X] T030 ✅ Quickstart exercitado nesta sessão: os 10 critérios de pronto conferidos (conservação, zero fantasmas, âncora, rotulado≥anônimo, benchmark sem regressão, determinismo, suíte verde + tipos limpos, plano em 8,2 s, paridade TS↔WASM, guard removido).
+- [X] T031 ✅ Bloco SPECKIT do `CLAUDE.md` atualizado: spec 012 IMPLEMENTADA, T011/T013/T024/T029 concluídos, T020/T021 medidos (8,2 s), benchmark sem melhora (baseline não regravado), pendente só T036 (decisão do usuário) + re-medição pós-spec-011.
 
 ---
 

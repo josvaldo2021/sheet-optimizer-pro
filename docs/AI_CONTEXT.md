@@ -59,6 +59,39 @@ A `TreeNode` representa a estrutura hierárquica dos cortes e o posicionamento d
 *   **`Piece`:** Representa uma peça a ser cortada, com `w` (largura), `h` (altura), `area`. Pode incluir `count` (se for um agrupamento de peças idênticas), `label`, `labels` (para agrupamentos) e `groupedAxis`.
 *   **`PieceItem`:** Representa um item do inventário de peças, com `id`, `qty` (quantidade necessária), `w`, `h`, `label` e `priority` (se deve ser priorizada na otimização).
 
+#### ⚠️ Peça vs Grupo — a sobrecarga que gera a pior classe de bug (spec 012)
+
+`Piece` representa DOIS conceitos com a mesma estrutura, distinguidos por `count`:
+
+| Campo | Como **PEÇA** (`count` ausente/1) | Como **GRUPO** (`count > 1`) |
+|---|---|---|
+| `w`/`h` | medidas reais da peça | medidas do **AGREGADO** — de peça alguma |
+| `label` | id da peça | ausente |
+| `labels` | ausente | id de **cada** peça contida |
+| `individualDims` | ausente | medida de cada peça ao longo de `groupedAxis`; em `"2d"` é `[cols, rows]` (contagens, não medidas) |
+| `groupedAxis` | ausente | `"w"` \| `"h"` \| `"2d"` |
+
+**Regra de ouro:** todo código que lê `p.w`/`p.h` sem antes checar `count` está
+potencialmente errado para grupos. A medida real de um membro vem de
+`individualDims` × a medida transversal (`p.h` para eixo `"w"`, `p.w` para `"h"`).
+Ver `specs/012-qualidade-pecas-identificadas/data-model.md`.
+
+#### Invariantes de conservação (contrato do motor — spec 012)
+
+Sejam `I` as peças físicas oferecidas e `T` a árvore. `folhas(T)` conta `multi`:
+
+*   **INV-1 (Conservação):** `|folhas(T)| + |remaining| == |I|`. Nunca mais.
+*   **INV-2 (Fidelidade):** toda folha rotulada tem a medida REAL de uma peça de `I`, nunca a do agregado.
+*   **INV-3 (Rastreabilidade):** cada rótulo aparece no máximo uma vez em `T`.
+*   **INV-4 (Expansão total):** grupo de `count = n` expande em EXATAMENTE `n` folhas rotuladas.
+*   **INV-5 (Não-recomposição):** grupo nunca é entrada de outro agrupamento (expande um único nível).
+
+Validados no limite candidato→plano por `validatePlacementCandidate`
+(`tree-utils.ts`, espelhado em `wasm-engine/src/tree_utils.rs`): um candidato que
+viole os invariantes é DESCARTADO antes do desempate por área/compactação — senão
+o candidato corrompido vence por parecer mais compacto (o bug se disfarçando de
+qualidade). O GA aplica `capPhantomLeaves` como defesa equivalente no ramo evoluído.
+
 ## 5. Regras de Negócio e Restrições
 
 *   **Corte Guilhotina:** Todos os cortes são retos e vão de uma borda à outra da chapa ou sub-chapa. Não são permitidos cortes em L ou formatos complexos.

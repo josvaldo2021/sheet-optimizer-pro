@@ -1,7 +1,7 @@
 // CNC Cut Plan Engine — Main Optimizer V6
 
 import { TreeNode, Piece } from './types';
-import { createRoot, calcPlacedArea } from './tree-utils';
+import { createRoot, calcPlacedArea, physicalCount, physicalMeasureSet, validatePlacementCandidate } from './tree-utils';
 import { normalizeTree } from './normalization';
 import { runPlacement } from './placement';
 import { postOptimizeRegroup } from './post-processing';
@@ -75,18 +75,6 @@ export function optimizeV6(
 
   const rotatedPieces = pieces.map((p) => ({ w: p.h, h: p.w, area: p.area, count: p.count, label: p.label }));
 
-  // Performance gating: count repetitions among unique (w,h) pairs.
-  // Grouping variants are expensive AND only useful when many identical
-  // pieces exist. With mostly unique pieces (typical large jobs), they
-  // burn CPU without ever winning. Skip them for n>50 with low repetition.
-  const dimCounts = new Map<string, number>();
-  for (const p of pieces) {
-    const k = `${Math.min(p.w, p.h)}x${Math.max(p.w, p.h)}`;
-    dimCounts.set(k, (dimCounts.get(k) || 0) + 1);
-  }
-  const maxRepetition = Math.max(0, ...Array.from(dimCounts.values()));
-  const skipExpensiveGrouping = pieces.length > 50 && maxRepetition < 3;
-
   // Spec 012: peças rotuladas caíam num ramo SEM agrupamento (guard `hasLabels`),
   // perdendo as 50+ variantes abaixo. Como todo trabalho real vem rotulado do
   // relatório de OF, o motor nunca rodava com agrupamento em produção — violando
@@ -94,8 +82,16 @@ export function optimizeV6(
   // conservação na expansão de grupos rotulados, ambas corrigidas: o roteamento
   // do splitAxis (placement.ts) e a mistura de alturas por tolerância no
   // groupStripPackingDP (grouping.ts).
+  //
+  // Spec 012 (T036): o gate `skipExpensiveGrouping` (pulava as variantes de
+  // agrupamento para n>50 e maxRepetition<3) foi REMOVIDO. Ele existia SÓ aqui,
+  // sem espelho no Rust — divergência viva do Princípio VI. Como o app roda WASM
+  // (que sempre agrupa), o gate só afetava o fallback TS, e nos dados reais do
+  // usuário nunca disparava. Removê-lo faz o TS convergir para o WASM: mesma
+  // qualidade nos dois motores, ao custo de CPU no fallback TS em jobs grandes de
+  // baixa repetição (regime que não ocorre nos relatórios de OF reais).
   const pieceVariantBuilders: Array<() => Piece[]> =
-    useGrouping === false || skipExpensiveGrouping
+    useGrouping === false
       ? [() => pieces, () => rotatedPieces]
       : [
           // Bug adormecido corrigido (spec 007): estas entradas eram arrays já
@@ -166,6 +162,22 @@ export function optimizeV6(
   const seenVariants = new Set<string>();
   const seenSortedOrders = new Set<string>();
 
+  // Spec 012 (T011) — validação no LIMITE candidato→plano. `pieces` é o
+  // inventário físico oferecido; toda variante o reagrupa, então a conservação
+  // é medida contra este total constante. `validMeasures` guarda as medidas
+  // reais para barrar folhas fantasma (INV-2). Um candidato que viole os
+  // invariantes é DESCARTADO antes do desempate — não pode vencer por parecer
+  // mais compacto (o bug se disfarçando de qualidade, Achado 2).
+  const expectedPhysical = physicalCount(pieces);
+  const validMeasures = physicalMeasureSet(pieces);
+  // Rede de segurança: se NENHUM candidato válido aparecer (patológico — a
+  // variante trivial de peças soltas deveria sempre passar), preferimos colocar
+  // peças a devolver chapa vazia. Guarda o melhor inválido só para esse caso.
+  let fallbackTree: TreeNode | null = null;
+  let fallbackArea = 0;
+  let fallbackRemaining: Piece[] = [];
+  let fallbackTransposed = false;
+
   /** Fewer top-level columns = more compact waste = better layout */
   function calcCompactness(tree: TreeNode): number {
     const numCols = tree.filhos.length;
@@ -193,6 +205,18 @@ export function optimizeV6(
         seenSortedOrders.add(sortedKey);
 
         const result = runPlacement(sorted, eW, eH, minBreak);
+
+        // T011: descartar candidato que viole conservação/fidelidade/rótulo.
+        if (!validatePlacementCandidate(result.tree, result.remaining, expectedPhysical, validMeasures)) {
+          if (result.area > fallbackArea) {
+            fallbackArea = result.area;
+            fallbackTree = result.tree;
+            fallbackRemaining = result.remaining;
+            fallbackTransposed = transposed;
+          }
+          continue;
+        }
+
         const compactness = calcCompactness(result.tree);
         if (result.area > bestArea || (result.area === bestArea && compactness < bestCompactness)) {
           bestArea = result.area;
@@ -203,6 +227,14 @@ export function optimizeV6(
         }
       }
     }
+  }
+
+  // T011: só cai no fallback (candidato inválido) se NENHUM válido venceu —
+  // colocar peças com um plano imperfeito é melhor que devolver chapa vazia.
+  if (!bestTree && fallbackTree) {
+    bestTree = fallbackTree;
+    bestRemaining = fallbackRemaining;
+    bestTransposed = fallbackTransposed;
   }
 
   let finalTree = bestTree || createRoot(usableW, usableH);

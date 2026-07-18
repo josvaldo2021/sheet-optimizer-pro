@@ -13,7 +13,7 @@ Este diretório contém o núcleo lógico do projeto. É a parte mais complexa e
 | `genetic.ts` | Implementação do algoritmo genético (`optimizeGeneticAsync`). | Para modificar a evolução, função de fitness ou estratégias de agrupamento avançadas. |
 | `placement.ts` | Lógica de inserção de nós na árvore (`runPlacement`). | Para entender como uma peça é fisicamente alocada na chapa (cortes X, Y, Z). |
 | `grouping.ts` | Funções para agrupar peças antes do corte (ex: `groupPiecesByHeight`). | Para alterar ou adicionar novas lógicas de agrupamento de peças idênticas/compatíveis. |
-| `tree-utils.ts` | Utilitários para manipular a `TreeNode` (criar raiz, clonar, buscar nós, `extractLeafPieces`/`previewRemoval` para extração de peças-folha e preview de remoção). | Para operações genéricas na árvore de corte. |
+| `tree-utils.ts` | Utilitários para manipular a `TreeNode` (criar raiz, clonar, buscar nós, `extractLeafPieces`/`previewRemoval` para extração de peças-folha e preview de remoção). **Spec 012**: validação de conservação no limite — `validatePlacementCandidate` (INV-1..INV-3), `physicalCount`, `physicalMeasureSet`; espelhados em `wasm-engine/src/tree_utils.rs`. | Para operações genéricas na árvore de corte; ou para entender/estender a rede de conservação (peça vs grupo, folhas fantasma). |
 | `normalization.ts` | Funções para limpar e normalizar a árvore após os cortes. | Para entender como sobras (W, Q, R) são consolidadas. |
 | `rng.ts` | PRNG determinístico (`mulberry32`, `DEFAULT_GA_SEED`) — spec 007. Toda aleatoriedade do motor passa por aqui (nunca `Math.random`). | Para qualquer componente novo com aleatoriedade (Princípio V: reprodutibilidade). |
 | `post-processing.ts` | Lógica executada após a otimização principal (ex: `postOptimizeRegroup`). | Para ajustes finais no plano de corte. |
@@ -53,6 +53,8 @@ Suíte de testes Vitest para garantir a estabilidade do motor.
 | `heuristics-benchmark.test.ts` | Harness de benchmark (spec 007): 5 cenários vs baseline em `fixtures/benchmark-baseline.json`; falha em regressão de aproveitamento/chapas e em não-determinismo. Regravar baseline: `RECORD_BASELINE=1`. | Antes de qualquer mudança que possa afetar aproveitamento; contrato em `specs/007-comparar-heuristicas/contracts/benchmark-contract.md`. |
 | `ga-determinism.test.ts` | Garante GA reprodutível (PRNG semeado, spec 007): mesmo input 2× → planos idênticos. | Ao mexer em `genetic.ts`/`rng.ts` ou introduzir aleatoriedade. |
 | `layout-replication.test.ts` | Contrato do módulo de replicação/replanejamento (spec 008, C1–C7) + invariante de conservação SC-001 no save ×N. | Ao mexer em `lots/layout-replication.ts` ou no fluxo de salvar layout com repetições. |
+| `grouped-expansion.test.ts` | Invariantes INV-1..INV-4 da expansão de grupo rotulado (spec 012): contrato do PRODUTOR (P1-P5, cada membro casa com a medida do grupo) e do CONSUMIDOR (C1-C5, as 4 combinações eixo×rotação via `runPlacement`) + cenário-âncora. | Ao mexer em `grouping.ts`/`placement.ts` ou na expansão de qualquer grupo rotulado. |
+| `wasm-parity.test.ts` | Rede TS↔WASM (spec 012): mesmo input ⇒ mesma contagem alocada + conservação + "nenhuma folha afirma medida inexistente" (multiset de medidas + igualdade de área). Carrega o pkg `--target web` no Node. | **ESTENDER ao mexer no motor** — compilar o Rust não é verificação; só este teste prova paridade. |
 
 ## 5. Documentação e Configuração (Raiz)
 

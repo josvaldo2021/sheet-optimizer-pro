@@ -69,6 +69,16 @@ function applyGrouping(work: Piece[], mode: number, usableW: number, usableH: nu
  *
  * Segura: só age quando a dimensão renderizada > real e quando a outra dimensão
  * da folha casa com uma das dimensões reais da peça (rotação-agnóstico). Idempotente.
+ *
+ * Spec 012 (T029 — avaliado, MANTIDO): a hipótese era que, com a expansão correta
+ * (T008-T010) e a validação no limite (T011), esta passada viraria remendo morto.
+ * NÃO é o caso: o T011 valida/descarta apenas candidatos do `optimizeV6`, mas o
+ * caminho de PRODUÇÃO é o GA, e seus indivíduos EVOLUÍDOS (buildPieces →
+ * simulateSheets → runPlacement) chegam ao vencedor SEM passar por aquela fronteira.
+ * `capPhantomLeaves` continua sendo a defesa de fantasma desse ramo. Com o T013, o
+ * `labelDims` passa a guardar a medida REAL de cada peça de um grupo (antes era a do
+ * agregado), então quando ele age em folha rotulada de grupo, corrige para a medida
+ * certa — não mais para a do contêiner.
  */
 function capPhantomLeaves(tree: TreeNode, labelDims: Map<string, [number, number]>): void {
   const TOL = 1;
@@ -255,10 +265,41 @@ export async function optimizeGeneticAsync(
   // Mapa label→(w,h) real das peças de entrada, para corrigir folhas fantasma no
   // final (ver capPhantomLeaves). No fluxo do runAllSheets cada instância tem um
   // label uid único; agrupamentos internos preservam esses labels nas folhas.
+  //
+  // Spec 012 (T013): num GRUPO (`count > 1`), `p.w`/`p.h` são as medidas do
+  // AGREGADO — NÃO de peça alguma. Mapear cada rótulo do grupo para `[p.w,p.h]`
+  // ensinava o capPhantomLeaves a "corrigir" para a medida errada. A medida real
+  // de cada membro vem de `individualDims` × a medida transversal (ver
+  // data-model.md, "Piece — sobrecarregada"):
+  //   groupedAxis "w" → membro i = [individualDims[i], p.h]
+  //   groupedAxis "h" → membro i = [p.w, individualDims[i]]
+  //   groupedAxis "2d" → individualDims = [cols, rows]; membro = [p.w/cols, p.h/rows]
   const labelDims = new Map<string, [number, number]>();
   for (const p of pieces) {
     if (p.label) labelDims.set(p.label, [p.w, p.h]);
-    if (p.labels) p.labels.forEach((lb) => { if (lb) labelDims.set(lb, [p.w, p.h]); });
+    if (!p.labels) continue;
+
+    const n = p.count ?? 1;
+    if (n <= 1 || !p.groupedAxis || !p.individualDims) {
+      // singleton rotulado ou grupo não decodificável: cai no agregado (é o
+      // melhor disponível e casa quando a peça ocupa o contêiner inteiro).
+      p.labels.forEach((lb) => { if (lb) labelDims.set(lb, [p.w, p.h]); });
+      continue;
+    }
+
+    if (p.groupedAxis === "2d") {
+      const [cols, rows] = p.individualDims;
+      const pw = cols > 0 ? p.w / cols : p.w;
+      const ph = rows > 0 ? p.h / rows : p.h;
+      p.labels.forEach((lb) => { if (lb) labelDims.set(lb, [pw, ph]); });
+    } else {
+      const transverse = p.groupedAxis === "w" ? p.h : p.w;
+      p.labels.forEach((lb, i) => {
+        if (!lb) return;
+        const along = p.individualDims![i] ?? (p.groupedAxis === "w" ? p.w : p.h);
+        labelDims.set(lb, p.groupedAxis === "w" ? [along, transverse] : [transverse, along]);
+      });
+    }
   }
 
   const GROUPING_MODES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;

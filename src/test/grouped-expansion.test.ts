@@ -10,7 +10,12 @@
 import { describe, it, expect } from "vitest";
 import { runPlacement } from "@/lib/engine/placement";
 import { optimizeV6 } from "@/lib/engine/optimizer";
-import { extractLeafPieces } from "@/lib/engine/tree-utils";
+import {
+  extractLeafPieces,
+  validatePlacementCandidate,
+  physicalCount,
+  physicalMeasureSet,
+} from "@/lib/engine/tree-utils";
 import * as G from "@/lib/engine/grouping";
 import type { Piece, TreeNode } from "@/lib/engine/types";
 
@@ -306,4 +311,68 @@ describe("T007: regressão do fantasma 250×800 (research.md, Achado 4)", () => 
   function groupOf4Stacked(): Piece {
     return G.groupPiecesBySameWidth(mkPieces(250, 200, 4, "f"), 800).find((p) => (p.count ?? 1) === 4)!;
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T011 — Validação de conservação no LIMITE candidato→plano (V1-V4).
+// data-model.md, "Regras de validação". Um candidato inválido deve ser
+// DESCARTADO antes do desempate para não vencer por parecer mais compacto.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("T011: validatePlacementCandidate (V1-V4)", () => {
+  // Árvore mínima: 1 coluna X, 1 faixa Y, 1 folha Z rotulada.
+  // A folha renderiza (w = Z.valor, h = Y.valor).
+  const leafTree = (colW: number, rowH: number, zW: number, label: string): TreeNode => ({
+    id: "root", tipo: "ROOT", valor: 3000, multi: 1, filhos: [
+      { id: "x", tipo: "X", valor: colW, multi: 1, filhos: [
+        { id: "y", tipo: "Y", valor: rowH, multi: 1, filhos: [
+          { id: "z", tipo: "Z", valor: zW, multi: 1, filhos: [], label },
+        ] },
+      ] },
+    ],
+  });
+
+  const oneMeasure = (w: number, h: number): Set<string> =>
+    physicalMeasureSet([{ w, h, area: w * h, label: "p0" }])!;
+
+  it("V1: aceita candidato conservado e fiel", () => {
+    const tree = leafTree(400, 380, 400, "p0"); // renderiza 400×380
+    expect(validatePlacementCandidate(tree, [], 1, oneMeasure(400, 380))).toBe(true);
+  });
+
+  it("V2 (INV-2): rejeita folha fantasma (medida inexistente)", () => {
+    // Y=800 mas a peça é 400×380 ⇒ a folha afirma 400×800 (fantasma).
+    const tree = leafTree(400, 800, 400, "p0");
+    expect(validatePlacementCandidate(tree, [], 1, oneMeasure(400, 380))).toBe(false);
+  });
+
+  it("V1 (INV-1): rejeita quebra de conservação (folhas + remaining ≠ oferecidas)", () => {
+    const tree = leafTree(400, 380, 400, "p0"); // 1 folha
+    // Oferecidas = 3, remaining vazio ⇒ 1 ≠ 3.
+    expect(validatePlacementCandidate(tree, [], 3, oneMeasure(400, 380))).toBe(false);
+  });
+
+  it("V3 (INV-3): rejeita rótulo duplicado na árvore", () => {
+    const tree = leafTree(400, 380, 400, "p0");
+    // Segunda folha com o MESMO rótulo.
+    tree.filhos[0].filhos[0].filhos.push({ id: "z2", tipo: "Z", valor: 400, multi: 1, filhos: [], label: "p0" });
+    expect(validatePlacementCandidate(tree, [], 2, oneMeasure(400, 380))).toBe(false);
+  });
+
+  it("fidelidade desligada (null) quando o grupo não é decodificável", () => {
+    // Grupo 2d ⇒ physicalMeasureSet devolve null ⇒ INV-2 não é checado,
+    // mas a conservação (INV-1) continua valendo.
+    const twoD: Piece = { w: 800, h: 600, area: 480000, count: 4, labels: ["a", "b", "c", "d"], groupedAxis: "2d", individualDims: [2, 2] };
+    expect(physicalMeasureSet([twoD])).toBeNull();
+    const tree = leafTree(400, 380, 400, "a");
+    expect(validatePlacementCandidate(tree, [], 1, null)).toBe(true);
+  });
+
+  it("physicalCount conta grupos por `count`", () => {
+    const pieces: Piece[] = [
+      { w: 100, h: 100, area: 1e4, label: "s0" },
+      { w: 300, h: 100, area: 3e4, count: 3, labels: ["g0", "g1", "g2"], groupedAxis: "w", individualDims: [100, 100, 100] },
+    ];
+    expect(physicalCount(pieces)).toBe(4);
+  });
 });

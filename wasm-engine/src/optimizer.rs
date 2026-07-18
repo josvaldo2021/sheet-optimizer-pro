@@ -1,6 +1,7 @@
 use crate::types::{Arena, Piece, OptimizeV6Result, ROOT_ID};
 use crate::placement::run_placement;
 use crate::normalization::normalize_tree;
+use crate::tree_utils::{physical_count, physical_measure_set, validate_placement_candidate};
 use crate::grouping::{
     group_pieces_by_same_width, group_pieces_by_same_height,
     group_pieces_fill_row, group_pieces_fill_col,
@@ -157,6 +158,18 @@ pub fn optimize_v6_arena(
     let mut best_transposed = false;
     let mut best_compactness = u32::MAX;
 
+    // Spec 012 (T024) — validação no LIMITE candidato→plano (espelha optimizer.ts).
+    // `pieces` é o inventário físico; toda variante o reagrupa, então a conservação
+    // é medida contra este total constante. `valid_measures` barra folhas fantasma.
+    let expected_physical = physical_count(pieces);
+    let valid_measures = physical_measure_set(pieces);
+    // Rede: se NENHUM candidato válido aparecer (patológico), preferimos colocar
+    // peças a devolver chapa vazia. Guarda o melhor inválido só para esse caso.
+    let mut fallback_arena: Option<Arena> = None;
+    let mut fallback_area = 0.0f64;
+    let mut fallback_remaining: Vec<Piece> = pieces.to_vec();
+    let mut fallback_transposed = false;
+
     for &transposed in &[false, true] {
         let ew = if transposed { usable_h } else { usable_w };
         let eh = if transposed { usable_w } else { usable_h };
@@ -166,6 +179,23 @@ pub fn optimize_v6_arena(
                 let mut sorted = variant.clone();
                 sort_by_strategy(&mut sorted, si);
                 let result = run_placement(&sorted, ew, eh, min_break, None);
+
+                // T024: descartar candidato que viole conservação/fidelidade/rótulo.
+                if !validate_placement_candidate(
+                    &result.arena,
+                    &result.remaining,
+                    expected_physical,
+                    &valid_measures,
+                ) {
+                    if result.area > fallback_area {
+                        fallback_area = result.area;
+                        fallback_remaining = result.remaining;
+                        fallback_transposed = transposed;
+                        fallback_arena = Some(result.arena);
+                    }
+                    continue;
+                }
+
                 let compactness = calc_compactness(&result.arena);
                 if result.area > best_area
                     || (result.area == best_area && compactness < best_compactness)
@@ -178,6 +208,13 @@ pub fn optimize_v6_arena(
                 }
             }
         }
+    }
+
+    // T024: só cai no fallback (candidato inválido) se NENHUM válido venceu.
+    if best_arena.is_none() && fallback_arena.is_some() {
+        best_arena = fallback_arena;
+        best_remaining = fallback_remaining;
+        best_transposed = fallback_transposed;
     }
 
     let mut final_arena = best_arena.unwrap_or_else(|| Arena::new_root(usable_w));

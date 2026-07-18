@@ -53,3 +53,44 @@ Medido durante a investigação (research.md). É o que a US1 precisa eliminar:
 | T018 (US2) | Benchmark sem regressão; se melhorar ⇒ regravar baseline |
 | T021 (US3) | Plano típico em ~2 min com progresso |
 | **Chapas (385 peças)** | **< 17** ⇒ ganho material comprovado |
+
+> ⚠️ **Resultado real (2026-07-18)**: o gate "< 17" NÃO se confirmou para este
+> fixture. Com o agrupamento efetivamente rodando no TS (após remover o
+> `skipExpensiveGrouping`, T036: ~30 s/grupo vs instantâneo), as 6 ordenações
+> permanecem em **17 chapas**. Para ESTE input o agrupamento não bate o layout sem
+> agrupamento — a meta "< 17" era aspiração, não garantia. O ganho comprovado da
+> spec 012 é CONSERVAÇÃO (zero fantasma/peça perdida), verificado; a redução de
+> chapas é input-dependente e é o alvo da spec 011 (lookahead residual).
+
+## Resultados finais medidos (2026-07-18, após T008-T013/T022-T035 + T011/T024)
+
+**Estado do código**: guard `hasLabels`/`has_labels` REMOVIDO nos dois motores;
+validação no limite (T011/T024) ativa; WASM reconstruído.
+
+| Gate | Resultado |
+|---|---|
+| T012 — `ga-phantom` + `quantity-groups` | ✅ VERDES (conservação + sem fantasma) |
+| T017 — suíte completa | ✅ 221 passaram, 2 pulados; 1 "falha" = flake do vitest-worker (`Timeout onTaskUpdate` no benchmark, que passa isolado). Duração **363 s** (~9× vs 61 s, dentro do esperado por FR-008) |
+| T018 — benchmark | ✅ sem regressão, determinístico (baseline não regravado — sem melhora a registrar). Reexecutado após remover o `skipExpensiveGrouping` (T036): 7/7 ainda verdes, sem regressão |
+| T019 — `ga-determinism` | ✅ verde |
+| T032/T035 — `wasm-parity` | ✅ verde (contagem + conservação + fidelidade de medida) |
+
+### T020/T021 — tempo no app (SC-008), relatório de OF real
+
+Medido com o **motor de produção (WASM/GA, pop 10 × gen 10)** replicando o loop
+multi-chapa de `runAllSheets` sobre `of_geral_parcial (3).xls` — **268 peças
+físicas** rotuladas (uid por peça), chapa 6000×3210 (útil 5980×3190), agrupamento
+LIGADO.
+
+| Métrica | Valor |
+|---|---|
+| Peças físicas | 268 |
+| Chapas geradas | 44 (coerente com ~42 do trabalho real conhecido; ótimo estimado ~30) |
+| Conservação | 268/268 alocadas, 0 restantes |
+| **Tempo total do plano** | **8,2 s** |
+| 1ª chapa (mais cara) | 914 ms |
+
+**Conclusão SC-008**: 8,2 s ≪ ~2 min. Ligar o agrupamento para peças rotuladas
+NÃO estourou o tempo. A fragmentação (44 chapas) é o alvo da **spec 011**
+(lookahead residual, ainda PLANEJADA) — a 012 corrige conservação/fantasma, não
+fragmentação, então o "2º relato" do usuário deve ser re-medido após a 011.
