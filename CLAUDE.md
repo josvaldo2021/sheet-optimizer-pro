@@ -42,6 +42,53 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
+Spec 015 IMPLEMENTADA VIA PIVÔ (working tree, não commitado): `specs/015-corte-faixa-lateral-primeiro/`
+— o T001 (investigação) DERRUBOU a premissa da spec: `optimizeV6` E `runPlacement` JÁ
+cortam a faixa lateral vertical-primeiro na região ISOLADA. Quem enterrava era só o
+GULOSO `runPlacement` montando a coluna do jumbo com bandas (`Y→Z→W→Q`), deixando a
+faixa lateral E a região ABAIXO vazias. ⇒ CONSERTO foi 100% na CAMADA DE PLANO
+(`Index.tsx`), SEM tocar o motor nem espelho Rust (tasks T006-T010 SUPERSEDED). Pacote
+(âncora 34→**31 chapas**): (1) guloso MAIOR-PRIMEIRO por chapa (`engine:"greedy"` no
+`runAllSheets`); (2) MELHOR-DOS-DOIS-MUNDOS (GA + guloso; seleção fica com menos chapas);
+(3) TODA chapa de jumbo (qualquer candidato) via `buildJumboSheet` com preenchimento
+MAIOR-PRIMEIRO (runPlacement área-desc, não optimizeV6 — senão perde prioridade e sobe
+p/ 34); (4) `buildJumboSheet` região ABAIXO: NORMALIZA o sub-fill (raso) + enxerta o que
+couber (não tudo-ou-nada) — antes descartava e deixava a sobra vazia; (5) NOVO
+`collapseRedundantCuts` (tree-utils) remove coordenada de corte redundante (Q que repete
+a largura do Z), aplicado no plano após consolidateColumns; (6) FIX `calcPlacedArea`:
+passou a contar folhas `Y` (o colapso cria Y-folha; sem isso o % do jumbo sumia).
+Testes: `collapse-redundant-cuts.test.ts` (4). PENDENTE: AGRUPAMENTO EM X (juntar peças
+de mesma altura numa faixa comum + sobra única no topo, em vez de N colunas
+fragmentadas — o guloso não agrupa; é consolidação em X, irmã da spec 013). Ver
+`coordenadas.md` (peças 02519 393×2500). PRÓXIMO após commit do 31.
+— (spec original mirava ORDEM DE CORTE no MOTOR; virou conserto de PLANO.)
+Destrava a sobra lateral das colunas: hoje o placement corta as peças empilhadas
+horizontal-primeiro e ENTERRA a faixa lateral livre (ex.: 926) fragmentada em faixas
+de 413; a consolidação (spec 013) junta num bloco 926×1233 VISUAL mas ele fica no nível
+5/6 da guilhotina ⇒ 28-40 peças cabem mas NADA preenche (pós-fill impossível: sem
+profundidade; PROVADO — leftover-fill recursivo deu colocou=0). Conserto: isolar a
+faixa com corte VERTICAL de altura cheia ANTES dos cortes horizontais ⇒ nasce em nó
+RASO e a PRÓPRIA otimização preenche. Camada MOTOR (`placement.ts`/`optimizer.ts`) +
+espelho Rust/WASM (Princípio VI) + rebuild wasm; conservação (spec 012), determinismo,
+guilhotina pura. Guarda: heuristics-benchmark sem regressão; MEDIR no âncora
+`of_geral_parcial (3).xls` (benchmark/unit NÃO pegam nº de chapas — só o app decide).
+PRÓXIMO: `/speckit-plan`.
+
+Spec 014 fase 2 (distribuição global de fillers) — TENTADA E REVERTIDA (2026-07-19).
+`specs/014-distribuicao-global-fillers/` (spec/plan/tasks/contract preservados como
+histórico; NÃO commitado). Ideia: pré-atribuir fillers às chapas de jumbo (módulo puro
+`filler-distribution.ts` + restrição do `inv` por chapa no `runAllSheets`) para fechar
+o gap 34→30. MEDIDO NO APP (âncora `of_geral_parcial (3).xls`): worst-fit (espalhar) =
+33 chapas + mais repetição PORÉM layouts parciais; best-fit e padrão-denso-repetido =
+38 (PIOR — baskets divergentes matam a replicação de layout). LIÇÃO: a repetição/
+uniformidade é o fator dominante (o usuário: "maior peça + máxima repetição"), e a
+atribuição por ÁREA empaca em ~33; chegar a 30/86% com chapas BEM preenchidas exige
+empacotamento GEOMÉTRICO (forma exata da sobra), não reordenar fillers por área. O
+usuário optou por REVERTER ao baseline (34 chapas, layouts limpos) em vez de 33 com
+preenchimento parcial. `Index.tsx` restaurado bit-a-bit ao commitado; módulo/teste
+removidos. Fase 1 (jumbo/chapa dedicada + `buildJumboSheet`, commit 95cfbff) INTACTA.
+Se revisitar: é problema de packing geométrico + repetição, medir passo a passo no app.
+
 Spec 013 IMPLEMENTADA (working tree; implementada DIRETO do relato do usuário, sem
 pasta specs/ formal): "CORTAR ATÉ O FINAL PRIMEIRO" — consolidação da sobra LATERAL
 de colunas. Achado do usuário (2026-07-18, na árvore real do app/WASM): numa coluna

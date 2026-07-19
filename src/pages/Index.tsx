@@ -19,6 +19,7 @@ import {
   getLastLeftover,
   extractLeafPieces,
   consolidateColumns,
+  collapseRedundantCuts,
   optimizeGeneticV1,
   optimizeGeneticAsync,
   optimizeV6,
@@ -477,7 +478,11 @@ const Index = () => {
     setIsOptimizing(true);
     setStatus({ msg: "Processando todas as chapas...", type: "warn" });
 
-    const runAllSheets = async (sortFn?: (a: PieceItem, b: PieceItem) => number, label?: string) => {
+    const runAllSheets = async (
+      sortFn?: (a: PieceItem, b: PieceItem) => number,
+      label?: string,
+      engine: "ga" | "greedy" = "ga",
+    ) => {
       const chapaList: Array<{ tree: TreeNode; usedArea: number; manual?: boolean; deductions?: Array<{ id: string; qty: number }> }> = [];
       const hasPriority = sourcePieces.some((p) => p.priority);
       const remaining = (hasPriority ? sourcePieces.filter((p) => p.priority) : sourcePieces).map((p) => ({ ...p }));
@@ -545,23 +550,51 @@ const Index = () => {
         if (cached) {
           result = cloneTree(cached);
         } else {
-          result = await optimizeGeneticAsync(
-            inv,
-            usableW,
-            usableH,
-            minBreak,
-            (p) => {
-              setProgress({
-                phase: `Chapa ${sheetCount} - ${p.phase}`,
-                current: p.current,
-                total: p.total,
-                bestUtil: p.bestUtil,
-              });
-            },
-            priorityLabels.length > 0 ? priorityLabels : undefined,
-            gaPopSize,
-            gaGens,
-          );
+          // Spec 015: TODA chapa de JUMBO (qualquer candidato — guloso OU GA) é montada
+          // via `buildJumboSheet` MAIOR-PRIMEIRO. O placement direto (guloso via bandas,
+          // ou GA) deixa a região ABAIXO/LATERAL do jumbo VAZIA e enterra a sobra em nível
+          // fundo. `buildJumboSheet` decompõe a sobra (faixa lateral + região abaixo) e a
+          // preenche com as MAIORES peças primeiro (via runPlacement área-desc, não
+          // optimizeV6 — senão perde a prioridade das grandes e o nº de chapas sobe). Só
+          // age em chapa de jumbo; demais chapas seguem o motor do candidato.
+          const greedyOptimize = (pcs: typeof inv, w: number, h: number, mb: number) =>
+            runPlacement([...pcs].sort((a, b) => b.area - a.area), w, h, mb);
+          const jumboP = markedUid ? inv.find((p) => p.label === markedUid) : undefined;
+          const jr = jumboP && requiresDedicatedSheet(jumboP, usableW, usableH)
+            ? buildJumboSheet(jumboP, usableW, usableH, inv.filter((p) => p.label !== markedUid), minBreak, greedyOptimize)
+            : null;
+          if (jr) {
+            setProgress({ phase: `Chapa ${sheetCount} - jumbo (maior-primeiro)`, current: sheetCount, total: sheetCount + 1 });
+            result = jr.tree;
+          } else if (engine === "greedy") {
+            // Candidato MAIOR-PRIMEIRO (guloso): `inv` por área DESC ⇒ a maior peça
+            // ancora a chapa. Rápido/determinístico; a seleção final fica com o de menos
+            // chapas entre este e o GA.
+            setProgress({ phase: `Chapa ${sheetCount} - maior-primeiro`, current: sheetCount, total: sheetCount + 1 });
+            const invBigFirst = markedUid
+              ? [inv[0], ...inv.slice(1).sort((a, b) => b.area - a.area)]
+              : [...inv].sort((a, b) => b.area - a.area);
+            result = runPlacement(invBigFirst, usableW, usableH, minBreak).tree;
+          } else {
+            result = await optimizeGeneticAsync(
+              inv,
+              usableW,
+              usableH,
+              minBreak,
+              (p) => {
+                setProgress({
+                  phase: `Chapa ${sheetCount} - ${p.phase}`,
+                  current: p.current,
+                  total: p.total,
+                  bestUtil: p.bestUtil,
+                });
+              },
+              priorityLabels.length > 0 ? priorityLabels : undefined,
+              gaPopSize,
+              gaGens,
+            );
+          }
+          consolidateColumns(result);
           layoutCache.set(invKey, cloneTree(result));
         }
 
@@ -623,6 +656,9 @@ const Index = () => {
             }
           }
         }
+
+        consolidateColumns(result); // consolidação final da sobra (spec 013)
+        collapseRedundantCuts(result, usableW, usableH); // remove coordenadas de corte redundantes
 
         const usedArea = calcPlacedArea(result);
 
@@ -737,18 +773,38 @@ const Index = () => {
       }
 
     const candidateGroups: Array<{ label: string; chapas: Array<{ tree: TreeNode; usedArea: number; manual?: boolean }> }> = [];
-    setGlobalProgress({ current: 0, total: sortVariants.length });
+    // "Melhor dos dois mundos": as variantes do GA (qualidade) + UM candidato guloso
+    // MAIOR-PRIMEIRO (rápido, às vezes vence). A seleção abaixo fica com o plano de
+    // menos chapas — então cada trabalho usa o motor que for melhor PARA ELE.
+    const totalVariants = sortVariants.length + 1;
+    setGlobalProgress({ current: 0, total: totalVariants });
     for (let vi = 0; vi < sortVariants.length; vi++) {
       const [sortFn, label] = sortVariants[vi];
       setProgress({
-        phase: `Testando variante ${vi + 1}/${sortVariants.length}: ${label}...`,
+        phase: `Testando variante ${vi + 1}/${totalVariants}: ${label}...`,
         current: vi,
-        total: sortVariants.length,
+        total: totalVariants,
       });
       const result = await runAllSheets(sortFn ?? undefined, label);
       if (result && result.length > 0) candidateGroups.push({ label, chapas: result });
-      setGlobalProgress({ current: vi + 1, total: sortVariants.length });
+      setGlobalProgress({ current: vi + 1, total: totalVariants });
     }
+    // Candidato guloso maior-primeiro (área desc no `remaining`; o motor re-ordena o
+    // inv por área a cada chapa). Determinístico e barato.
+    setProgress({
+      phase: `Testando variante ${totalVariants}/${totalVariants}: maior-primeiro (guloso)...`,
+      current: sortVariants.length,
+      total: totalVariants,
+    });
+    {
+      const greedy = await runAllSheets(
+        (a, b) => (b.w * b.h) - (a.w * a.h),
+        "maior-primeiro (guloso)",
+        "greedy",
+      );
+      if (greedy && greedy.length > 0) candidateGroups.push({ label: "maior-primeiro (guloso)", chapas: greedy });
+    }
+    setGlobalProgress({ current: totalVariants, total: totalVariants });
 
     const sheetArea = usableW * usableH;
     const treeFingerprint = (node: TreeNode): string =>

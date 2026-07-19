@@ -161,6 +161,12 @@ export function calcPlacedArea(tree: TreeNode): number {
     for (let ix = 0; ix < x.multi; ix++) {
       for (const y of x.filhos) {
         for (let iy = 0; iy < y.multi; iy++) {
+          if (y.filhos.length === 0) {
+            // Y-folha = peça (largura da coluna X × altura da linha Y). Ocorre quando
+            // um corte Z redundante é colapsado (collapseRedundantCuts).
+            area += x.valor * y.valor;
+            continue;
+          }
           for (const z of y.filhos) {
             for (let iz = 0; iz < z.multi; iz++) {
               if (z.filhos.length === 0) {
@@ -441,6 +447,46 @@ export function largestFreeRect(
   }
 
   return best;
+}
+
+/**
+ * Colapsa CORTES REDUNDANTES: um nó com um ÚNICO filho-folha cujo corte NÃO
+ * subdivide (a folha preenche a dimensão INTEIRA do pai naquele eixo) é uma
+ * coordenada desperdiçada — a serra faria um corte na borda, sem efeito. Ex.:
+ * `Z(2570)→W(742)→Q(2570 folha)`: o `Q(2570)` repete a largura de `Z(2570)` ⇒
+ * removido, `W(742)` vira a folha (peça 2570×742, mesma geometria). NÃO colapsa
+ * quando a folha de fato corta (`Z(948)→W(670)→Q(937)`: 937≠948, o Q trima a
+ * largura da peça — mantido). Muta a árvore. Bottom-up ⇒ cascateia. Pós-processo
+ * PURO no plano (não muda medida/posição de peça); não precisa de espelho WASM.
+ */
+export function collapseRedundantCuts(tree: TreeNode, usableW: number, usableH: number): void {
+  const LEVEL: Record<string, number> = { ROOT: 0, X: 1, Y: 2, Z: 3, W: 4, Q: 5, R: 6 };
+  const EPS = 0.5;
+  const visit = (n: TreeNode, wn: number, hn: number) => {
+    const childLevel = (LEVEL[n.tipo] ?? 0) + 1;
+    const widthTiled = childLevel % 2 === 1; // filhos X/Z/Q cortam a LARGURA
+    for (const c of n.filhos) {
+      if (c.filhos.length === 0) continue; // folha = peça
+      if (widthTiled) visit(c, c.valor, hn);
+      else visit(c, wn, c.valor);
+    }
+    // Colapso (após descer): 1 filho-folha que preenche a dimensão inteira do pai.
+    // NÃO colapsa ROOT nem X: um X-folha não tem altura de contexto p/ a contagem de
+    // área. Y-folha É contada (calcPlacedArea/extractLeafPieces).
+    if (n.tipo !== "ROOT" && n.tipo !== "X" && n.filhos.length === 1) {
+      const c = n.filhos[0];
+      if (c.filhos.length === 0 && c.multi === 1) {
+        const spans = widthTiled
+          ? Math.abs(c.valor - wn) < EPS
+          : Math.abs(c.valor - hn) < EPS;
+        if (spans) {
+          n.filhos = [];
+          if (c.label !== undefined) n.label = c.label;
+        }
+      }
+    }
+  };
+  visit(tree, usableW, usableH);
 }
 
 /**

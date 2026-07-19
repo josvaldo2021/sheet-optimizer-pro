@@ -14,6 +14,7 @@
 
 import type { Piece, TreeNode, NodeType } from "./engine/types";
 import { gid, extractLeafPieces } from "./engine/tree-utils";
+import { normalizeTree } from "./engine/normalization";
 
 export type OptimizeFn = (
   pieces: Piece[], usableW: number, usableH: number, minBreak: number,
@@ -76,20 +77,22 @@ export function buildJumboSheet(
   }
 
   // ABAIXO (jw × (H−jh)): otimiza o que sobrou da direita e ENXERTA como
-  // Z-colunas sob Y(H−jh) (remap X→Z). Se ficar fundo demais, deixa vazio.
+  // Z-colunas sob Y(H−jh) (remap X→Z, delta 2). NORMALIZA a subárvore antes (forma
+  // canônica RASA): o `optimize` (runPlacement/optimizeV6) aninha fundo e o remap +2
+  // estouraria o teto de 6 níveis, descartando a região inteira (sobra boa ignorada).
+  // Enxerta o que couber (pula só o subárvore que ainda estourar), em vez de tudo-ou-
+  // nada; a baixa em `placed` é feita SÓ das peças realmente enxertadas (conservação).
   const belowH = usableH - jh;
   if (belowH > 0.5) {
     const belowInput = others.filter((p) => !(p.label && placed.has(p.label)));
-    const belowTree = optimize(belowInput, jw, belowH, minBreak).tree;
+    const belowTree = normalizeTree(optimize(belowInput, jw, belowH, minBreak).tree, jw, belowH, minBreak);
     const yBelow = node("Y", belowH);
-    let ok = true;
     for (const x of belowTree.filhos) {
       const z = remapSubtree(x, 2);
-      if (!z) { ok = false; break; }
-      yBelow.filhos.push(z);
+      if (z) yBelow.filhos.push(z);
     }
-    if (ok && yBelow.filhos.length > 0) {
-      collect(belowTree);
+    if (yBelow.filhos.length > 0) {
+      for (const lf of extractLeafPieces(yBelow)) if (lf.label) placed.add(lf.label);
       jumboX.filhos.push(yBelow);
     }
   }
