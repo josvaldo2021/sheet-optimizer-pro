@@ -14,6 +14,13 @@ dist-ssr
 .env
 .env.*
 
+# Arquivos de dados/estudo do usuário na RAIZ (não versionar; ficam locais para
+# medição no app). Ancorado na raiz para NÃO afetar fixtures em parts/ (*.xls).
+/*.xls
+/*.xlsx
+/*.docx
+/*.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
