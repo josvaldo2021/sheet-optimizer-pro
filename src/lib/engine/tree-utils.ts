@@ -450,6 +450,131 @@ export function largestFreeRect(
 }
 
 /**
+ * AGRUPAMENTO EM X (irmão horizontal da consolidação da spec 013). No nível ROOT, o
+ * placement guloso deixa peças de MESMA ALTURA lado a lado como N colunas
+ * INDEPENDENTES de altura cheia — cada uma com sua sobrinha no topo (fragmentação).
+ * Ex.: 6× `X(393)→…→(peça 393×2500)` ⇒ 6 sobras de 393×690. Este passo agrupa
+ * CORRIDAS de colunas adjacentes, cada uma com UMA peça que preenche a largura da
+ * coluna e a MESMA altura `h < usableH`, numa faixa comum `X(Σw)→Y(h)→Z(w_i)[peça]`,
+ * deixando a sobra do topo (`usableH−h`) como UMA tira única IMPLÍCITA (largura Σw).
+ * Peças não se movem (mesma medida/posição relativa) ⇒ conservação preservada. Muta a
+ * árvore. Pós-processo PURO no plano (não muda o motor).
+ */
+export type XFill = {
+  pool: Piece[];
+  minBreak: number;
+  optimize: (pieces: Piece[], w: number, h: number, minBreak: number) => { tree: TreeNode };
+  // `normalize` injetado (evita import circular tree-utils↔normalization); deixa o
+  // sub-preenchimento RASO antes do remap X→Z (senão estoura o teto de 6 níveis).
+  normalize: (tree: TreeNode, w: number, h: number, minBreak: number) => TreeNode;
+};
+
+export function consolidateColumnsX(
+  tree: TreeNode, usableW: number, usableH: number, fill?: XFill,
+): void {
+  if (tree.tipo !== "ROOT" || tree.filhos.length < 2) return;
+  const EPS = 0.5;
+  // Coluna X com UMA peça, altura `h < usableH`. Aceita coluna MAIS LARGA que a peça
+  // (ex.: última coluna que absorveu o resíduo de largura, X414 p/ peça de 393): o
+  // total usa a largura da COLUNA (`colW`, conserva a largura da chapa) e a faixa usa
+  // a largura da PEÇA (`w`); a diferença vira uma sobrinha à direita na faixa.
+  const single = (x: TreeNode): { colW: number; w: number; h: number; label?: string } | null => {
+    if (x.tipo !== "X" || x.multi !== 1) return null;
+    const leaves = extractLeafPieces(x);
+    if (leaves.length !== 1) return null;
+    const lf = leaves[0];
+    if (lf.w > x.valor + EPS) return null;   // a peça precisa caber na largura da coluna
+    if (lf.h >= usableH - EPS) return null;  // precisa haver sobra no topo
+    return { colW: x.valor, w: lf.w, h: lf.h, label: lf.label };
+  };
+
+  // Já-colocadas na chapa toda (não reusar ao preencher a tira).
+  const placed = new Set<string>();
+  if (fill) for (const lf of extractLeafPieces(tree)) if (lf.label) placed.add(lf.label);
+
+  // Preenche a tira do topo (wSum × stripH) da coluna agrupada, se `fill` dado.
+  const fillStrip = (groupedX: TreeNode, wSum: number, stripH: number) => {
+    if (!fill || stripH <= fill.minBreak) return;
+    const cand = fill.pool.filter(
+      (p) => p.label !== undefined && !placed.has(p.label) &&
+        ((p.w <= wSum && p.h <= stripH) || (p.h <= wSum && p.w <= stripH)),
+    );
+    if (cand.length === 0) return;
+    const sub = fill.normalize(fill.optimize(cand, wSum, stripH, fill.minBreak).tree, wSum, stripH, fill.minBreak);
+    if (sub.filhos.length === 0) return;
+    const yStrip: TreeNode = { id: gid(), tipo: "Y", valor: stripH, multi: 1, filhos: [] };
+    for (const x of sub.filhos) {
+      const z = remapXToZ(x, 2); // X→Z (delta 2): a tira é rasa (Y sob X) ⇒ cabe
+      if (z) yStrip.filhos.push(z);
+    }
+    if (yStrip.filhos.length > 0) {
+      for (const lf of extractLeafPieces(yStrip)) if (lf.label) placed.add(lf.label);
+      groupedX.filhos.push(yStrip);
+    }
+  };
+
+  // Classifica cada coluna e agrupa por ALTURA (mesmo NÃO-adjacentes: colunas só se
+  // reordenam horizontalmente, o que é geometricamente válido). A faixa nasce na
+  // posição da PRIMEIRA coluna daquela altura; as demais são puxadas para ela.
+  const info = tree.filhos.map(single);
+  const byHeight = new Map<number, number[]>(); // altura arredondada → índices
+  for (let k = 0; k < info.length; k++) {
+    const s = info[k];
+    if (!s) continue;
+    const key = Math.round(s.h);
+    const arr = byHeight.get(key);
+    if (arr) arr.push(k);
+    else byHeight.set(key, [k]);
+  }
+  const mergeKeys = new Set<number>();
+  for (const [key, idxs] of byHeight) if (idxs.length >= 2) mergeKeys.add(key);
+
+  const out: TreeNode[] = [];
+  const consumed = new Set<number>();
+  for (let i = 0; i < tree.filhos.length; i++) {
+    if (consumed.has(i)) continue;
+    const s = info[i];
+    const key = s ? Math.round(s.h) : NaN;
+    if (s && mergeKeys.has(key)) {
+      const idxs = byHeight.get(key)!;
+      idxs.forEach((k) => consumed.add(k));
+      const run = idxs.map((k) => info[k]!);
+      // Largura da faixa = soma das larguras das COLUNAS (conserva a largura da chapa);
+      // cada peça entra com sua própria largura (`w`); a diferença (colW−w) fica como
+      // resíduo implícito à direita da faixa.
+      const wSum = run.reduce((a, r) => a + r.colW, 0);
+      const band: TreeNode = {
+        id: gid(), tipo: "Y", valor: s.h, multi: 1,
+        filhos: run.map((r) => ({ id: gid(), tipo: "Z" as NodeType, valor: r.w, multi: 1, filhos: [], label: r.label })),
+      };
+      const groupedX: TreeNode = { id: gid(), tipo: "X", valor: wSum, multi: 1, filhos: [band] };
+      fillStrip(groupedX, wSum, usableH - s.h); // preenche a tira do topo (spec 015)
+      out.push(groupedX);
+    } else {
+      out.push(tree.filhos[i]);
+    }
+  }
+  tree.filhos = out;
+}
+
+/** Reindexa uma subárvore N níveis para baixo (X→Z p/ delta=2). `null` se passar de R. */
+function remapXToZ(n: TreeNode, delta: number): TreeNode | null {
+  const BY_LEVEL: Record<number, NodeType> = { 1: "X", 2: "Y", 3: "Z", 4: "W", 5: "Q", 6: "R" };
+  const LEVEL: Record<string, number> = { X: 1, Y: 2, Z: 3, W: 4, Q: 5, R: 6 };
+  const l = LEVEL[n.tipo];
+  if (l === undefined) return null;
+  const nl = l + delta;
+  if (nl > 6) return null;
+  const kids: TreeNode[] = [];
+  for (const c of n.filhos) {
+    const rc = remapXToZ(c, delta);
+    if (!rc) return null;
+    kids.push(rc);
+  }
+  return { id: gid(), tipo: BY_LEVEL[nl], valor: n.valor, multi: n.multi, filhos: kids, label: n.label };
+}
+
+/**
  * Colapsa CORTES REDUNDANTES: um nó com um ÚNICO filho-folha cujo corte NÃO
  * subdivide (a folha preenche a dimensão INTEIRA do pai naquele eixo) é uma
  * coordenada desperdiçada — a serra faria um corte na borda, sem efeito. Ex.:

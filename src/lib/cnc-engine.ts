@@ -19,6 +19,7 @@ export {
   extractLeafPieces,
   previewRemoval,
   consolidateColumns,
+  consolidateColumnsX,
   collapseRedundantCuts,
 } from './engine/tree-utils';
 export type { LeafPiece } from './engine/tree-utils';

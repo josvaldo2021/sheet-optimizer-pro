@@ -57,10 +57,16 @@ couber (não tudo-ou-nada) — antes descartava e deixava a sobra vazia; (5) NOV
 `collapseRedundantCuts` (tree-utils) remove coordenada de corte redundante (Q que repete
 a largura do Z), aplicado no plano após consolidateColumns; (6) FIX `calcPlacedArea`:
 passou a contar folhas `Y` (o colapso cria Y-folha; sem isso o % do jumbo sumia).
-Testes: `collapse-redundant-cuts.test.ts` (4). PENDENTE: AGRUPAMENTO EM X (juntar peças
-de mesma altura numa faixa comum + sobra única no topo, em vez de N colunas
-fragmentadas — o guloso não agrupa; é consolidação em X, irmã da spec 013). Ver
-`coordenadas.md` (peças 02519 393×2500). PRÓXIMO após commit do 31.
+(7) AGRUPAMENTO EM X — `consolidateColumnsX` (tree-utils, aplicado no plano após
+consolidateColumns): junta colunas de MESMA ALTURA (por altura, mesmo NÃO-adjacentes —
+elas só reordenam horizontalmente) numa faixa `X(ΣcolW)→Y(h)→Z(pieceW_i)`, e PREENCHE a
+tira do topo (agora rasa, `Y` sob `X`) com as peças restantes (via `XFill` injetado:
+optimize=runPlacement área-desc + normalize=normalizeTree, p/ não estourar o remap X→Z).
+Aceita coluna mais LARGA que a peça (a última que absorveu resíduo de largura, ex.:
+X414 p/ peça 393): faixa usa a largura da PEÇA, total soma a largura da COLUNA
+(conserva). Testes: `collapse-redundant-cuts.test.ts` (4) + `consolidate-columns-x.test.ts`
+(5). Confirmado no app: agrupa 3 de 3 (antes 2 de 3). PENDENTE: medir se o preenchimento
+da tira reduz nº de chapas abaixo de 31 (re-medir no app).
 — (spec original mirava ORDEM DE CORTE no MOTOR; virou conserto de PLANO.)
 Destrava a sobra lateral das colunas: hoje o placement corta as peças empilhadas
 horizontal-primeiro e ENTERRA a faixa lateral livre (ex.: 926) fragmentada em faixas

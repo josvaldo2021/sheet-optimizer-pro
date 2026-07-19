@@ -19,7 +19,9 @@ import {
   getLastLeftover,
   extractLeafPieces,
   consolidateColumns,
+  consolidateColumnsX,
   collapseRedundantCuts,
+  normalizeTree,
   optimizeGeneticV1,
   optimizeGeneticAsync,
   optimizeV6,
@@ -658,6 +660,18 @@ const Index = () => {
         }
 
         consolidateColumns(result); // consolidação final da sobra (spec 013)
+        // Spec 015: agrupa colunas de mesma altura numa faixa E preenche a tira do topo
+        // (agora rasa) com as peças restantes — maior-primeiro, como o resto do plano.
+        {
+          const placedNow = new Set(extractLeafPieces(result).map((l) => l.label));
+          const xPool = inv.filter((p) => p.label !== undefined && !placedNow.has(p.label));
+          consolidateColumnsX(result, usableW, usableH, {
+            pool: xPool,
+            minBreak,
+            optimize: (pcs, w, h, mb) => runPlacement([...pcs].sort((a, b) => b.area - a.area), w, h, mb),
+            normalize: (t, w, h, mb) => normalizeTree(t, w, h, mb),
+          });
+        }
         collapseRedundantCuts(result, usableW, usableH); // remove coordenadas de corte redundantes
 
         const usedArea = calcPlacedArea(result);
