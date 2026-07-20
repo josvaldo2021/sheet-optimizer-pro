@@ -460,6 +460,10 @@ export function largestFreeRect(
  * Peças não se movem (mesma medida/posição relativa) ⇒ conservação preservada. Muta a
  * árvore. Pós-processo PURO no plano (não muda o motor).
  */
+/** Coluna candidata a agrupamento (spec 016). `colW` = largura da COLUNA (conserva a
+ *  largura da chapa na soma); `w`/`h` = medida da PEÇA; `idx` = posição original. */
+type ColumnInfo = { colW: number; w: number; h: number; label?: string; idx: number };
+
 export type XFill = {
   pool: Piece[];
   minBreak: number;
@@ -470,22 +474,49 @@ export type XFill = {
 };
 
 export function consolidateColumnsX(
-  tree: TreeNode, usableW: number, usableH: number, fill?: XFill,
+  tree: TreeNode, usableW: number, usableH: number, fill?: XFill, tol?: number,
 ): void {
   if (tree.tipo !== "ROOT" || tree.filhos.length < 2) return;
   const EPS = 0.5;
+  // Spec 016 — três estados de `tol` (ver contracts/column-grouping-contract.md):
+  //   omitido  → agrupamento por altura PRÓXIMA DESLIGADO (só alturas idênticas: spec 015)
+  //   0        → sem piso físico; só a guarda econômica decide
+  //   > 0      → piso de MAQUINABILIDADE: o resíduo de correção (a diferença de altura)
+  //              precisa ter ao menos `tol` para a serra conseguir cortá-lo.
+  // O piso NÃO é um teto: diferenças grandes são barradas pela guarda econômica.
+  const nearEnabled = tol !== undefined;
+  const floor = tol ?? 0;
   // Coluna X com UMA peça, altura `h < usableH`. Aceita coluna MAIS LARGA que a peça
   // (ex.: última coluna que absorveu o resíduo de largura, X414 p/ peça de 393): o
   // total usa a largura da COLUNA (`colW`, conserva a largura da chapa) e a faixa usa
   // a largura da PEÇA (`w`); a diferença vira uma sobrinha à direita na faixa.
-  const single = (x: TreeNode): { colW: number; w: number; h: number; label?: string } | null => {
+  const single = (x: TreeNode, idx: number): ColumnInfo | null => {
     if (x.tipo !== "X" || x.multi !== 1) return null;
     const leaves = extractLeafPieces(x);
     if (leaves.length !== 1) return null;
     const lf = leaves[0];
     if (lf.w > x.valor + EPS) return null;   // a peça precisa caber na largura da coluna
     if (lf.h >= usableH - EPS) return null;  // precisa haver sobra no topo
-    return { colW: x.valor, w: lf.w, h: lf.h, label: lf.label };
+    return { colW: x.valor, w: lf.w, h: lf.h, label: lf.label, idx };
+  };
+
+  // Monta a faixa agrupada de um conjunto (sem preencher a tira). Peça de altura
+  // igual à da faixa é folha `Z`; peça mais BAIXA ganha o CORTE DE CORREÇÃO
+  // `Z(w) → W(h)`, que preserva a altura ORIGINAL e deixa o resíduo
+  // `w × (bandH − h)` livre acima dela, dentro da própria sub-coluna.
+  const buildBandX = (members: ColumnInfo[]): TreeNode => {
+    const bandH = members.reduce((m, r) => Math.max(m, r.h), 0);
+    const wSum = members.reduce((a, r) => a + r.colW, 0);
+    const band: TreeNode = {
+      id: gid(), tipo: "Y", valor: bandH, multi: 1,
+      filhos: members.map((r) => {
+        const z: TreeNode = { id: gid(), tipo: "Z", valor: r.w, multi: 1, filhos: [] };
+        if (r.h >= bandH - EPS) { z.label = r.label; return z; }
+        z.filhos.push({ id: gid(), tipo: "W", valor: r.h, multi: 1, filhos: [], label: r.label });
+        return z;
+      }),
+    };
+    return { id: gid(), tipo: "X", valor: wSum, multi: 1, filhos: [band] };
   };
 
   // Já-colocadas na chapa toda (não reusar ao preencher a tira).
@@ -513,45 +544,65 @@ export function consolidateColumnsX(
     }
   };
 
-  // Classifica cada coluna e agrupa por ALTURA (mesmo NÃO-adjacentes: colunas só se
+  // Classifica cada coluna e forma os conjuntos (mesmo NÃO-adjacentes: colunas só se
   // reordenam horizontalmente, o que é geometricamente válido). A faixa nasce na
-  // posição da PRIMEIRA coluna daquela altura; as demais são puxadas para ela.
+  // posição da PRIMEIRA coluna do conjunto; as demais são puxadas para ela.
+  //
+  // Formação GULOSA determinística (spec 016, research R5): agrupar por tolerância NÃO
+  // é relação de equivalência (não é transitiva), então "quem forma conjunto com quem"
+  // depende da ORDEM. Ordem total: altura DESC, desempate pelo índice original ASC.
+  // A semente é sempre a coluna MAIS ALTA ainda livre — é ela que dita a altura da
+  // faixa ("agrupamento baseado na maior").
   const info = tree.filhos.map(single);
-  const byHeight = new Map<number, number[]>(); // altura arredondada → índices
-  for (let k = 0; k < info.length; k++) {
-    const s = info[k];
-    if (!s) continue;
-    const key = Math.round(s.h);
-    const arr = byHeight.get(key);
-    if (arr) arr.push(k);
-    else byHeight.set(key, [k]);
+  const cands = info.filter((s): s is ColumnInfo => s !== null);
+  const order = [...cands].sort((a, b) => b.h - a.h || a.idx - b.idx);
+
+  const clusterOf = new Map<number, ColumnInfo[]>(); // idx da PRIMEIRA coluna → membros
+  const consumed = new Set<number>();
+  for (let s = 0; s < order.length; s++) {
+    const seed = order[s];
+    if (consumed.has(seed.idx)) continue;
+    const members = [seed];
+    // Varre só a partir de `s`: um candidato ANTERIOR é MAIS ALTO que a semente e não
+    // pode ser absorvido por ela (a faixa é dimensionada pela semente). Sem esse corte,
+    // uma semente baixa "adotaria" a alta com diferença NEGATIVA, que passa no teste de
+    // diferença nula — e o agrupamento aconteceria mesmo com a feature desligada.
+    for (let k = s + 1; k < order.length; k++) {
+      const c = order[k];
+      if (consumed.has(c.idx)) continue;
+      const diff = seed.h - c.h; // ≥ 0 por construção
+      // Admissão FÍSICA: diferença nula (caso da spec 015) ou resíduo cortável.
+      if (diff <= EPS || (nearEnabled && diff >= floor - EPS)) members.push(c);
+    }
+    if (members.length < 2) continue;
+    // Guarda ECONÔMICA (spec 016 FR-004): a fusão não pode encolher o maior bloco
+    // livre DESTAS colunas. Medida num sub-ROOT com as colunas do conjunto (métrica
+    // LOCAL: um bloco grande alheio na chapa mascararia a piora) e ANTES do
+    // preenchimento da tira (medir depois reprovaria justo os casos bem-sucedidos).
+    if (members.some((m) => m.h < members[0].h - EPS)) {
+      const wSum = members.reduce((a, r) => a + r.colW, 0);
+      const subRoot = (kids: TreeNode[]): TreeNode =>
+        ({ id: gid(), tipo: "ROOT", valor: wSum, multi: 1, filhos: kids });
+      const before = largestFreeRect(subRoot(members.map((m) => tree.filhos[m.idx])), wSum, usableH);
+      const after = largestFreeRect(subRoot([buildBandX(members)]), wSum, usableH);
+      const areaOf = (r: { w: number; h: number } | null) => (r ? r.w * r.h : 0);
+      if (areaOf(after) < areaOf(before)) continue; // não compensa: colunas ficam como estão
+    }
+    members.forEach((m) => consumed.add(m.idx));
+    clusterOf.set(Math.min(...members.map((m) => m.idx)), members);
   }
-  const mergeKeys = new Set<number>();
-  for (const [key, idxs] of byHeight) if (idxs.length >= 2) mergeKeys.add(key);
 
   const out: TreeNode[] = [];
-  const consumed = new Set<number>();
   for (let i = 0; i < tree.filhos.length; i++) {
-    if (consumed.has(i)) continue;
-    const s = info[i];
-    const key = s ? Math.round(s.h) : NaN;
-    if (s && mergeKeys.has(key)) {
-      const idxs = byHeight.get(key)!;
-      idxs.forEach((k) => consumed.add(k));
-      const run = idxs.map((k) => info[k]!);
-      // Largura da faixa = soma das larguras das COLUNAS (conserva a largura da chapa);
-      // cada peça entra com sua própria largura (`w`); a diferença (colW−w) fica como
-      // resíduo implícito à direita da faixa.
-      const wSum = run.reduce((a, r) => a + r.colW, 0);
-      const band: TreeNode = {
-        id: gid(), tipo: "Y", valor: s.h, multi: 1,
-        filhos: run.map((r) => ({ id: gid(), tipo: "Z" as NodeType, valor: r.w, multi: 1, filhos: [], label: r.label })),
-      };
-      const groupedX: TreeNode = { id: gid(), tipo: "X", valor: wSum, multi: 1, filhos: [band] };
-      fillStrip(groupedX, wSum, usableH - s.h); // preenche a tira do topo (spec 015)
+    const members = clusterOf.get(i);
+    if (members) {
+      // Membros na ordem ORIGINAL das colunas (a faixa nasce na posição da primeira).
+      const ordered = [...members].sort((a, b) => a.idx - b.idx);
+      const groupedX = buildBandX(ordered);
+      fillStrip(groupedX, groupedX.valor, usableH - groupedX.filhos[0].valor);
       out.push(groupedX);
-    } else {
-      out.push(tree.filhos[i]);
+    } else if (!consumed.has(i)) {
+      out.push(tree.filhos[i]); // coluna intacta (não agrupada ou conjunto rejeitado)
     }
   }
   tree.filhos = out;

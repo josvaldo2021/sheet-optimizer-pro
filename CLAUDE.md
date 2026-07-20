@@ -42,6 +42,41 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
 
 <!-- SPECKIT START -->
+Spec 016 IMPLEMENTADA (working tree, não commitada): `specs/016-agrupamento-alturas-proximas/`
+— MEDIDO NO APP (âncora `of_geral_parcial (3).xls`, 38 linhas de inventário): a feature é
+NEUTRA em nº de chapas. Quebra Mínima 0 ⇒ **31 chapas/25 layouts** com a feature LIGADA e
+DESLIGADA (idêntico); Quebra Mínima 50 ⇒ **32/23** nos DOIS casos — ou seja, o 31→32 é do
+`minBreak` no MOTOR (ele já alimentava `optimizeV6`/GA), NÃO desta spec. A feature DISPARA
+muito: instrumentado, formou 46 conjuntos de altura PRÓXIMA com quebra 0 (38 aceitos, 8
+rejeitados pela guarda) e 50 com quebra 50 (36 aceitos, 14 rejeitados). Portanto o valor
+entregue é CONSOLIDAÇÃO DA SOBRA (sobra em bloco único em vez de retalhos), como na spec 011
+— não menos chapas. SC-002 (≤ 31) cumprido no sentido "nunca pior". PENDENTE: validação
+VISUAL do usuário no cenário-âncora (peças 02545/26 2388 + 02554/26 2320 na mesma faixa) e
+conferência de conservação no app — não foram verificadas por mim.
+— GENERALIZA o agrupamento em X
+da spec 015: `consolidateColumnsX` passa a juntar colunas de alturas DIFERENTES, não só
+idênticas. Faixa com a altura da MAIOR peça; peça mais baixa ganha CORTE DE CORREÇÃO
+(`Z(w)→W(h)`) preservando a altura original, com o resíduo livre acima dela. DUAS guardas:
+(a) FÍSICA — a diferença precisa ser NULA ou `>= minBreak` (campo "Quebra Mínima" JÁ
+existente, `SheetSetupPanel.tsx:147`), reusado como PISO de maquinabilidade (âncora do
+usuário: diff 68 com quebra 50 ⇒ agrupa; diff 12 ⇒ NÃO, senão a serra não corta a tira e
+igualar alturas criaria peça fantasma); (b) ECONÔMICA — `largestFreeRect` (spec 011) do
+maior bloco livre não pode ENCOLHER com a fusão, medido num CLONE e ANTES do `fillStrip`
+(medir depois reprovaria justo os casos bons). Formação de conjuntos GULOSA determinística:
+altura DESC, desempate por índice original ASC. SEM espelho Rust / SEM rebuild WASM —
+`consolidateColumnsX` só existe em TS e só é chamada na CAMADA DE PLANO (`Index.tsx:668`),
+nunca pelo motor (research R1). `calcPlacedArea` e `largestFreeRect` JÁ tratam folha `W`
+sob `Z`, e `collapseRedundantCuts` colapsa o `W` quando diff=0 ⇒ caso uniforme idêntico ao
+de hoje. Arquivos: `tree-utils.ts` (+ param `tol`), `Index.tsx` (passa `minBreak`),
+`src/test/consolidate-columns-x.test.ts` (11 casos novos: G1-G9 + G5b + colapso; suíte
+271→282 verdes). ARMADILHA ACHADA NA IMPLEMENTAÇÃO: com a varredura interna passando por
+TODOS os candidatos, uma semente BAIXA "adotava" uma coluna MAIS ALTA com diferença
+NEGATIVA, que passa no teste de diferença nula ⇒ agrupava até com a feature DESLIGADA. A
+varredura precisa começar DEPOIS da semente na ordem altura-DESC. DESVIO DO PLANO: a guarda
+econômica usa métrica LOCAL (sub-ROOT só com as colunas do conjunto), não a chapa inteira —
+`largestFreeRect` é um `max` global e um bloco grande alheio faria a guarda aprovar tudo
+(no-op). PRÓXIMO: validação do usuário no app.
+
 Spec 015 IMPLEMENTADA VIA PIVÔ (working tree, não commitado): `specs/015-corte-faixa-lateral-primeiro/`
 — o T001 (investigação) DERRUBOU a premissa da spec: `optimizeV6` E `runPlacement` JÁ
 cortam a faixa lateral vertical-primeiro na região ISOLADA. Quem enterrava era só o

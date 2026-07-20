@@ -96,7 +96,25 @@ qualidade). O GA aplica `capPhantomLeaves` como defesa equivalente no ramo evolu
 
 *   **Corte Guilhotina:** Todos os cortes são retos e vão de uma borda à outra da chapa ou sub-chapa. Não são permitidos cortes em L ou formatos complexos.
 *   **Margens (`ml`, `mr`, `mt`, `mb`):** As chapas possuem margens que reduzem a área útil (`usableW`, `usableH`).
-*   **`minBreak`:** Uma restrição mínima de corte, que pode influenciar a forma como as peças são posicionadas e os desperdícios são gerados.
+*   **`minBreak` ("Quebra Mínima"):** A menor tira que a serra consegue cortar. Restringe o
+    posicionamento no motor E, desde a spec 016, é o PISO do resíduo de correção no
+    agrupamento em X (ver abaixo). É piso, nunca teto.
+*   **Agrupamento em X — `consolidateColumnsX` (`tree-utils.ts`, camada de PLANO, só TS, sem
+    espelho Rust):** funde colunas do `ROOT` que contêm uma peça só numa faixa
+    `X(Σ colW) → Y(bandH) → Z(w_i)`, transformando N sobras estreitas no topo em UMA tira
+    única (que é então preenchida com as peças restantes). Spec 015 exigia alturas IDÊNTICAS;
+    a spec 016 aceita alturas PRÓXIMAS sob duas guardas:
+    *   **FÍSICA:** a diferença de altura precisa ser NULA ou `>= minBreak` — a peça mais baixa
+        recebe um corte de correção `Z(w) → W(h)` que preserva a sua altura ORIGINAL, e o
+        resíduo criado precisa ser cortável. NUNCA iguale as alturas para "simplificar": isso
+        cria peça fantasma (spec 012).
+    *   **ECONÔMICA:** a fusão é descartada se encolher o maior bloco livre, medido com
+        `largestFreeRect` num sub-`ROOT` contendo SÓ as colunas do conjunto (métrica LOCAL — na
+        chapa inteira o `max` global mascararia a piora) e ANTES do preenchimento da tira.
+    Formação de conjuntos gulosa e determinística: altura DESC, desempate pelo índice original,
+    semente = a mais alta ainda livre, e a varredura de membros começa DEPOIS da semente (uma
+    semente baixa não pode absorver uma coluna mais alta — diferença negativa passaria no teste
+    de diferença nula).
 *   **Agrupamento de Peças:** O algoritmo tenta agrupar peças com dimensões compatíveis para otimizar os cortes. Por exemplo, `groupPiecesBySameHeight` agrupa peças com a mesma altura para um corte X único, seguido de cortes Z para separar as peças individuais.
 *   **Rotação de Peças:** Peças podem ser rotacionadas em 90 graus para melhor encaixe, a menos que explicitamente restrito.
 
