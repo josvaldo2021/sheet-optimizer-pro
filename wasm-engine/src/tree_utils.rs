@@ -405,11 +405,11 @@ pub fn largest_free_rect(arena: &Arena, usable_w: f64, usable_h: f64) -> Option<
 /// Info de uma banda consolidável sob um container: se `band_id` é uma
 /// `band_type` (multi=1) com um único filho `subcol_type` (multi=1) segurando uma
 /// peça (folha rotulada, direta ou via uma única `subband_type`-folha rotulada),
-/// devolve `(largura_da_subcoluna, rótulo)`.
+/// devolve `(largura_da_subcoluna, extensão_real_da_peça, rótulo)`.
 fn band_info(
     arena: &Arena, band_id: u32,
     band_type: NodeType, subcol_type: NodeType, subband_type: NodeType,
-) -> Option<(f64, String)> {
+) -> Option<(f64, f64, String)> {
     let band = arena.get(band_id);
     if band.tipo != band_type || band.multi != 1 || band.children.len() != 1 {
         return None;
@@ -418,19 +418,23 @@ fn band_info(
     if s.tipo != subcol_type || s.multi != 1 {
         return None;
     }
-    let label = if s.children.is_empty() && s.label.is_some() {
-        s.label.clone()
+    // `extent` = medida REAL da peça ao longo do eixo da banda. Sub-coluna folha ⇒
+    // a peça preenche a banda (extent = altura da banda). Se há uma subband-folha, a
+    // peça pode ser MENOR que a banda — a diferença é sobra não-cortável deixada pela
+    // normalização (minBreak). Usar a altura da banda aqui INFLARIA a peça (fantasma).
+    let (label, extent) = if s.children.is_empty() && s.label.is_some() {
+        (s.label.clone(), band.valor)
     } else if s.children.len() == 1 {
         let sb = arena.get(s.children[0]);
         if sb.tipo == subband_type && sb.multi == 1 && sb.children.is_empty() && sb.label.is_some() {
-            sb.label.clone()
+            (sb.label.clone(), sb.valor)
         } else {
-            None
+            (None, 0.0)
         }
     } else {
-        None
+        (None, 0.0)
     };
-    label.map(|l| (s.valor, l))
+    label.map(|l| (s.valor, extent, l))
 }
 
 /// Aloca um nó solto (sem pai) e devolve seu id.
@@ -464,28 +468,29 @@ fn apply_level(
         let mut new_children: Vec<u32> = Vec::new();
         let mut i = 0;
         while i < children.len() {
-            if let Some((width, label)) = band_info(arena, children[i], band_type, subcol_type, subband_type) {
+            if let Some((width, extent, label)) = band_info(arena, children[i], band_type, subcol_type, subband_type) {
                 if width < cw - 0.5 {
-                    let mut run: Vec<(u32, String)> = vec![(children[i], label)];
+                    let mut run: Vec<(u32, f64, String)> = vec![(children[i], extent, label)];
                     let mut j = i + 1;
                     while j < children.len() {
                         match band_info(arena, children[j], band_type, subcol_type, subband_type) {
-                            Some((wn, ln)) if (wn - width).abs() < 0.5 => {
-                                run.push((children[j], ln));
+                            Some((wn, ext_n, ln)) if (wn - width).abs() < 0.5 => {
+                                run.push((children[j], ext_n, ln));
                                 j += 1;
                             }
                             _ => break,
                         }
                     }
                     if run.len() >= 2 {
-                        let total_h: f64 = run.iter().map(|&(b, _)| arena.get(b).valor).sum();
+                        let total_h: f64 = run.iter().map(|&(b, _, _)| arena.get(b).valor).sum();
                         let merged_band = alloc_node(arena, band_type, total_h, None);
                         let merged_sub = alloc_node(arena, subcol_type, width, None);
                         arena.nodes[merged_band as usize].children.push(merged_sub);
                         arena.nodes[merged_sub as usize].parent = merged_band;
-                        for (b_id, lbl) in &run {
-                            let h = arena.get(*b_id).valor;
-                            let sb = alloc_node(arena, subband_type, h, Some(lbl.clone()));
+                        // subband carrega a extensão REAL da peça (não a altura da banda):
+                        // sobra não-cortável (minBreak) fica implícita no fim da sub-coluna.
+                        for (_b_id, ext, lbl) in &run {
+                            let sb = alloc_node(arena, subband_type, *ext, Some(lbl.clone()));
                             arena.nodes[merged_sub as usize].children.push(sb);
                             arena.nodes[sb as usize].parent = merged_sub;
                         }

@@ -247,18 +247,25 @@ export function consolidateColumns(tree: TreeNode): void {
     for (const container of containers) {
       const cw = container.valor;
       // Info da banda consolidável: { banda, largura da sub-coluna, rótulo }.
-      const info = (band: TreeNode): { band: TreeNode; width: number; label: string } | null => {
+      const info = (band: TreeNode): { band: TreeNode; width: number; extent: number; label: string } | null => {
         if (band.tipo !== bandType || band.multi !== 1 || band.filhos.length !== 1) return null;
         const s = band.filhos[0];
         if (s.tipo !== subColType || s.multi !== 1) return null;
+        // `extent` = a medida REAL da peça ao longo do eixo da banda. Quando a
+        // sub-coluna é folha, a peça preenche a banda (extent = altura da banda).
+        // Quando há uma `subBandType`-folha, a peça pode ser MENOR que a banda —
+        // a diferença é sobra não-cortável que a normalização (minBreak) deixou na
+        // banda. Copiar a altura da banda aqui INFLARIA a peça (dimensão fantasma).
         let label: string | undefined;
+        let extent = band.valor;
         if (s.filhos.length === 0 && s.label) label = s.label;
         else if (s.filhos.length === 1 && s.filhos[0].tipo === subBandType &&
                  s.filhos[0].multi === 1 && s.filhos[0].filhos.length === 0 && s.filhos[0].label) {
           label = s.filhos[0].label;
+          extent = s.filhos[0].valor;
         }
         if (!label) return null;
-        return { band, width: s.valor, label };
+        return { band, width: s.valor, extent, label };
       };
 
       const out: TreeNode[] = [];
@@ -275,8 +282,11 @@ export function consolidateColumns(tree: TreeNode): void {
           }
           if (run.length >= 2) {
             const totalH = run.reduce((s, r) => s + r.band.valor, 0);
+            // subBand carrega a medida REAL da peça (`extent`), não a altura da banda:
+            // se a banda tinha sobra não-cortável (minBreak), ela fica implícita no
+            // fim da sub-coluna (a soma dos extents ≤ totalH), sem inflar a peça.
             const subBands: TreeNode[] = run.map((r) => ({
-              id: gid(), tipo: subBandType, valor: r.band.valor, multi: 1, filhos: [], label: r.label,
+              id: gid(), tipo: subBandType, valor: r.extent, multi: 1, filhos: [], label: r.label,
             }));
             const mergedSub: TreeNode = { id: gid(), tipo: subColType, valor: bi.width, multi: 1, filhos: subBands };
             out.push({ id: gid(), tipo: bandType, valor: totalH, multi: 1, filhos: [mergedSub] });
