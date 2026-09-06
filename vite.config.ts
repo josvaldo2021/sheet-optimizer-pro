@@ -22,6 +22,12 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     exclude: ["wasm-engine"],
   },
+  // O worker do motor (`src/lib/engine/engine.worker.ts`) carrega o WASM por
+  // `import()` dinâmico, o que exige code-splitting. O padrão do Vite para workers
+  // é "iife", que não suporta splitting e QUEBRA O BUILD DE PRODUÇÃO (dev passa).
+  worker: {
+    format: "es",
+  },
   build: {
     target: "esnext",
   },

@@ -480,6 +480,28 @@ const Index = () => {
     setIsOptimizing(true);
     setStatus({ msg: "Processando todas as chapas...", type: "warn" });
 
+    // ── Progresso por COMBINAÇÃO (variante × chapa) ──────────────────────────
+    // Sem isto a barra só anda uma vez por VARIANTE (3-4 no total) e fica imóvel
+    // por minutos em trabalhos grandes. O nº real de chapas não é conhecido de
+    // antemão, então estimamos pelo PISO geométrico: max(área total / área da
+    // chapa, nº de peças que exigem chapa dedicada). É um limite inferior, então a
+    // barra pode saturar perto do fim — bem melhor do que ficar parada.
+    let estSheetsPerVariant = 1;
+    let progressVariantIndex = 0;
+    let progressVariantTotal = 1;
+    // `sheetNo` aceita FRAÇÃO: o GA reporta progresso interno da chapa, então a
+    // barra anda DURANTE a chapa e não só entre chapas. O rótulo arredonda.
+    const combinationProgress = (sheetNo: number) => {
+      const total = progressVariantTotal * estSheetsPerVariant;
+      const done = Math.min(progressVariantIndex * estSheetsPerVariant + sheetNo, total);
+      return { done, shown: Math.min(Math.ceil(done), total), total };
+    };
+    const reportCombination = (sheetNo: number, bestUtil?: number) => {
+      const { done, shown, total } = combinationProgress(sheetNo);
+      setGlobalProgress({ current: done, total });
+      setProgress({ phase: `Chapa ${shown}/${total}`, current: done, total, bestUtil });
+    };
+
     const runAllSheets = async (
       sortFn?: (a: PieceItem, b: PieceItem) => number,
       label?: string,
@@ -531,11 +553,7 @@ const Index = () => {
         });
         if (inv.length === 0) break;
 
-        setProgress({
-          phase: `Chapa ${sheetCount} (${label ?? "padrão"})`,
-          current: sheetCount,
-          total: sheetCount + 1,
-        });
+        reportCombination(sheetCount - 1);
 
         await new Promise((r) => setTimeout(r, 0));
         const priorityLabels = priorityIds
@@ -566,13 +584,13 @@ const Index = () => {
             ? buildJumboSheet(jumboP, usableW, usableH, inv.filter((p) => p.label !== markedUid), minBreak, greedyOptimize)
             : null;
           if (jr) {
-            setProgress({ phase: `Chapa ${sheetCount} - jumbo (maior-primeiro)`, current: sheetCount, total: sheetCount + 1 });
+            reportCombination(sheetCount);
             result = jr.tree;
           } else if (engine === "greedy") {
             // Candidato MAIOR-PRIMEIRO (guloso): `inv` por área DESC ⇒ a maior peça
             // ancora a chapa. Rápido/determinístico; a seleção final fica com o de menos
             // chapas entre este e o GA.
-            setProgress({ phase: `Chapa ${sheetCount} - maior-primeiro`, current: sheetCount, total: sheetCount + 1 });
+            reportCombination(sheetCount);
             const invBigFirst = markedUid
               ? [inv[0], ...inv.slice(1).sort((a, b) => b.area - a.area)]
               : [...inv].sort((a, b) => b.area - a.area);
@@ -584,12 +602,11 @@ const Index = () => {
               usableH,
               minBreak,
               (p) => {
-                setProgress({
-                  phase: `Chapa ${sheetCount} - ${p.phase}`,
-                  current: p.current,
-                  total: p.total,
-                  bestUtil: p.bestUtil,
-                });
+                // Progresso INTERNO do GA vira fração da chapa corrente, para a barra
+                // andar durante a chapa. Antes este callback sobrescrevia o rótulo com
+                // o formato do motor ("Chapa 13 - Semeando População...").
+                const frac = p.total > 0 ? Math.min(p.current / p.total, 1) : 0;
+                reportCombination(sheetCount - 1 + frac, p.bestUtil);
               },
               priorityLabels.length > 0 ? priorityLabels : undefined,
               gaPopSize,
@@ -793,24 +810,47 @@ const Index = () => {
     // MAIOR-PRIMEIRO (rápido, às vezes vence). A seleção abaixo fica com o plano de
     // menos chapas — então cada trabalho usa o motor que for melhor PARA ELE.
     const totalVariants = sortVariants.length + 1;
-    setGlobalProgress({ current: 0, total: totalVariants });
+    // Estimativa de chapas por variante = piso geométrico do input (ver comentário
+    // em `combinationProgress`). O(n) uma vez; custo desprezível.
+    {
+      const sheetAreaEst = usableW * usableH;
+      let areaSum = 0;
+      let dedicatedCount = 0;
+      // Espelha o filtro de prioridade do `runAllSheets` (ver `hasPriority` lá):
+      // sem isto a estimativa contaria peças que o plano nem vai processar, e a
+      // barra ficaria sempre aquém de 100% até o salto final.
+      const estPieces = sourcePieces.some((p) => p.priority)
+        ? sourcePieces.filter((p) => p.priority)
+        : sourcePieces;
+      for (const p of estPieces) {
+        const q = Math.max(p.qty, 0);
+        if (q <= 0 || p.w <= 0 || p.h <= 0) continue;
+        areaSum += p.w * p.h * q;
+        if (requiresDedicatedSheet(p, usableW, usableH)) dedicatedCount += q;
+      }
+      estSheetsPerVariant = Math.max(1, Math.ceil(areaSum / Math.max(1, sheetAreaEst)), dedicatedCount);
+    }
+    progressVariantTotal = totalVariants;
+    setGlobalProgress({ current: 0, total: totalVariants * estSheetsPerVariant });
     for (let vi = 0; vi < sortVariants.length; vi++) {
       const [sortFn, label] = sortVariants[vi];
+      progressVariantIndex = vi;
       setProgress({
-        phase: `Testando variante ${vi + 1}/${totalVariants}: ${label}...`,
-        current: vi,
-        total: totalVariants,
+        phase: `Chapa ${vi * estSheetsPerVariant}/${totalVariants * estSheetsPerVariant}`,
+        current: vi * estSheetsPerVariant,
+        total: totalVariants * estSheetsPerVariant,
       });
       const result = await runAllSheets(sortFn ?? undefined, label);
       if (result && result.length > 0) candidateGroups.push({ label, chapas: result });
-      setGlobalProgress({ current: vi + 1, total: totalVariants });
+      setGlobalProgress({ current: (vi + 1) * estSheetsPerVariant, total: totalVariants * estSheetsPerVariant });
     }
     // Candidato guloso maior-primeiro (área desc no `remaining`; o motor re-ordena o
     // inv por área a cada chapa). Determinístico e barato.
+    progressVariantIndex = sortVariants.length;
     setProgress({
-      phase: `Testando variante ${totalVariants}/${totalVariants}: maior-primeiro (guloso)...`,
-      current: sortVariants.length,
-      total: totalVariants,
+      phase: `Chapa ${sortVariants.length * estSheetsPerVariant}/${totalVariants * estSheetsPerVariant}`,
+      current: sortVariants.length * estSheetsPerVariant,
+      total: totalVariants * estSheetsPerVariant,
     });
     {
       const greedy = await runAllSheets(
@@ -820,7 +860,7 @@ const Index = () => {
       );
       if (greedy && greedy.length > 0) candidateGroups.push({ label: "maior-primeiro (guloso)", chapas: greedy });
     }
-    setGlobalProgress({ current: totalVariants, total: totalVariants });
+    setGlobalProgress({ current: totalVariants * estSheetsPerVariant, total: totalVariants * estSheetsPerVariant });
 
     const sheetArea = usableW * usableH;
     const treeFingerprint = (node: TreeNode): string =>

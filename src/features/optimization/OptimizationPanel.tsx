@@ -56,7 +56,10 @@ const OptimizationPanel = ({
   activeChapa, usableW, usableH, utilization, lastLeftoverInfo,
   setStatus, onSelectLayout, onDeleteLayout, onPrintLayout,
 }: Props) => {
-  const SEGMENTS = 12;
+  // 12 dava só 13 estados visuais e a barra parecia parada. 60 é o teto com o CSS
+  // atual: a faixa tem ~363px úteis, gap 2px e borda 1px por bloco, então acima
+  // disso a borda consome o bloco inteiro e a barra vira uma linha sólida.
+  const SEGMENTS = 60;
   const [useWasm, setUseWasm] = useState(() => getUseWasmEngine());
   const wasmAvailable = isWasmReady();
 
@@ -201,7 +204,7 @@ const OptimizationPanel = ({
               <div className="cnc-pixel-label">{progress.phase}</div>
               <div className="flex justify-between mt-1">
                 <span className="text-[9px]" style={{ color: "hsl(220 18% 38%)", fontFamily: "monospace" }}>
-                  {bar.current}/{bar.total}
+                  {Math.round(bar.current)}/{bar.total}
                 </span>
                 {progress.bestUtil !== undefined && (
                   <span className="text-[9px] font-bold" style={{ color: "hsl(206 82% 60%)", fontFamily: "monospace" }}>
