@@ -24,6 +24,9 @@ npm test              # roda todos os testes (vitest)
 npm run build         # build Vite
 npx tsc -p tsconfig.app.json --noEmit   # checagem de tipos REAL (o tsc --noEmit na raiz é no-op: tsconfig com files:[])
 npm run build:wasm    # rebuild do motor WASM (wasm-pack)
+
+# MEDIR TEMPO — nunca no dev server (ver armadilha 7)
+npm run build && npx vite preview --port 4173 --strictPort
 ```
 
 ## Arquitetura em 5 linhas
@@ -31,6 +34,7 @@ npm run build:wasm    # rebuild do motor WASM (wasm-pack)
 SPA React + TypeScript. Motor de otimização puro TS em `src/lib/engine/`.  
 Fluxo: usuário cadastra peças → `optimizeV6` monta árvore de corte guilhotina (`TreeNode`) → visualização em `SheetViewer`.  
 Multi-chapa: `runAllSheets` em `Index.tsx` chama `optimizeV6` em loop, deduzindo peças a cada iteração.  
+`optimizeGeneticAsync` roda em **Web Worker** (`engine.worker.ts`, commit 8892e79) para não travar a UI; `optimizeV6`/`runPlacement` seguem SÍNCRONOS na thread principal (são callbacks injetados em `buildJumboSheet`/XFill). Qualquer falha do worker degrada para a thread principal — em jsdom `typeof Worker === "undefined"`, então os testes usam esse caminho.  
 Extração de peças da árvore: use `extractAll` (sem checar `n.label`) para contagem; `extractUsedPiecesWithContext` / `countAllocatedPieces` só funcionam com peças rotuladas.  
 Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtures/`.
 
@@ -40,9 +44,19 @@ Testes em `src/test/` com `vitest`; fixtures xlsx em `parts/` e `src/test/fixtur
 2. **Agrupamento desligado** — remove 50+ estratégias do `optimizeV6`, causando queda drástica de qualidade (~9 peças/chapa vs 30+). Nunca use `useGrouping=false`. ATENÇÃO (spec 012): isto acontecia SOZINHO, sem ninguém pedir — o guard `hasLabels` desligava o agrupamento para QUALQUER peça rotulada, ou seja, em 100% dos trabalhos reais. Guard removido; se voltar a aparecer um guard assim, ele está encobrindo bug de expansão, não protegendo de um.
 3. **`v6Result.remaining`** — pode conter peças agrupadas (`count>1`, `individualDims`). Não use set-difference com o inventário original; extraia da árvore.
 4. **Nós folha da árvore** — sempre representam peças alocadas (desperdício nunca é folha). Tipos folha: Y sem filhos, Z sem filhos, W sem filhos, Q sem filhos, R (sempre folha).
+5. **`worker: { format: "es" }` no `vite.config.ts`** — o worker carrega o WASM por `import()` dinâmico ⇒ code-splitting. O padrão `iife` do Vite NÃO suporta isso e o `npm run build` QUEBRA (`Invalid value "iife" for option "output.format"`). Dev passa liso ⇒ typecheck não pega, só o build.
+6. **Tipos das mensagens do worker em `worker-protocol.ts`, NUNCA no `engine.worker.ts`** — importá-los do arquivo do worker (mesmo com `import type`) arrasta o grafo dele (genetic + wasm-bridge) para dentro do `engine-adapter.ts`, que é carregado por todo mundo. MEDIDO: `heuristics-benchmark` alto-volume foi de 2,0 s para 5,3-9,1 s (3-4x) e estourou o timeout de 5 s do vitest. Aparece como TIMEOUT, fácil de confundir com o flake conhecido do vitest-worker — rode o arquivo isolado e compare contra o baseline com `git stash`.
+7. **NÃO MEÇA TEMPO NO DEV SERVER** — ele degrada com horas de HMR. MEDIDO em 2026-09-06: a MESMA otimização de 1000 peças deu 304 s, 492 s e 1015 s no dev server, e 24,8 s / 25,0 s no `vite preview` da build de produção (variância 0,8%). Duas "regressões" foram reportadas ao usuário que não existiam. Também não meça com `npm test` ou outra medição em paralelo: a disputa de CPU inflou uma corrida de 26 s para 66 s e derrubou um teste por timeout.
+8. **PISO TEÓRICO antes de otimizar nº de chapas** — `max(ceil(áreaTotal / áreaChapaÚtil), nº de peças jumbo)`. MEDIDO no âncora `of_geral_parcial (3).xls`: área pede 28 chapas, mas 30 peças são JUMBO (`requiresDedicatedSheet`, `unique-per-sheet.ts:136`) e cada uma exige chapa própria ⇒ piso 30, e o app entrega **31**. Ou seja: resta 1 chapa de folga, e o piso é limite inferior — o ótimo real pode ser 31. Os 89% de aproveitamento NÃO são desperdício recuperável. A meta "34→30" da spec 014 era exatamente o piso. Se a folga for 0-1, otimizar nº de chapas não tem retorno; o ganho está em CONSOLIDAÇÃO DA SOBRA (specs 011/013/016).
+9. **O GA não decide o resultado do âncora** — MEDIDO de 0 a 250.000 avaliações (pop/gen são estado em `Index.tsx:93-94`, com UI em `OptimizationPanel.tsx`): sempre 31 chapas/25 layouts. Com `gen=0` idem. O GA roda (o tempo escala) mas nunca vence a seleção contra guloso+jumbo (`Index.tsx:580`, o GA é o `else`). Confirmado também num input sintético de 1000 peças SEM jumbo: 100x o orçamento, mesmo resultado. E o GA é só ~8% do tempo ⇒ paralelizá-lo tem teto de Amdahl de ~1,09x. Antes de propor otimização de PERFORMANCE do GA, lembre disso.
 
 <!-- SPECKIT START -->
-Spec 016 IMPLEMENTADA (working tree, não commitada): `specs/016-agrupamento-alturas-proximas/`
+ESTADO: specs 011, 013, 015 e 016 estão TODAS COMMITADAS e na `main` (até 8892e79).
+Os blocos abaixo dizem "working tree, não commitada" por serem históricos — ignore
+essa parte, o conteúdo técnico continua válido. A spec 016 teve a validação visual
+do usuário CONFIRMADA em 2026-09-06, junto com o worker.
+
+Spec 016 IMPLEMENTADA (commitada, spec 016 em 502d69e + fantasma minBreak em 842df57): `specs/016-agrupamento-alturas-proximas/`
 — MEDIDO NO APP (âncora `of_geral_parcial (3).xls`, 38 linhas de inventário): a feature é
 NEUTRA em nº de chapas. Quebra Mínima 0 ⇒ **31 chapas/25 layouts** com a feature LIGADA e
 DESLIGADA (idêntico); Quebra Mínima 50 ⇒ **32/23** nos DOIS casos — ou seja, o 31→32 é do
@@ -77,7 +91,7 @@ econômica usa métrica LOCAL (sub-ROOT só com as colunas do conjunto), não a 
 `largestFreeRect` é um `max` global e um bloco grande alheio faria a guarda aprovar tudo
 (no-op). PRÓXIMO: validação do usuário no app.
 
-Spec 015 IMPLEMENTADA VIA PIVÔ (working tree, não commitado): `specs/015-corte-faixa-lateral-primeiro/`
+Spec 015 IMPLEMENTADA VIA PIVÔ (commitada, e5a3252/f865203): `specs/015-corte-faixa-lateral-primeiro/`
 — o T001 (investigação) DERRUBOU a premissa da spec: `optimizeV6` E `runPlacement` JÁ
 cortam a faixa lateral vertical-primeiro na região ISOLADA. Quem enterrava era só o
 GULOSO `runPlacement` montando a coluna do jumbo com bandas (`Y→Z→W→Q`), deixando a
