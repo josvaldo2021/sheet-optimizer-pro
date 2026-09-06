@@ -35,35 +35,60 @@ async function ensureWasm(): Promise<boolean> {
 ensureWasm();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Worker do motor (`engine.worker.ts`): mantém a UI responsiva em inventários
-// grandes. `wasm_optimize_genetic` é uma chamada ATÔMICA que chegou a travar a
-// thread principal por 10 s com 1000 peças (limiar do "página sem resposta" do
-// Chrome: ~5 s). O worker é LONGEVO — recriá-lo por chamada re-instanciaria o
-// WASM, que é caro. Qualquer falha degrada, em definitivo, para a thread
-// principal, então ambientes sem Worker (jsdom/testes) seguem funcionando.
+// POOL de workers do motor (`engine.worker.ts`).
+//
+// Um worker já bastava para a UI não travar (`wasm_optimize_genetic` é ATÔMICA e
+// chegou a bloquear 10 s com 1000 peças). O POOL existe para outra coisa: o plano
+// testa 3-4 CANDIDATOS independentes (variantes de ordenação + guloso) e antes os
+// rodava em série. Com um worker por candidato eles rodam de verdade em paralelo.
+//
+// Workers são LONGEVOS — cada um instancia o próprio WASM, que é caro. Qualquer
+// falha desliga o pool INTEIRO e degrada, em definitivo, para a thread principal;
+// ambientes sem `Worker` (jsdom/testes) caem nesse caminho de imediato.
 // ─────────────────────────────────────────────────────────────────────────────
 interface PendingCall {
   resolve: (t: TreeNode) => void;
   reject: (e: unknown) => void;
   onProgress?: (p: OptimizationProgress) => void;
 }
+interface PoolSlot { worker: Worker; busy: boolean }
 
-let _worker: Worker | null = null;
-let _workerUnavailable = false;
+/** Teto do pool: o plano tem 3-4 candidatos, mais workers não teriam quem servir. */
+const POOL_MAX = 4;
+
+let _pool: PoolSlot[] = [];
+let _workersUnavailable = false;
 let _reqSeq = 0;
 const _pending = new Map<number, PendingCall>();
+const _waiters: Array<(s: PoolSlot | null) => void> = [];
 
-function disableWorker(reason: unknown): void {
-  _workerUnavailable = true;
-  _worker = null;
-  for (const [, call] of _pending) call.reject(reason);
-  _pending.clear();
+/**
+ * Tamanho do pool. `localStorage.enginePoolSize` sobrepõe (mesmo padrão de
+ * `useWasmEngine`): serve para diagnosticar — pool 1 reproduz o comportamento em
+ * série sem precisar de outro build.
+ */
+function poolSize(): number {
+  try {
+    const override = Number(localStorage.getItem('enginePoolSize'));
+    if (Number.isFinite(override) && override >= 1) return Math.min(POOL_MAX, Math.floor(override));
+  } catch { /* sem localStorage: usa o padrão */ }
+  const hc = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
+    ? navigator.hardwareConcurrency : 4;
+  // Deixa um núcleo para a thread principal, que ainda roda `runPlacement`,
+  // `optimizeV6` e as operações de árvore de forma síncrona.
+  return Math.max(1, Math.min(POOL_MAX, hc - 1));
 }
 
-function getWorker(): Worker | null {
-  if (_workerUnavailable) return null;
-  if (_worker) return _worker;
-  if (typeof Worker === 'undefined') { _workerUnavailable = true; return null; }
+function disableWorkers(reason: unknown): void {
+  _workersUnavailable = true;
+  for (const slot of _pool) { try { slot.worker.terminate(); } catch { /* já morto */ } }
+  _pool = [];
+  for (const [, call] of _pending) call.reject(reason);
+  _pending.clear();
+  while (_waiters.length) _waiters.shift()!(null);
+}
+
+function spawnSlot(): PoolSlot | null {
   try {
     const w = new Worker(new URL('./engine.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (ev: MessageEvent<WorkerResponse>) => {
@@ -77,15 +102,37 @@ function getWorker(): Worker | null {
     };
     w.onerror = (e: ErrorEvent) => {
       console.warn('[worker] indisponível; motor volta para a thread principal:', e.message || e);
-      disableWorker(new Error('worker indisponível'));
+      disableWorkers(new Error('worker indisponível'));
     };
-    _worker = w;
-    return w;
+    return { worker: w, busy: false };
   } catch (e) {
     console.warn('[worker] não pôde ser criado; motor fica na thread principal:', e);
-    _workerUnavailable = true;
     return null;
   }
+}
+
+function acquireSlot(): Promise<PoolSlot | null> {
+  if (_workersUnavailable) return Promise.resolve(null);
+  if (typeof Worker === 'undefined') { _workersUnavailable = true; return Promise.resolve(null); }
+  const free = _pool.find((s) => !s.busy);
+  if (free) { free.busy = true; return Promise.resolve(free); }
+  if (_pool.length < poolSize()) {
+    const slot = spawnSlot();
+    if (!slot) { _workersUnavailable = true; return Promise.resolve(null); }
+    slot.busy = true;
+    _pool.push(slot);
+    return Promise.resolve(slot);
+  }
+  // Pool cheio: espera alguém liberar. `releaseSlot` entrega o slot AINDA ocupado
+  // ao próximo da fila, então não há janela para outro chamador roubá-lo.
+  return new Promise((res) => _waiters.push(res));
+}
+
+function releaseSlot(slot: PoolSlot): void {
+  if (_workersUnavailable) return;
+  const next = _waiters.shift();
+  if (next) { next(slot); return; }
+  slot.busy = false;
 }
 
 export async function optimizeGeneticAsync(
@@ -98,8 +145,8 @@ export async function optimizeGeneticAsync(
   gaPopulationSize = 10,
   gaGenerations = 10,
 ): Promise<TreeNode> {
-  const worker = getWorker();
-  if (worker) {
+  const slot = await acquireSlot();
+  if (slot) {
     try {
       return await new Promise<TreeNode>((resolve, reject) => {
         const id = ++_reqSeq;
@@ -108,10 +155,12 @@ export async function optimizeGeneticAsync(
           id, useWasm: _useWasm, pieces, usableW, usableH, minBreak,
           priorityLabels, gaPopulationSize, gaGenerations,
         };
-        worker.postMessage(req);
+        slot.worker.postMessage(req);
       });
     } catch (e) {
       console.warn('[worker] chamada falhou; refazendo na thread principal:', e);
+    } finally {
+      releaseSlot(slot);
     }
   }
   return optimizeGeneticInThread(
